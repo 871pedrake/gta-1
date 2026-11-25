@@ -1,0 +1,526 @@
+using System.Collections.Generic;
+using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
+/// <summary>
+/// FÁBRICA COMPLETA DOS 50 VEÍCULOS CONCEITO (VHC-01 a VHC-50)
+/// Constrói modelos 3D multi-peças detalhados na Unity (cabines envidraçadas, rodas com aro/pinça,
+/// aerofólios, blower V8, snorkel, giroflex, ônibus articulado com sanfona, escada de bombeiros,
+/// tambor betoneira giratório, lanchas, helicópteros e hovercraft).
+/// </summary>
+public class Fabrica50Veiculos : MonoBehaviour
+{
+    [System.Serializable]
+    public struct DefVeiculo
+    {
+        public string codigo, nome, categoria, arquetipo;
+        public TipoFisicaVeiculo50 tipo;
+        public float comp, larg, alt, eixos, raioRoda, largRoda, vao, capCabin, altCabin;
+        public string corPrim, corSec, corDest;
+        public float velMax, acel, massa;
+        public string extras;
+    }
+
+    [Header("Teste e Spawn em Jogo")]
+    public bool gerarAmostraAoIniciar = false;
+    [Range(0, 49)] public int indiceSelecionado = 0;
+    public bool permitirTrocaComTeclaF2 = true;
+    public Transform pontoSpawnManual;
+
+    private static Shader shaderBase;
+    private GameObject veiculoTestadoAtual;
+
+    public static readonly DefVeiculo[] CATALOGO = new DefVeiculo[]
+    {
+        new DefVeiculo { codigo="VHC-01", nome="Golfinho Hatch 1.0", categoria="Compactos", arquetipo="hatch", tipo=TipoFisicaVeiculo50.Carro, comp=3.92f, larg=1.74f, alt=1.48f, eixos=2.48f, raioRoda=0.31f, largRoda=0.20f, vao=0.16f, capCabin=0.56f, altCabin=0.44f, corPrim="#2563EB", corSec="#18181B", corDest="#E2E8F0", velMax=158f, acel=14.1f, massa=1020f, extras="roof_rack,diffuser" },
+        new DefVeiculo { codigo="VHC-02", nome="Serrano Sedan LX", categoria="Compactos", arquetipo="sedan", tipo=TipoFisicaVeiculo50.Carro, comp=4.56f, larg=1.80f, alt=1.46f, eixos=2.68f, raioRoda=0.33f, largRoda=0.21f, vao=0.15f, capCabin=0.48f, altCabin=0.42f, corPrim="#94A3B8", corSec="#1E293B", corDest="#CBD5E1", velMax=192f, acel=16.5f, massa=1320f, extras="chrome_bumpers,dual_exhaust" },
+        new DefVeiculo { codigo="VHC-03", nome="Pampa Cupê Turbo", categoria="Compactos", arquetipo="coupe", tipo=TipoFisicaVeiculo50.Carro, comp=4.18f, larg=1.78f, alt=1.35f, eixos=2.52f, raioRoda=0.32f, largRoda=0.23f, vao=0.13f, capCabin=0.46f, altCabin=0.40f, corPrim="#DC2626", corSec="#18181B", corDest="#FACC15", velMax=218f, acel=20.2f, massa=1140f, extras="spoiler_gt,intercooler,splitter,dual_exhaust" },
+        new DefVeiculo { codigo="VHC-04", nome="Bandeirante Perua LX", categoria="Compactos", arquetipo="wagon", tipo=TipoFisicaVeiculo50.Carro, comp=4.62f, larg=1.78f, alt=1.54f, eixos=2.66f, raioRoda=0.32f, largRoda=0.20f, vao=0.17f, capCabin=0.66f, altCabin=0.45f, corPrim="#0F766E", corSec="#27272A", corDest="#D4D4D8", velMax=174f, acel=14.3f, massa=1390f, extras="roof_rack,chrome_bumpers" },
+        new DefVeiculo { codigo="VHC-05", nome="Tucano Micro Elétrico", categoria="Compactos", arquetipo="micro", tipo=TipoFisicaVeiculo50.Carro, comp=2.78f, larg=1.58f, alt=1.56f, eixos=1.88f, raioRoda=0.28f, largRoda=0.17f, vao=0.15f, capCabin=0.72f, altCabin=0.50f, corPrim="#F8FAFC", corSec="#0F172A", corDest="#06B6D4", velMax=112f, acel=15.8f, massa=760f, extras="panoramic_roof" },
+        new DefVeiculo { codigo="VHC-06", nome="Tupi Buggy Urbano", categoria="Compactos", arquetipo="buggy", tipo=TipoFisicaVeiculo50.Carro, comp=3.45f, larg=1.82f, alt=1.52f, eixos=2.25f, raioRoda=0.37f, largRoda=0.27f, vao=0.26f, capCabin=0.50f, altCabin=0.42f, corPrim="#F97316", corSec="#18181B", corDest="#FACC15", velMax=146f, acel=18.5f, massa=740f, extras="rollcage,bullbar,lightbar_amber,spare_rear" },
+        new DefVeiculo { codigo="VHC-07", nome="Carioca Táxi Metropolitano", categoria="Compactos", arquetipo="sedan", tipo=TipoFisicaVeiculo50.Carro, comp=4.48f, larg=1.78f, alt=1.58f, eixos=2.64f, raioRoda=0.32f, largRoda=0.20f, vao=0.16f, capCabin=0.50f, altCabin=0.43f, corPrim="#EAB308", corSec="#18181B", corDest="#FFFFFF", velMax=180f, acel=15.4f, massa=1290f, extras="taxi_sign,chrome_bumpers" },
+        new DefVeiculo { codigo="VHC-08", nome="Rápido Courier Van", categoria="Compactos", arquetipo="van", tipo=TipoFisicaVeiculo50.Carro, comp=4.85f, larg=1.92f, alt=2.18f, eixos=2.95f, raioRoda=0.35f, largRoda=0.23f, vao=0.20f, capCabin=0.78f, altCabin=0.54f, corPrim="#F1F5F9", corSec="#EA580C", corDest="#1E293B", velMax=148f, acel=11.9f, massa=1980f, extras="roof_rack,delivery_box" },
+
+        new DefVeiculo { codigo="VHC-09", nome="Arara GT-R Coupe", categoria="Esportivos", arquetipo="coupe", tipo=TipoFisicaVeiculo50.Carro, comp=4.54f, larg=1.94f, alt=1.32f, eixos=2.72f, raioRoda=0.34f, largRoda=0.26f, vao=0.11f, capCabin=0.44f, altCabin=0.38f, corPrim="#1D4ED8", corSec="#111827", corDest="#F59E0B", velMax=295f, acel=28.2f, massa=1480f, extras="spoiler_gt,widebody,intercooler,splitter,diffuser,dual_exhaust" },
+        new DefVeiculo { codigo="VHC-10", nome="Trovão V8 Muscle", categoria="Esportivos", arquetipo="muscle", tipo=TipoFisicaVeiculo50.Carro, comp=4.82f, larg=1.96f, alt=1.36f, eixos=2.82f, raioRoda=0.35f, largRoda=0.28f, vao=0.14f, capCabin=0.38f, altCabin=0.38f, corPrim="#18181B", corSec="#EF4444", corDest="#E4E4E7", velMax=268f, acel=26.2f, massa=1680f, extras="blower_v8,chrome_bumpers,dual_exhaust,spoiler_gt" },
+        new DefVeiculo { codigo="VHC-11", nome="Jaguaruna Hypercar", categoria="Esportivos", arquetipo="supercar", tipo=TipoFisicaVeiculo50.Carro, comp=4.64f, larg=2.04f, alt=1.14f, eixos=2.74f, raioRoda=0.35f, largRoda=0.29f, vao=0.09f, capCabin=0.42f, altCabin=0.34f, corPrim="#F59E0B", corSec="#09090B", corDest="#22D3EE", velMax=365f, acel=34.8f, massa=1310f, extras="wing_swan,splitter,diffuser,panoramic_roof,dual_exhaust" },
+        new DefVeiculo { codigo="VHC-12", nome="Niterói Roadster Conversível", categoria="Esportivos", arquetipo="roadster", tipo=TipoFisicaVeiculo50.Carro, comp=4.24f, larg=1.84f, alt=1.24f, eixos=2.50f, raioRoda=0.33f, largRoda=0.24f, vao=0.12f, capCabin=0.36f, altCabin=0.28f, corPrim="#E11D48", corSec="#D4D4D8", corDest="#F8FAFC", velMax=245f, acel=22.9f, massa=1210f, extras="twin_rollbar,dual_exhaust,chrome_bumpers" },
+        new DefVeiculo { codigo="VHC-13", nome="Relâmpago Track-Spec", categoria="Esportivos", arquetipo="supercar", tipo=TipoFisicaVeiculo50.Carro, comp=4.68f, larg=2.02f, alt=1.20f, eixos=2.75f, raioRoda=0.34f, largRoda=0.30f, vao=0.08f, capCabin=0.44f, altCabin=0.35f, corPrim="#10B981", corSec="#09090B", corDest="#FDE047", velMax=332f, acel=31.2f, massa=1180f, extras="wing_swan,rollcage,splitter,diffuser,widebody,intercooler" },
+        new DefVeiculo { codigo="VHC-14", nome="Cerrado Grand Tourer", categoria="Esportivos", arquetipo="coupe", tipo=TipoFisicaVeiculo50.Carro, comp=4.78f, larg=1.92f, alt=1.34f, eixos=2.86f, raioRoda=0.35f, largRoda=0.25f, vao=0.12f, capCabin=0.40f, altCabin=0.37f, corPrim="#1E3A8A", corSec="#0F172A", corDest="#E2E8F0", velMax=304f, acel=25.1f, massa=1620f, extras="splitter,diffuser,dual_exhaust,panoramic_roof" },
+        new DefVeiculo { codigo="VHC-15", nome="Volt-X Conceito Elétrico", categoria="Esportivos", arquetipo="supercar", tipo=TipoFisicaVeiculo50.Carro, comp=4.58f, larg=1.96f, alt=1.22f, eixos=2.80f, raioRoda=0.35f, largRoda=0.25f, vao=0.11f, capCabin=0.52f, altCabin=0.36f, corPrim="#CBD5E1", corSec="#0F172A", corDest="#38BDF8", velMax=318f, acel=36.3f, massa=1740f, extras="panoramic_roof,diffuser,splitter" },
+        new DefVeiculo { codigo="VHC-16", nome="Ouro Preto Clássico 68", categoria="Esportivos", arquetipo="classic", tipo=TipoFisicaVeiculo50.Carro, comp=4.65f, larg=1.82f, alt=1.38f, eixos=2.74f, raioRoda=0.33f, largRoda=0.20f, vao=0.17f, capCabin=0.42f, altCabin=0.40f, corPrim="#047857", corSec="#F8FAFC", corDest="#E2E8F0", velMax=210f, acel=18.0f, massa=1410f, extras="chrome_bumpers,dual_exhaust" },
+
+        new DefVeiculo { codigo="VHC-17", nome="Pantanal 4x4 Raiz", categoria="Off-Road", arquetipo="suv", tipo=TipoFisicaVeiculo50.Carro, comp=4.34f, larg=1.92f, alt=1.88f, eixos=2.62f, raioRoda=0.41f, largRoda=0.28f, vao=0.32f, capCabin=0.60f, altCabin=0.46f, corPrim="#4D7C0F", corSec="#18181B", corDest="#F59E0B", velMax=154f, acel=15.0f, massa=1850f, extras="snorkel,bullbar,spare_rear,roof_rack,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-18", nome="Sertão Picape Cabine Dupla", categoria="Off-Road", arquetipo="pickup", tipo=TipoFisicaVeiculo50.Carro, comp=5.26f, larg=1.94f, alt=1.84f, eixos=3.12f, raioRoda=0.39f, largRoda=0.26f, vao=0.27f, capCabin=0.42f, altCabin=0.44f, corPrim="#B91C1C", corSec="#27272A", corDest="#D4D4D8", velMax=178f, acel=16.3f, massa=2140f, extras="twin_rollbar,bullbar,chrome_bumpers" },
+        new DefVeiculo { codigo="VHC-19", nome="Amazônia Overlander", categoria="Off-Road", arquetipo="suv", tipo=TipoFisicaVeiculo50.Carro, comp=4.86f, larg=1.96f, alt=2.16f, eixos=2.86f, raioRoda=0.42f, largRoda=0.29f, vao=0.34f, capCabin=0.64f, altCabin=0.46f, corPrim="#A16207", corSec="#18181B", corDest="#F97316", velMax=162f, acel=15.2f, massa=2320f, extras="roof_tent,snorkel,bullbar,spare_rear,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-20", nome="Ipanema SUV Luxo", categoria="Off-Road", arquetipo="suv", tipo=TipoFisicaVeiculo50.Carro, comp=4.88f, larg=1.98f, alt=1.72f, eixos=2.94f, raioRoda=0.39f, largRoda=0.27f, vao=0.21f, capCabin=0.60f, altCabin=0.42f, corPrim="#F8FAFC", corSec="#09090B", corDest="#94A3B8", velMax=242f, acel=21.6f, massa=2180f, extras="panoramic_roof,diffuser,dual_exhaust" },
+        new DefVeiculo { codigo="VHC-21", nome="Canyon Monster Truck", categoria="Off-Road", arquetipo="monster", tipo=TipoFisicaVeiculo50.Carro, comp=5.10f, larg=2.54f, alt=2.68f, eixos=3.15f, raioRoda=0.72f, largRoda=0.46f, vao=0.88f, capCabin=0.42f, altCabin=0.34f, corPrim="#7C3AED", corSec="#18181B", corDest="#22C55E", velMax=135f, acel=20.9f, massa=3800f, extras="blower_v8,rollcage,twin_rollbar,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-22", nome="Duna Baja Rally", categoria="Off-Road", arquetipo="buggy", tipo=TipoFisicaVeiculo50.Carro, comp=4.38f, larg=2.02f, alt=1.74f, eixos=2.84f, raioRoda=0.44f, largRoda=0.30f, vao=0.38f, capCabin=0.48f, altCabin=0.40f, corPrim="#EA580C", corSec="#0F172A", corDest="#FACC15", velMax=196f, acel=23.3f, massa=1420f, extras="rollcage,spare_rear,bullbar,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-23", nome="Guará Picape Street", categoria="Off-Road", arquetipo="pickup", tipo=TipoFisicaVeiculo50.Carro, comp=4.72f, larg=1.86f, alt=1.48f, eixos=2.82f, raioRoda=0.36f, largRoda=0.25f, vao=0.12f, capCabin=0.38f, altCabin=0.40f, corPrim="#0284C7", corSec="#18181B", corDest="#F43F5E", velMax=224f, acel=20.7f, massa=1490f, extras="splitter,spoiler_gt,dual_exhaust" },
+
+        new DefVeiculo { codigo="VHC-24", nome="Viatura Patrulha Urbana", categoria="Emergência", arquetipo="sedan", tipo=TipoFisicaVeiculo50.Carro, comp=4.72f, larg=1.84f, alt=1.62f, eixos=2.78f, raioRoda=0.34f, largRoda=0.23f, vao=0.16f, capCabin=0.48f, altCabin=0.42f, corPrim="#1E293B", corSec="#F8FAFC", corDest="#3B82F6", velMax=235f, acel=22.4f, massa=1580f, extras="lightbar_police,pushbar,dual_exhaust" },
+        new DefVeiculo { codigo="VHC-25", nome="Interceptor Rodoviário", categoria="Emergência", arquetipo="coupe", tipo=TipoFisicaVeiculo50.Carro, comp=4.62f, larg=1.92f, alt=1.44f, eixos=2.74f, raioRoda=0.35f, largRoda=0.26f, vao=0.12f, capCabin=0.44f, altCabin=0.38f, corPrim="#0F172A", corSec="#EAB308", corDest="#38BDF8", velMax=298f, acel=27.7f, massa=1510f, extras="lightbar_police,spoiler_gt,pushbar,splitter,dual_exhaust" },
+        new DefVeiculo { codigo="VHC-26", nome="Caveirão Tático Blindado", categoria="Emergência", arquetipo="armored", tipo=TipoFisicaVeiculo50.Carro, comp=5.95f, larg=2.38f, alt=2.52f, eixos=3.55f, raioRoda=0.52f, largRoda=0.34f, vao=0.36f, capCabin=0.72f, altCabin=0.48f, corPrim="#18181B", corSec="#27272A", corDest="#EF4444", velMax=122f, acel=11.4f, massa=6800f, extras="lightbar_police,pushbar,bullbar" },
+        new DefVeiculo { codigo="VHC-27", nome="Resgate SAMU Ambulância", categoria="Emergência", arquetipo="ambulance", tipo=TipoFisicaVeiculo50.Carro, comp=5.65f, larg=2.12f, alt=2.56f, eixos=3.35f, raioRoda=0.38f, largRoda=0.25f, vao=0.22f, capCabin=0.74f, altCabin=0.55f, corPrim="#F8FAFC", corSec="#DC2626", corDest="#F97316", velMax=162f, acel=14.1f, massa=3100f, extras="ambulance_box,lightbar_police,bus_ac" },
+        new DefVeiculo { codigo="VHC-28", nome="Autobomba Corpo de Bombeiros", categoria="Emergência", arquetipo="firetruck", tipo=TipoFisicaVeiculo50.Carro, comp=8.60f, larg=2.48f, alt=3.35f, eixos=4.50f, raioRoda=0.50f, largRoda=0.32f, vao=0.30f, capCabin=0.32f, altCabin=0.58f, corPrim="#DC2626", corSec="#E2E8F0", corDest="#FACC15", velMax=128f, acel=10.6f, massa=14500f, extras="fire_ladder,lightbar_police,chrome_bumpers" },
+        new DefVeiculo { codigo="VHC-29", nome="Limpa-Rua Varredoura Urbana", categoria="Emergência", arquetipo="van", tipo=TipoFisicaVeiculo50.Carro, comp=4.25f, larg=1.78f, alt=2.18f, eixos=2.20f, raioRoda=0.32f, largRoda=0.22f, vao=0.18f, capCabin=0.42f, altCabin=0.55f, corPrim="#F97316", corSec="#334155", corDest="#FACC15", velMax=72f, acel=9.2f, massa=2650f, extras="sweeper_brushes,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-30", nome="Guincho Plataforma SOS", categoria="Emergência", arquetipo="tow_truck", tipo=TipoFisicaVeiculo50.Carro, comp=7.20f, larg=2.34f, alt=2.58f, eixos=4.10f, raioRoda=0.44f, largRoda=0.28f, vao=0.26f, capCabin=0.30f, altCabin=0.56f, corPrim="#EAB308", corSec="#1E293B", corDest="#F97316", velMax=132f, acel=11.2f, massa=5900f, extras="tow_bed,lightbar_amber,chrome_bumpers" },
+
+        new DefVeiculo { codigo="VHC-31", nome="Ônibus Urbano Metropolitano", categoria="Transporte", arquetipo="bus", tipo=TipoFisicaVeiculo50.Carro, comp=11.40f, larg=2.52f, alt=3.15f, eixos=5.90f, raioRoda=0.50f, largRoda=0.30f, vao=0.24f, capCabin=0.96f, altCabin=0.66f, corPrim="#0284C7", corSec="#F8FAFC", corDest="#FACC15", velMax=98f, acel=7.9f, massa=11800f, extras="bus_ac" },
+        new DefVeiculo { codigo="VHC-32", nome="Expresso Articulado BRT", categoria="Transporte", arquetipo="articulated_bus", tipo=TipoFisicaVeiculo50.Carro, comp=16.80f, larg=2.54f, alt=3.18f, eixos=5.60f, raioRoda=0.50f, largRoda=0.30f, vao=0.24f, capCabin=0.96f, altCabin=0.66f, corPrim="#DC2626", corSec="#F1F5F9", corDest="#18181B", velMax=92f, acel=6.8f, massa=18400f, extras="bus_ac" },
+        new DefVeiculo { codigo="VHC-33", nome="Escolar Amarelinho", categoria="Transporte", arquetipo="bus", tipo=TipoFisicaVeiculo50.Carro, comp=7.40f, larg=2.28f, alt=2.86f, eixos=3.90f, raioRoda=0.42f, largRoda=0.26f, vao=0.24f, capCabin=0.90f, altCabin=0.62f, corPrim="#FACC15", corSec="#18181B", corDest="#F8FAFC", velMax=108f, acel=9.9f, massa=6400f, extras="school_sign,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-34", nome="Cavalo Mecânico Rodoviário", categoria="Transporte", arquetipo="semi_truck", tipo=TipoFisicaVeiculo50.Carro, comp=7.35f, larg=2.50f, alt=3.65f, eixos=4.10f, raioRoda=0.52f, largRoda=0.32f, vao=0.30f, capCabin=0.38f, altCabin=0.68f, corPrim="#B91C1C", corSec="#1E293B", corDest="#E2E8F0", velMax=124f, acel=8.8f, massa=9400f, extras="chrome_bumpers,dual_exhaust,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-35", nome="Caçamba Basculante Obra", categoria="Transporte", arquetipo="dump_truck", tipo=TipoFisicaVeiculo50.Carro, comp=7.80f, larg=2.48f, alt=3.15f, eixos=4.30f, raioRoda=0.50f, largRoda=0.32f, vao=0.34f, capCabin=0.28f, altCabin=0.56f, corPrim="#D97706", corSec="#3F3F46", corDest="#18181B", velMax=105f, acel=8.6f, massa=13200f, extras="dump_bed,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-36", nome="Caminhão Betoneira", categoria="Transporte", arquetipo="mixer_truck", tipo=TipoFisicaVeiculo50.Carro, comp=8.10f, larg=2.48f, alt=3.55f, eixos=4.45f, raioRoda=0.50f, largRoda=0.32f, vao=0.32f, capCabin=0.28f, altCabin=0.56f, corPrim="#F8FAFC", corSec="#0369A1", corDest="#F59E0B", velMax=96f, acel=7.7f, massa=14800f, extras="mixer_drum,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-37", nome="Food Truck Gourmet", categoria="Transporte", arquetipo="van", tipo=TipoFisicaVeiculo50.Carro, comp=5.55f, larg=2.10f, alt=2.55f, eixos=3.25f, raioRoda=0.35f, largRoda=0.22f, vao=0.20f, capCabin=0.86f, altCabin=0.58f, corPrim="#0D9488", corSec="#FEF3C7", corDest="#EA580C", velMax=118f, acel=10.6f, massa=2850f, extras="food_awning,roof_rack" },
+
+        new DefVeiculo { codigo="VHC-38", nome="Vespa Retrô Clássica", categoria="Motos", arquetipo="scooter", tipo=TipoFisicaVeiculo50.Moto, comp=1.88f, larg=0.72f, alt=1.12f, eixos=1.32f, raioRoda=0.23f, largRoda=0.12f, vao=0.14f, capCabin=0.45f, altCabin=0.40f, corPrim="#2DD4BF", corSec="#F8FAFC", corDest="#D97706", velMax=105f, acel=16.3f, massa=122f, extras="chrome_bumpers" },
+        new DefVeiculo { codigo="VHC-39", nome="Relâmpago Superbike 1000", categoria="Motos", arquetipo="sportbike", tipo=TipoFisicaVeiculo50.Moto, comp=2.08f, larg=0.76f, alt=1.14f, eixos=1.44f, raioRoda=0.31f, largRoda=0.18f, vao=0.14f, capCabin=0.40f, altCabin=0.38f, corPrim="#EF4444", corSec="#18181B", corDest="#F8FAFC", velMax=299f, acel=33.4f, massa=198f, extras="dual_exhaust,splitter" },
+        new DefVeiculo { codigo="VHC-40", nome="Estradeira Cruiser Custom", categoria="Motos", arquetipo="cruiser", tipo=TipoFisicaVeiculo50.Moto, comp=2.42f, larg=0.88f, alt=1.18f, eixos=1.68f, raioRoda=0.33f, largRoda=0.16f, vao=0.12f, capCabin=0.40f, altCabin=0.32f, corPrim="#1E1B4B", corSec="#D4D4D8", corDest="#F59E0B", velMax=186f, acel=19.4f, massa=295f, extras="chrome_bumpers,dual_exhaust" },
+        new DefVeiculo { codigo="VHC-41", nome="Trilha Cross Enduro", categoria="Motos", arquetipo="dirtbike", tipo=TipoFisicaVeiculo50.Moto, comp=2.16f, larg=0.82f, alt=1.24f, eixos=1.48f, raioRoda=0.35f, largRoda=0.12f, vao=0.31f, capCabin=0.36f, altCabin=0.34f, corPrim="#22C55E", corSec="#F8FAFC", corDest="#18181B", velMax=142f, acel=23.8f, massa=118f, extras="bullbar" },
+        new DefVeiculo { codigo="VHC-42", nome="Moto-Entrega Baú Express", categoria="Motos", arquetipo="dirtbike", tipo=TipoFisicaVeiculo50.Moto, comp=2.06f, larg=0.78f, alt=1.32f, eixos=1.34f, raioRoda=0.28f, largRoda=0.12f, vao=0.19f, capCabin=0.38f, altCabin=0.35f, corPrim="#EA580C", corSec="#18181B", corDest="#FACC15", velMax=128f, acel=18.0f, massa=142f, extras="moto_box" },
+        new DefVeiculo { codigo="VHC-43", nome="Quadriciclo Tático ATV", categoria="Motos", arquetipo="atv", tipo=TipoFisicaVeiculo50.Moto, comp=2.18f, larg=1.24f, alt=1.26f, eixos=1.36f, raioRoda=0.32f, largRoda=0.24f, vao=0.26f, capCabin=0.46f, altCabin=0.38f, corPrim="#15803D", corSec="#18181B", corDest="#F97316", velMax=112f, acel=20.7f, massa=345f, extras="atv_racks,bullbar" },
+
+        new DefVeiculo { codigo="VHC-44", nome="Lancha Esportiva Ipanema", categoria="Aquáticos", arquetipo="speedboat", tipo=TipoFisicaVeiculo50.Barco, comp=6.40f, larg=2.38f, alt=1.65f, eixos=0f, raioRoda=0f, largRoda=0f, vao=0.10f, capCabin=0.45f, altCabin=0.32f, corPrim="#F8FAFC", corSec="#0369A1", corDest="#F59E0B", velMax=96f, acel=18.9f, massa=1480f, extras="outboard_twin,chrome_bumpers" },
+        new DefVeiculo { codigo="VHC-45", nome="Jet Ski Turbinado", categoria="Aquáticos", arquetipo="jetski", tipo=TipoFisicaVeiculo50.Barco, comp=3.25f, larg=1.22f, alt=1.14f, eixos=0f, raioRoda=0f, largRoda=0f, vao=0.08f, capCabin=0.50f, altCabin=0.35f, corPrim="#06B6D4", corSec="#0F172A", corDest="#FACC15", velMax=110f, acel=27.3f, massa=340f, extras="jet_nozzle" },
+        new DefVeiculo { codigo="VHC-46", nome="Bote Salva-Vidas Inflável", categoria="Aquáticos", arquetipo="rib_boat", tipo=TipoFisicaVeiculo50.Barco, comp=5.40f, larg=2.30f, alt=1.75f, eixos=0f, raioRoda=0f, largRoda=0f, vao=0.10f, capCabin=0.45f, altCabin=0.35f, corPrim="#EA580C", corSec="#18181B", corDest="#F8FAFC", velMax=82f, acel=19.8f, massa=890f, extras="rib_tubes,outboard_twin,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-47", nome="Rebocador Barca Fluvial", categoria="Aquáticos", arquetipo="tugboat", tipo=TipoFisicaVeiculo50.Barco, comp=9.80f, larg=3.60f, alt=4.10f, eixos=0f, raioRoda=0f, largRoda=0f, vao=0.12f, capCabin=0.42f, altCabin=0.48f, corPrim="#991B1B", corSec="#F8FAFC", corDest="#F59E0B", velMax=48f, acel=7.5f, massa=14200f, extras="tug_tower,lightbar_amber" },
+
+        new DefVeiculo { codigo="VHC-48", nome="Helicóptero Patrulha Águia", categoria="Aéreos", arquetipo="helicopter", tipo=TipoFisicaVeiculo50.Helicoptero, comp=10.60f, larg=2.40f, alt=3.15f, eixos=0f, raioRoda=0f, largRoda=0f, vao=0.45f, capCabin=0.42f, altCabin=0.50f, corPrim="#1E293B", corSec="#F8FAFC", corDest="#3B82F6", velMax=245f, acel=21.6f, massa=1620f, extras="heli_rotors,lightbar_police" },
+        new DefVeiculo { codigo="VHC-49", nome="Helicóptero Resgate Heavy", categoria="Aéreos", arquetipo="helicopter", tipo=TipoFisicaVeiculo50.Helicoptero, comp=12.80f, larg=2.85f, alt=3.65f, eixos=0f, raioRoda=0f, largRoda=0f, vao=0.50f, capCabin=0.48f, altCabin=0.52f, corPrim="#DC2626", corSec="#FACC15", corDest="#F8FAFC", velMax=268f, acel=18.5f, massa=3850f, extras="heli_rotors,heli_winch,lightbar_amber" },
+        new DefVeiculo { codigo="VHC-50", nome="Anfíbio Hovercraft Urbano", categoria="Aéreos", arquetipo="hovercraft", tipo=TipoFisicaVeiculo50.Hovercraft, comp=6.20f, larg=3.10f, alt=2.35f, eixos=0f, raioRoda=0f, largRoda=0f, vao=0.28f, capCabin=0.46f, altCabin=0.45f, corPrim="#EAB308", corSec="#18181B", corDest="#06B6D4", velMax=118f, acel=20.2f, massa=1950f, extras="hover_fans,lightbar_amber" }
+    };
+
+    private void Start()
+    {
+        if (gerarAmostraAoIniciar)
+        {
+            Vector3 pos = pontoSpawnManual != null ? pontoSpawnManual.position : transform.position;
+            CriarVeiculo(indiceSelecionado, pos, transform.rotation);
+        }
+    }
+
+    private void Update()
+    {
+        if (!permitirTrocaComTeclaF2) return;
+        bool apertouF2 = false;
+#if ENABLE_INPUT_SYSTEM
+        if (Keyboard.current != null && Keyboard.current.f2Key.wasPressedThisFrame) apertouF2 = true;
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+        if (Input.GetKeyDown(KeyCode.F2)) apertouF2 = true;
+#endif
+        if (apertouF2)
+        {
+            indiceSelecionado = (indiceSelecionado + 1) % CATALOGO.Length;
+            Transform alvo = Camera.main != null ? Camera.main.transform : transform;
+            Vector3 pos = alvo.position + Vector3.ProjectOnPlane(alvo.forward, Vector3.up).normalized * 6f;
+            pos.y = 1.2f;
+            if (veiculoTestadoAtual != null) Destroy(veiculoTestadoAtual);
+            veiculoTestadoAtual = CriarVeiculo(indiceSelecionado, pos, Quaternion.LookRotation(Vector3.ProjectOnPlane(alvo.right, Vector3.up)));
+            CidadeHUD.Notificar("Spawn: " + CATALOGO[indiceSelecionado].codigo + " — " + CATALOGO[indiceSelecionado].nome);
+        }
+    }
+
+    [ContextMenu("Gerar Veículo Selecionado Aqui")]
+    public void GerarSelecionadoAqui()
+    {
+        CriarVeiculo(indiceSelecionado, transform.position, transform.rotation);
+    }
+
+    [ContextMenu("Gerar Frota Completa (Todos os 50 em Grade)")]
+    public void GerarTodosEmGrade()
+    {
+        GameObject pai = new GameObject("Frota_50_Veiculos_Conceito");
+        for (int i = 0; i < CATALOGO.Length; i++)
+        {
+            int col = i % 10;
+            int lin = i / 10;
+            Vector3 pos = transform.position + new Vector3(col * 6.5f, 0f, -lin * 13f);
+            GameObject v = CriarVeiculo(i, pos, Quaternion.identity);
+            v.transform.SetParent(pai.transform, true);
+        }
+    }
+
+#if UNITY_EDITOR
+    [MenuItem("Cidade/Veículos/Gerar Frota Completa (50 Modelos)")]
+    private static void MenuGerarTodos()
+    {
+        GameObject temp = new GameObject("Temp_Fabrica50");
+        Fabrica50Veiculos f = temp.AddComponent<Fabrica50Veiculos>();
+        f.GerarTodosEmGrade();
+        DestroyImmediate(temp);
+    }
+#endif
+
+    public static GameObject CriarVeiculo(int indice, Vector3 posicao, Quaternion rotacao)
+    {
+        DefVeiculo d = CATALOGO[Mathf.Clamp(indice, 0, CATALOGO.Length - 1)];
+        GameObject raiz = new GameObject(d.codigo + "_" + d.nome.Replace(" ", "_"));
+        raiz.transform.SetPositionAndRotation(posicao, rotacao);
+
+        Rigidbody rb = raiz.AddComponent<Rigidbody>();
+        rb.mass = d.massa;
+
+        BoxCollider col = raiz.AddComponent<BoxCollider>();
+        col.size = new Vector3(d.larg, d.alt, d.comp);
+        col.center = new Vector3(0f, d.alt * 0.5f, 0f);
+
+        ControleVeiculo50 ctrl = raiz.AddComponent<ControleVeiculo50>();
+        ctrl.codigo = d.codigo;
+        ctrl.nomeModelo = d.nome;
+        ctrl.tipoFisica = d.tipo;
+        ctrl.velocidadeMaxKmh = d.velMax;
+        ctrl.aceleracao = d.acel;
+        ctrl.inclinacaoCurva = d.tipo == TipoFisicaVeiculo50.Moto ? 24f : 0f;
+        ctrl.meioComprimento = d.comp * 0.5f;
+        ctrl.ehVeiculoLongo = d.comp >= 7.5f;
+
+        InteragirVeiculo50 inter = raiz.AddComponent<InteragirVeiculo50>();
+        inter.offsetSaida = new Vector3(-(d.larg * 0.5f + 1.15f), 0.6f, 0f);
+        inter.veiculoAbertoSemTeto = (d.tipo == TipoFisicaVeiculo50.Moto || d.arquetipo == "roadster" || d.arquetipo == "buggy" || d.arquetipo == "jetski");
+
+        Color cPrim = Hex(d.corPrim);
+        Color cSec = Hex(d.corSec);
+        Color cDest = Hex(d.corDest);
+        Color cVidro = new Color(0.10f, 0.16f, 0.24f, 0.85f);
+        Color cPneu = new Color(0.10f, 0.10f, 0.11f);
+        Color cAro = new Color(0.78f, 0.80f, 0.84f);
+        Color cCromo = new Color(0.92f, 0.92f, 0.94f);
+
+        if (d.tipo == TipoFisicaVeiculo50.Helicoptero)
+            MontarHelicoptero(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro);
+        else if (d.tipo == TipoFisicaVeiculo50.Hovercraft)
+            MontarHovercraft(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro, cPneu);
+        else if (d.tipo == TipoFisicaVeiculo50.Barco)
+            MontarBarco(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro);
+        else if (d.tipo == TipoFisicaVeiculo50.Moto)
+            MontarMotoOuAtv(raiz.transform, d, ctrl, cPrim, cSec, cDest, cPneu, cAro, cCromo);
+        else
+            MontarVeiculoTerrestre(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro, cPneu, cAro, cCromo);
+
+        return raiz;
+    }
+
+    private static void MontarVeiculoTerrestre(
+        Transform raiz, DefVeiculo d, ControleVeiculo50 ctrl,
+        Color cPrim, Color cSec, Color cDest, Color cVidro, Color cPneu, Color cAro, Color cCromo)
+    {
+        float hl = d.comp * 0.5f;
+
+        // Ônibus Articulado especial (2 módulos + sanfona + 3 eixos)
+        if (d.arquetipo == "articulated_bus")
+        {
+            float fLen = d.comp * 0.55f, rLen = d.comp * 0.38f, gap = d.comp * 0.07f;
+            float fZ = hl - fLen * 0.5f, rZ = -hl + rLen * 0.5f;
+            float bodyH = d.alt - d.vao - 0.15f;
+
+            Peca(PrimitiveType.Cube, "Modulo_Dianteiro", raiz, new Vector3(0f, d.vao + bodyH * 0.5f, fZ), new Vector3(d.larg, bodyH, fLen), cPrim, 0.7f);
+            Peca(PrimitiveType.Cube, "Vidros_Dianteiro", raiz, new Vector3(0f, d.vao + bodyH * 0.6f, fZ), new Vector3(d.larg + 0.02f, bodyH * 0.42f, fLen * 0.88f), cVidro, 0.9f);
+            Peca(PrimitiveType.Cube, "Modulo_Traseiro", raiz, new Vector3(0f, d.vao + bodyH * 0.5f, rZ), new Vector3(d.larg, bodyH, rLen), cPrim, 0.7f);
+            Peca(PrimitiveType.Cube, "Vidros_Traseiro", raiz, new Vector3(0f, d.vao + bodyH * 0.6f, rZ), new Vector3(d.larg + 0.02f, bodyH * 0.42f, rLen * 0.84f), cVidro, 0.9f);
+            Peca(PrimitiveType.Cube, "Sanfona_Central", raiz, new Vector3(0f, d.vao + bodyH * 0.5f, (fZ - fLen * 0.5f + rZ + rLen * 0.5f) * 0.5f), new Vector3(d.larg * 0.94f, bodyH * 0.92f, gap * 1.15f), cSec, 0.25f);
+
+            float[] eixosZ = { fZ + fLen * 0.3f, fZ - fLen * 0.28f, rZ - rLen * 0.15f };
+            for (int i = 0; i < eixosZ.Length; i++)
+            {
+                Transform re = CriarRoda(raiz, "Roda_E" + i, new Vector3(-d.larg * 0.46f, d.raioRoda, eixosZ[i]), d.raioRoda, d.largRoda, cPneu, cAro, cDest);
+                Transform rd = CriarRoda(raiz, "Roda_D" + i, new Vector3(d.larg * 0.46f, d.raioRoda, eixosZ[i]), d.raioRoda, d.largRoda, cPneu, cAro, cDest);
+                if (i == 0) { ctrl.rodasDianteiras.Add(re); ctrl.rodasDianteiras.Add(rd); }
+                else { ctrl.rodasTraseiras.Add(re); ctrl.rodasTraseiras.Add(rd); }
+            }
+            return;
+        }
+
+        float corpoH = Mathf.Max(0.42f, (d.alt - d.vao) * (1f - d.altCabin));
+        float beltY = d.vao + corpoH;
+
+        Peca(PrimitiveType.Cube, "Carroceria_Base", raiz,
+            new Vector3(0f, d.vao + corpoH * 0.5f, 0f),
+            new Vector3(d.larg, corpoH, d.comp * 0.96f), cPrim, 0.72f);
+
+        Peca(PrimitiveType.Cube, "Saias_Laterais", raiz,
+            new Vector3(0f, d.vao + 0.06f, 0f),
+            new Vector3(d.larg * 1.01f, 0.10f, Mathf.Max(0.8f, d.eixos - d.raioRoda * 1.9f)), cSec, 0.35f);
+
+        float cabH = Mathf.Max(0.32f, d.alt - beltY);
+        float cabL = d.comp * d.capCabin;
+        float cabZ = (d.arquetipo == "pickup" || d.arquetipo == "semi_truck" || d.arquetipo == "dump_truck" || d.arquetipo == "mixer_truck" || d.arquetipo == "firetruck" || d.arquetipo == "tow_truck")
+            ? hl - cabL * 0.5f - d.comp * 0.12f
+            : 0f;
+
+        if (d.arquetipo != "roadster")
+        {
+            Peca(PrimitiveType.Cube, "Cabine_Estrutura", raiz,
+                new Vector3(0f, beltY + cabH * 0.45f, cabZ),
+                new Vector3(d.larg * 0.86f, cabH * 0.9f, cabL), cPrim, 0.72f);
+            Peca(PrimitiveType.Cube, "Vidros_Cabine", raiz,
+                new Vector3(0f, beltY + cabH * 0.44f, cabZ),
+                new Vector3(d.larg * 0.88f, cabH * 0.64f, cabL * 0.88f), cVidro, 0.92f);
+            Peca(PrimitiveType.Cube, "Vidro_Parabrisa", raiz,
+                new Vector3(0f, beltY + cabH * 0.44f, cabZ),
+                new Vector3(d.larg * 0.76f, cabH * 0.62f, cabL * 1.02f), cVidro, 0.92f);
+        }
+        else
+        {
+            Transform pb = Peca(PrimitiveType.Cube, "Parabrisa_Roadster", raiz,
+                new Vector3(0f, beltY + 0.18f, cabZ + cabL * 0.38f),
+                new Vector3(d.larg * 0.84f, 0.36f, 0.05f), cVidro, 0.95f);
+            pb.localRotation = Quaternion.Euler(-35f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Banco_E", raiz, new Vector3(-d.larg * 0.22f, beltY + 0.16f, -0.15f), new Vector3(0.4f, 0.42f, 0.4f), cSec, 0.2f);
+            Peca(PrimitiveType.Cube, "Banco_D", raiz, new Vector3(d.larg * 0.22f, beltY + 0.16f, -0.15f), new Vector3(0.4f, 0.42f, 0.4f), cSec, 0.2f);
+        }
+
+        Peca(PrimitiveType.Cube, "Grade_Frontal", raiz,
+            new Vector3(0f, d.vao + corpoH * 0.52f, hl - 0.01f),
+            new Vector3(d.larg * 0.48f, corpoH * 0.35f, 0.06f), new Color(0.08f, 0.08f, 0.1f), 0.4f);
+
+        Color corPara = d.extras.Contains("chrome_bumpers") ? cCromo : cSec;
+        Peca(PrimitiveType.Cube, "Parachoque_F", raiz, new Vector3(0f, d.vao + 0.10f, hl + 0.03f), new Vector3(d.larg * 0.98f, 0.14f, 0.12f), corPara, 0.5f);
+        Peca(PrimitiveType.Cube, "Parachoque_T", raiz, new Vector3(0f, d.vao + 0.10f, -hl - 0.03f), new Vector3(d.larg * 0.98f, 0.14f, 0.12f), corPara, 0.5f);
+
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Transform f = Peca(PrimitiveType.Cube, s < 0 ? "Farol_E" : "Farol_D", raiz,
+                new Vector3(s * d.larg * 0.35f, d.vao + corpoH * 0.62f, hl - 0.01f),
+                new Vector3(d.larg * 0.18f, 0.10f, 0.07f), new Color(1f, 0.97f, 0.84f), 0.9f);
+            ctrl.farois.Add(f.GetComponent<Renderer>());
+
+            Transform l = Peca(PrimitiveType.Cube, s < 0 ? "Lanterna_E" : "Lanterna_D", raiz,
+                new Vector3(s * d.larg * 0.35f, d.vao + corpoH * 0.64f, -hl + 0.01f),
+                new Vector3(d.larg * 0.20f, 0.09f, 0.07f), Color.red, 0.8f);
+            ctrl.lanternas.Add(l.GetComponent<Renderer>());
+
+            Peca(PrimitiveType.Cube, "Retrovisor", raiz,
+                new Vector3(s * d.larg * 0.54f, beltY + 0.08f, hl * 0.28f),
+                new Vector3(0.14f, 0.08f, 0.10f), cPrim, 0.7f);
+        }
+
+        if (d.raioRoda > 0.05f && d.eixos > 0.1f)
+        {
+            float zF = d.eixos * 0.5f;
+            float zT = -d.eixos * 0.5f;
+            float xR = d.larg * 0.46f;
+            ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_FE", new Vector3(-xR, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_FD", new Vector3(xR, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_TE", new Vector3(-xR, d.raioRoda, zT), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_TD", new Vector3(xR, d.raioRoda, zT), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+        }
+
+        // Extras específicos por modelo
+        if (d.extras.Contains("spoiler_gt") || d.extras.Contains("wing_swan"))
+        {
+            Peca(PrimitiveType.Cube, "Aerofolio_Asa", raiz, new Vector3(0f, beltY + 0.24f, -hl + 0.20f), new Vector3(d.larg * 0.94f, 0.04f, 0.28f), cSec, 0.5f);
+            Peca(PrimitiveType.Cube, "Suporte_Asa_E", raiz, new Vector3(-d.larg * 0.25f, beltY + 0.12f, -hl + 0.20f), new Vector3(0.04f, 0.24f, 0.14f), cSec, 0.5f);
+            Peca(PrimitiveType.Cube, "Suporte_Asa_D", raiz, new Vector3(d.larg * 0.25f, beltY + 0.12f, -hl + 0.20f), new Vector3(0.04f, 0.24f, 0.14f), cSec, 0.5f);
+        }
+        if (d.extras.Contains("blower_v8"))
+            Peca(PrimitiveType.Cube, "Supercharger_V8", raiz, new Vector3(0f, beltY + 0.14f, hl * 0.52f), new Vector3(0.36f, 0.26f, 0.44f), cCromo, 0.92f);
+        if (d.extras.Contains("lightbar_police"))
+        {
+            Transform gV = Peca(PrimitiveType.Cube, "Giroflex_Vermelho", raiz, new Vector3(-0.32f, d.alt + 0.06f, cabZ + 0.1f), new Vector3(0.55f, 0.10f, 0.22f), Color.red, 0.8f);
+            Transform gA = Peca(PrimitiveType.Cube, "Giroflex_Azul", raiz, new Vector3(0.32f, d.alt + 0.06f, cabZ + 0.1f), new Vector3(0.55f, 0.10f, 0.22f), Color.blue, 0.8f);
+            ctrl.giroflexVermelho.Add(gV.GetComponent<Renderer>());
+            ctrl.giroflexAzul.Add(gA.GetComponent<Renderer>());
+        }
+        if (d.extras.Contains("lightbar_amber") || d.extras.Contains("taxi_sign"))
+        {
+            Transform gAm = Peca(PrimitiveType.Cube, "Luminoso_Ambar", raiz, new Vector3(0f, d.alt + 0.06f, cabZ + 0.1f), new Vector3(0.65f, 0.12f, 0.22f), new Color(1f, 0.72f, 0.05f), 0.8f);
+            ctrl.giroflexAmbar.Add(gAm.GetComponent<Renderer>());
+        }
+        if (d.extras.Contains("pushbar") || d.extras.Contains("bullbar"))
+            Peca(PrimitiveType.Cube, "QuebraMato", raiz, new Vector3(0f, d.vao + 0.30f, hl + 0.12f), new Vector3(d.larg * 0.66f, 0.36f, 0.08f), cSec, 0.4f);
+        if (d.extras.Contains("snorkel"))
+            Peca(PrimitiveType.Cylinder, "Snorkel", raiz, new Vector3(d.larg * 0.51f, beltY + 0.22f, hl * 0.28f), new Vector3(0.09f, 0.42f, 0.09f), cSec, 0.3f);
+        if (d.extras.Contains("roof_tent"))
+            Peca(PrimitiveType.Cube, "Barraca_Teto", raiz, new Vector3(0f, d.alt + 0.14f, -0.1f), new Vector3(d.larg * 0.74f, 0.28f, d.comp * 0.38f), cDest, 0.3f);
+        if (d.extras.Contains("fire_ladder"))
+        {
+            Transform esc = Peca(PrimitiveType.Cube, "Escada_Magirus", raiz, new Vector3(0f, d.alt + 0.18f, -0.35f), new Vector3(0.55f, 0.16f, d.comp * 0.65f), cAro, 0.75f);
+            esc.localRotation = Quaternion.Euler(-8f, 0f, 0f);
+        }
+        if (d.extras.Contains("dump_bed"))
+        {
+            Transform cac = Peca(PrimitiveType.Cube, "Cacamba_Obra", raiz, new Vector3(0f, beltY + 0.45f, -d.comp * 0.16f), new Vector3(d.larg * 0.96f, 1.15f, d.comp * 0.58f), cSec, 0.4f);
+            cac.localRotation = Quaternion.Euler(5f, 0f, 0f);
+        }
+        if (d.extras.Contains("tow_bed"))
+        {
+            Transform plat = Peca(PrimitiveType.Cube, "Plataforma_Guincho", raiz, new Vector3(0f, beltY + 0.1f, -d.comp * 0.16f), new Vector3(d.larg * 0.96f, 0.18f, d.comp * 0.62f), cSec, 0.45f);
+            plat.localRotation = Quaternion.Euler(4f, 0f, 0f);
+        }
+        if (d.extras.Contains("food_awning"))
+        {
+            Transform toldo = Peca(PrimitiveType.Cube, "Toldo_FoodTruck", raiz, new Vector3(d.larg * 0.5f + 0.42f, d.alt - 0.3f, -0.2f), new Vector3(0.9f, 0.06f, d.comp * 0.5f), cDest, 0.3f);
+            toldo.localRotation = Quaternion.Euler(0f, 0f, -12f);
+            Peca(PrimitiveType.Cube, "Balcao_Gourmet", raiz, new Vector3(d.larg * 0.5f + 0.15f, beltY, -0.2f), new Vector3(0.3f, 0.08f, d.comp * 0.48f), cCromo, 0.8f);
+        }
+        if (d.extras.Contains("mixer_drum"))
+        {
+            Transform tambor = Peca(PrimitiveType.Cylinder, "Tambor_Betoneira", raiz, new Vector3(0f, d.alt * 0.62f, -d.comp * 0.14f), new Vector3(d.larg * 0.76f, d.comp * 0.24f, d.larg * 0.76f), cSec, 0.5f);
+            tambor.localRotation = Quaternion.Euler(78f, 0f, 0f);
+            ctrl.tamborBetoneira = tambor;
+        }
+        if (d.extras.Contains("sweeper_brushes"))
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Transform esc = Peca(PrimitiveType.Cylinder, "Escova_Varredoura", raiz, new Vector3(s * d.larg * 0.44f, 0.12f, hl + 0.22f), new Vector3(0.72f, 0.08f, 0.72f), cDest, 0.3f);
+                ctrl.escovasVarredoura.Add(esc);
+            }
+        }
+        if (d.extras.Contains("spare_rear"))
+            CriarRoda(raiz, "Estepe_Traseiro", new Vector3(0f, beltY + 0.15f, -hl - 0.16f), d.raioRoda * 0.9f, d.largRoda, cPneu, cAro, cDest).localRotation = Quaternion.Euler(0f, 90f, 0f);
+    }
+
+    private static void MontarMotoOuAtv(
+        Transform raiz, DefVeiculo d, ControleVeiculo50 ctrl,
+        Color cPrim, Color cSec, Color cDest, Color cPneu, Color cAro, Color cCromo)
+    {
+        float zF = d.eixos * 0.5f, zT = -d.eixos * 0.5f;
+
+        if (d.arquetipo == "atv")
+        {
+            float xR = d.larg * 0.40f;
+            ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_FE", new Vector3(-xR, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_FD", new Vector3(xR, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_TE", new Vector3(-xR, d.raioRoda, zT), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_TD", new Vector3(xR, d.raioRoda, zT), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            Peca(PrimitiveType.Cube, "Carenagem_ATV", raiz, new Vector3(0f, d.vao + 0.34f, 0f), new Vector3(d.larg * 0.62f, 0.34f, d.comp * 0.72f), cPrim, 0.65f);
+        }
+        else
+        {
+            ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_Dianteira", new Vector3(0f, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_Traseira", new Vector3(0f, d.raioRoda, zT), d.raioRoda, d.largRoda * 1.25f, cPneu, cAro, cDest));
+            Peca(PrimitiveType.Sphere, "Tanque_Moto", raiz, new Vector3(0f, d.vao + 0.58f, 0.22f), new Vector3(0.32f, 0.28f, 0.55f), cPrim, 0.8f);
+        }
+
+        Peca(PrimitiveType.Cube, "Motor_Bloco", raiz, new Vector3(0f, d.vao + 0.22f, 0f), new Vector3(0.28f, 0.30f, 0.38f), cAro, 0.75f);
+        Peca(PrimitiveType.Cube, "Assento", raiz, new Vector3(0f, d.vao + 0.50f, -0.25f), new Vector3(0.28f, 0.12f, 0.62f), cSec, 0.25f);
+        Transform guidao = Peca(PrimitiveType.Cylinder, "Guidao", raiz, new Vector3(0f, d.alt * 0.82f, zF * 0.45f), new Vector3(0.04f, d.larg * 0.44f, 0.04f), cCromo, 0.85f);
+        guidao.localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+        Transform f = Peca(PrimitiveType.Sphere, "Farol_Moto", raiz, new Vector3(0f, d.vao + 0.62f, zF * 0.72f), new Vector3(0.18f, 0.18f, 0.18f), new Color(1f, 0.96f, 0.8f), 0.9f);
+        ctrl.farois.Add(f.GetComponent<Renderer>());
+
+        if (d.extras.Contains("moto_box"))
+            Peca(PrimitiveType.Cube, "Bau_Entregas", raiz, new Vector3(0f, d.vao + 0.78f, zT - 0.04f), new Vector3(0.48f, 0.44f, 0.48f), cDest, 0.5f);
+    }
+
+    private static void MontarBarco(
+        Transform raiz, DefVeiculo d, ControleVeiculo50 ctrl,
+        Color cPrim, Color cSec, Color cDest, Color cVidro)
+    {
+        Peca(PrimitiveType.Cube, "Casco_Principal", raiz, new Vector3(0f, d.alt * 0.28f, -d.comp * 0.08f), new Vector3(d.larg, d.alt * 0.45f, d.comp * 0.75f), cPrim, 0.75f);
+        Transform proa = Peca(PrimitiveType.Cube, "Proa_Afilada", raiz, new Vector3(0f, d.alt * 0.30f, d.comp * 0.35f), new Vector3(d.larg * 0.68f, d.alt * 0.42f, d.comp * 0.32f), cPrim, 0.75f);
+        proa.localRotation = Quaternion.Euler(0f, 45f, 0f);
+        Peca(PrimitiveType.Cube, "Conves", raiz, new Vector3(0f, d.alt * 0.52f, -d.comp * 0.05f), new Vector3(d.larg * 0.76f, 0.12f, d.comp * 0.58f), cSec, 0.4f);
+        Peca(PrimitiveType.Cube, "Parabrisa_Nautico", raiz, new Vector3(0f, d.alt * 0.68f, d.comp * 0.12f), new Vector3(d.larg * 0.72f, 0.34f, 0.55f), cVidro, 0.92f);
+
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Peca(PrimitiveType.Cube, "Motor_Popa", raiz, new Vector3(s * 0.34f, d.alt * 0.48f, -d.comp * 0.52f), new Vector3(0.28f, 0.48f, 0.36f), new Color(0.15f, 0.15f, 0.18f), 0.5f);
+            Transform hel = Peca(PrimitiveType.Cube, "Helice_Popa", raiz, new Vector3(s * 0.34f, d.alt * 0.16f, -d.comp * 0.58f), new Vector3(0.32f, 0.08f, 0.04f), cDest, 0.85f);
+            ctrl.helices.Add(hel);
+        }
+    }
+
+    private static void MontarHelicoptero(
+        Transform raiz, DefVeiculo d, ControleVeiculo50 ctrl,
+        Color cPrim, Color cSec, Color cDest, Color cVidro)
+    {
+        float fy = d.vao + 0.75f;
+        Peca(PrimitiveType.Sphere, "Fuselagem", raiz, new Vector3(0f, fy, 0.4f), new Vector3(d.larg * 0.78f, d.alt * 0.48f, d.comp * 0.45f), cPrim, 0.75f);
+        Peca(PrimitiveType.Sphere, "Bolha_Cockpit", raiz, new Vector3(0f, fy + 0.06f, 1.35f), new Vector3(d.larg * 0.68f, d.alt * 0.38f, d.comp * 0.25f), cVidro, 0.95f);
+        Peca(PrimitiveType.Cylinder, "Cone_Cauda", raiz, new Vector3(0f, fy + 0.16f, -d.comp * 0.26f), new Vector3(0.35f, d.comp * 0.24f, 0.35f), cPrim, 0.75f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+        for (int s = -1; s <= 1; s += 2)
+            Peca(PrimitiveType.Cylinder, "Esqui_Pouso", raiz, new Vector3(s * d.larg * 0.36f, 0.08f, 0.2f), new Vector3(0.08f, d.comp * 0.20f, 0.08f), cSec, 0.4f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+        GameObject rotorPivo = new GameObject("Rotor_Principal");
+        rotorPivo.transform.SetParent(raiz, false);
+        rotorPivo.transform.localPosition = new Vector3(0f, fy + d.alt * 0.34f, 0.25f);
+        Peca(PrimitiveType.Cube, "Pa_1", rotorPivo.transform, Vector3.zero, new Vector3(d.comp * 0.80f, 0.04f, 0.20f), cSec, 0.4f);
+        Peca(PrimitiveType.Cube, "Pa_2", rotorPivo.transform, Vector3.zero, new Vector3(0.20f, 0.04f, d.comp * 0.80f), cSec, 0.4f);
+        ctrl.rotores.Add(rotorPivo.transform);
+
+        GameObject rotorCauda = new GameObject("Rotor_Cauda");
+        rotorCauda.transform.SetParent(raiz, false);
+        rotorCauda.transform.localPosition = new Vector3(0.20f, fy + 0.55f, -d.comp * 0.48f);
+        Peca(PrimitiveType.Cube, "Pa_Cauda", rotorCauda.transform, Vector3.zero, new Vector3(0.04f, 1.1f, 0.14f), cDest, 0.5f);
+        ctrl.rotores.Add(rotorCauda.transform);
+    }
+
+    private static void MontarHovercraft(
+        Transform raiz, DefVeiculo d, ControleVeiculo50 ctrl,
+        Color cPrim, Color cSec, Color cDest, Color cVidro, Color cPneu)
+    {
+        Peca(PrimitiveType.Cube, "Saia_Inflavel", raiz, new Vector3(0f, 0.22f, 0f), new Vector3(d.larg, 0.44f, d.comp * 0.96f), cPneu, 0.15f);
+        Peca(PrimitiveType.Cube, "Conves_Anfibio", raiz, new Vector3(0f, 0.54f, 0f), new Vector3(d.larg * 0.88f, 0.24f, d.comp * 0.86f), cPrim, 0.72f);
+        Peca(PrimitiveType.Cube, "Cabine_Panoramica", raiz, new Vector3(0f, 1.12f, d.comp * 0.14f), new Vector3(d.larg * 0.65f, 0.92f, d.comp * 0.42f), cVidro, 0.92f);
+
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Peca(PrimitiveType.Cylinder, "Duto_Helice", raiz, new Vector3(s * d.larg * 0.26f, 1.24f, -d.comp * 0.32f), new Vector3(1.24f, 0.24f, 1.24f), cSec, 0.5f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+            Transform hel = Peca(PrimitiveType.Cube, "Helice_Duto", raiz, new Vector3(s * d.larg * 0.26f, 1.24f, -d.comp * 0.32f), new Vector3(1.05f, 0.12f, 0.05f), cDest, 0.7f);
+            ctrl.helices.Add(hel);
+        }
+    }
+
+    private static Transform CriarRoda(Transform pai, string nome, Vector3 pos, float raio, float larg, Color pneu, Color aro, Color pinca)
+    {
+        GameObject pivo = new GameObject(nome);
+        pivo.transform.SetParent(pai, false);
+        pivo.transform.localPosition = pos;
+
+        Transform t = Peca(PrimitiveType.Cylinder, "Pneu", pivo.transform, Vector3.zero, new Vector3(raio * 2f, larg * 0.5f, raio * 2f), pneu, 0.15f);
+        t.localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+        Transform a = Peca(PrimitiveType.Cylinder, "Aro_LigaLeve", pivo.transform, Vector3.zero, new Vector3(raio * 1.24f, larg * 0.54f, raio * 1.24f), aro, 0.85f);
+        a.localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+        Peca(PrimitiveType.Cube, "Pinca_Freio", pivo.transform, new Vector3(0f, raio * 0.22f, -raio * 0.30f), new Vector3(larg * 0.4f, raio * 0.32f, raio * 0.24f), pinca, 0.6f);
+        return pivo.transform;
+    }
+
+    private static Transform Peca(PrimitiveType tipo, string nome, Transform pai, Vector3 pos, Vector3 esc, Color cor, float smoothness)
+    {
+        GameObject go = GameObject.CreatePrimitive(tipo);
+        go.name = nome;
+        Collider c = go.GetComponent<Collider>();
+        if (c != null)
+        {
+            if (Application.isPlaying) Destroy(c);
+            else DestroyImmediate(c);
+        }
+        go.transform.SetParent(pai, false);
+        go.transform.localPosition = pos;
+        go.transform.localScale = esc;
+        go.GetComponent<Renderer>().sharedMaterial = PegarMaterial(cor, smoothness);
+        return go.transform;
+    }
+
+    private static Material PegarMaterial(Color cor, float smoothness)
+    {
+        if (shaderBase == null) shaderBase = Shader.Find("Universal Render Pipeline/Lit");
+        if (shaderBase == null) shaderBase = Shader.Find("Standard");
+        Material m = new Material(shaderBase);
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", cor);
+        if (m.HasProperty("_Color")) m.SetColor("_Color", cor);
+        if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", smoothness);
+        if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smoothness);
+        if (cor.a < 0.99f)
+        {
+            m.SetFloat("_Surface", 1f);
+            m.renderQueue = 3000;
+        }
+        return m;
+    }
+
+    private static Color Hex(string h) { Color c; ColorUtility.TryParseHtmlString(h, out c); return c; }
+}
