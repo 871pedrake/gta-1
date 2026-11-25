@@ -152,15 +152,15 @@ export function getContactShadowTexture(): THREE.CanvasTexture {
 }
 
 export interface VehicleMaterialSet {
-  body: THREE.MeshPhysicalMaterial;
+  body: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
   secondary: THREE.MeshStandardMaterial;
   accent: THREE.MeshStandardMaterial;
   interior: THREE.MeshStandardMaterial;
   trim: THREE.MeshStandardMaterial;
   chrome: THREE.MeshStandardMaterial;
-  alloy: THREE.MeshPhysicalMaterial;
+  alloy: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
   rubber: THREE.MeshStandardMaterial;
-  glass: THREE.MeshPhysicalMaterial;
+  glass: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
   brakeDisc: THREE.MeshStandardMaterial;
   caliper: THREE.MeshStandardMaterial;
   headlight: THREE.MeshStandardMaterial;
@@ -172,6 +172,80 @@ export interface VehicleMaterialSet {
   dispose: () => void;
 }
 
+interface CitySharedVehicleMaterials {
+  interiorDark: THREE.MeshStandardMaterial;
+  chrome: THREE.MeshStandardMaterial;
+  alloy: THREE.MeshStandardMaterial;
+  rubber: THREE.MeshStandardMaterial;
+  glass: THREE.MeshStandardMaterial;
+  brakeDisc: THREE.MeshStandardMaterial;
+  headlight: THREE.MeshStandardMaterial;
+  taillight: THREE.MeshStandardMaterial;
+  sirenRed: THREE.MeshStandardMaterial;
+  sirenBlue: THREE.MeshStandardMaterial;
+  sirenAmber: THREE.MeshStandardMaterial;
+  grille: THREE.MeshStandardMaterial;
+}
+
+let cachedCityVehicleMats: CitySharedVehicleMaterials | null = null;
+
+function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMaterials {
+  if (cachedCityVehicleMats) return cachedCityVehicleMats;
+  cachedCityVehicleMats = {
+    interiorDark: new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.05, roughness: 0.85 }),
+    chrome: new THREE.MeshStandardMaterial({ color: 0xf4f4f5, metalness: 0.92, roughness: 0.14 }),
+    alloy: new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.88, roughness: 0.22 }),
+    rubber: new THREE.MeshStandardMaterial({
+      color: 0x1b1b1f,
+      map: getTireTreadTexture(maxAniso),
+      metalness: 0.04,
+      roughness: 0.88,
+    }),
+    glass: new THREE.MeshStandardMaterial({
+      color: 0x111e2e,
+      metalness: 0.28,
+      roughness: 0.08,
+      transparent: true,
+      opacity: 0.76,
+    }),
+    brakeDisc: new THREE.MeshStandardMaterial({ color: 0xa1a1aa, metalness: 0.85, roughness: 0.34 }),
+    headlight: new THREE.MeshStandardMaterial({
+      color: 0xfefce8,
+      emissive: 0xfef3c7,
+      emissiveIntensity: 1.3,
+      roughness: 0.14,
+      metalness: 0.1,
+    }),
+    taillight: new THREE.MeshStandardMaterial({
+      color: 0xdc2626,
+      emissive: 0xef4444,
+      emissiveIntensity: 1.15,
+      roughness: 0.18,
+      metalness: 0.1,
+    }),
+    sirenRed: new THREE.MeshStandardMaterial({
+      color: 0xef4444,
+      emissive: 0xef4444,
+      emissiveIntensity: 1.5,
+      roughness: 0.2,
+    }),
+    sirenBlue: new THREE.MeshStandardMaterial({
+      color: 0x3b82f6,
+      emissive: 0x3b82f6,
+      emissiveIntensity: 1.5,
+      roughness: 0.2,
+    }),
+    sirenAmber: new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 1.3,
+      roughness: 0.22,
+    }),
+    grille: new THREE.MeshStandardMaterial({ color: 0x121216, metalness: 0.5, roughness: 0.55 }),
+  };
+  return cachedCityVehicleMats;
+}
+
 export function createVehicleMaterials(
   primaryColor: string,
   secondaryColor: string,
@@ -180,9 +254,65 @@ export function createVehicleMaterials(
   finish: PaintFinish,
   trimStyle: TrimFinish,
   maxAniso = 4,
+  options?: { cityMode?: boolean },
 ): VehicleMaterialSet {
   const isMatte = finish === 'matte';
   const isMetallic = finish === 'metallic' || finish === 'pearl';
+
+  if (options?.cityMode) {
+    const shared = getCitySharedVehicleMaterials(maxAniso);
+    const body = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(primaryColor),
+      metalness: isMatte ? 0.15 : isMetallic ? 0.72 : 0.32,
+      roughness: isMatte ? 0.58 : isMetallic ? 0.2 : 0.18,
+    });
+    const secondary = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(secondaryColor),
+      metalness: 0.35,
+      roughness: 0.42,
+    });
+    const accent = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(accentColor),
+      metalness: 0.4,
+      roughness: 0.32,
+    });
+    const trim = new THREE.MeshStandardMaterial({
+      color:
+        trimStyle === 'chrome'
+          ? 0xe4e4e7
+          : trimStyle === 'carbon'
+            ? 0x27272a
+            : trimStyle === 'painted'
+              ? new THREE.Color(primaryColor)
+              : 0x18181b,
+      metalness: trimStyle === 'chrome' ? 0.9 : trimStyle === 'carbon' ? 0.25 : 0.12,
+      roughness: trimStyle === 'chrome' ? 0.14 : trimStyle === 'carbon' ? 0.36 : 0.72,
+    });
+
+    const owned = [body, secondary, accent, trim];
+    return {
+      body,
+      secondary,
+      accent,
+      interior: shared.interiorDark,
+      trim,
+      chrome: shared.chrome,
+      alloy: shared.alloy,
+      rubber: shared.rubber,
+      glass: shared.glass,
+      brakeDisc: shared.brakeDisc,
+      caliper: accent,
+      headlight: shared.headlight,
+      taillight: shared.taillight,
+      sirenRed: shared.sirenRed,
+      sirenBlue: shared.sirenBlue,
+      sirenAmber: shared.sirenAmber,
+      grille: shared.grille,
+      dispose: () => {
+        owned.forEach((m) => m.dispose());
+      },
+    };
+  }
 
   const body = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(primaryColor),

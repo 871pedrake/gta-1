@@ -51,6 +51,7 @@ export interface CityTextureAtlas {
   flagBump: THREE.CanvasTexture;
   asphalt: THREE.CanvasTexture;
   asphaltAvenue: THREE.CanvasTexture;
+  asphaltIntersection: THREE.CanvasTexture;
   sidewalk: THREE.CanvasTexture;
   plazaCompass: THREE.CanvasTexture;
   waterRipple: THREE.CanvasTexture;
@@ -64,6 +65,7 @@ export interface CityTextureAtlas {
   awningStripes: THREE.CanvasTexture[];
   barberPole: THREE.CanvasTexture;
   billboard: THREE.CanvasTexture[];
+  salesBillboards: THREE.CanvasTexture[];
   graffitiWall: THREE.CanvasTexture;
   helipad: THREE.CanvasTexture;
   morroBrick: THREE.CanvasTexture;
@@ -73,7 +75,22 @@ export interface CityTextureAtlas {
   clothesline: THREE.CanvasTexture;
   trafficSignStop: THREE.CanvasTexture;
   trafficSignSpeed: THREE.CanvasTexture;
+  trafficSignPedestrian: THREE.CanvasTexture;
+  trafficSignSlope: THREE.CanvasTexture;
+  trafficSignNoParking: THREE.CanvasTexture;
+  trafficSignTouristSpring: THREE.CanvasTexture;
+  trafficSignTouristOverlook: THREE.CanvasTexture;
+  busStopPlaque: THREE.CanvasTexture;
+  busStopMap: THREE.CanvasTexture;
+  streetNamePlates: THREE.CanvasTexture[];
+  gantrySigns: THREE.CanvasTexture[];
+  wayfindingMap: THREE.CanvasTexture;
   soccerField: THREE.CanvasTexture;
+  calcadaPraia: THREE.CanvasTexture;
+  beachSand: THREE.CanvasTexture;
+  schoolSign: THREE.CanvasTexture;
+  schoolCourtyard: THREE.CanvasTexture;
+  trafficSignSchool: THREE.CanvasTexture;
   dispose: () => void;
 }
 
@@ -365,7 +382,10 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
       ctx.fillStyle = `rgb(${v},${v + 1},${v + 3})`;
       ctx.fillRect(x, y, 2, 2);
     }
-    // Weathered double yellow center line & dashed white lane dividers
+    // Clean curb edges + double yellow center line & dashed white lane dividers
+    ctx.fillStyle = '#52525b';
+    ctx.fillRect(0, 0, 5, 256);
+    ctx.fillRect(251, 0, 5, 256);
     ctx.fillStyle = '#eab308';
     ctx.fillRect(122, 0, 4, 256);
     ctx.fillRect(130, 0, 4, 256);
@@ -374,7 +394,27 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
       ctx.fillRect(62, y, 4, 34);
       ctx.fillRect(190, y, 4, 34);
     }
-    return reg(finalizeColorTex(c, 1, 6, maxAniso));
+    return reg(finalizeColorTex(c, 1, 2, maxAniso));
+  })();
+
+  const asphaltIntersection = (() => {
+    const [c, ctx] = makeCanvas(256, 256);
+    ctx.fillStyle = '#26282e';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 3200; i++) {
+      const x = (i * 67) % 256;
+      const y = (i * 149) % 256;
+      const v = 32 + (i % 20);
+      ctx.fillStyle = `rgb(${v},${v + 1},${v + 3})`;
+      ctx.fillRect(x, y, 2, 2);
+    }
+    // Crisp white intersection stop bars on all 4 sides
+    ctx.fillStyle = 'rgba(244,244,245,0.85)';
+    ctx.fillRect(14, 4, 228, 6);
+    ctx.fillRect(14, 246, 228, 6);
+    ctx.fillRect(4, 14, 6, 228);
+    ctx.fillRect(246, 14, 6, 228);
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
   })();
 
   const sidewalk = (() => {
@@ -546,18 +586,34 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
   // 4. LOJAS (VITRINES, LETREIROS, TOLDOS, BARBER POLE, OUTDOORS)
   // =========================================================================
   const shopConfigs = [
-    { name: 'MOTORS 50', sub: 'CONCESSIONÁRIA', bg: '#0f172a', accent: '#f59e0b', interior: '#1e293b' },
-    { name: 'CAFÉ CARIOCA', sub: 'BISTRÔ & CAFETERIA', bg: '#451a03', accent: '#fb923c', interior: '#78350f' },
-    { name: 'CYBER 50', sub: 'TECH & GAMES', bg: '#09090b', accent: '#06b6d4', interior: '#0e7490' },
-    { name: 'EXPRESS 24H', sub: 'MERCADO', bg: '#064e3b', accent: '#34d399', interior: '#065f46' },
-    { name: 'BARBEARIA', sub: 'CLÁSSICA', bg: '#27272a', accent: '#ef4444', interior: '#3f3f46' },
-    { name: 'SHOPPING METRÓPOLE', sub: 'GALERIA CENTRAL', bg: '#1e1b4b', accent: '#ec4899', interior: '#312e81' },
-    { name: 'FARMÁCIA POPULAR', sub: 'SAÚDE 24H', bg: '#14532d', accent: '#4ade80', interior: '#dcfce7' },
-    { name: 'PADARIA PÃO QUENTE', sub: 'CONFEITARIA & LANCHES', bg: '#7c2d12', accent: '#fde047', interior: '#9a3412' },
-    { name: 'BURGER 50', sub: 'LANCHONETE & CHOPP', bg: '#7f1d1d', accent: '#facc15', interior: '#991b1b' },
-    { name: 'OFICINA TURBO', sub: 'AUTO ELÉTRICA & PNEUS', bg: '#1e293b', accent: '#38bdf8', interior: '#334155' },
-    { name: 'ELETRÔNICOS BR', sub: 'CELULARES & ÁUDIO', bg: '#312e81', accent: '#22d3ee', interior: '#1e1b4b' },
-    { name: 'BAR DO ZÉ', sub: 'MERCADINHO DA VILA', bg: '#78350f', accent: '#fbbf24', interior: '#451a03' },
+    { name: 'MOTORS 50', sub: 'CONCESSIONÁRIA', bg: '#0f172a', accent: '#f59e0b', interior: '#1e293b', kind: 'auto' },
+    { name: 'CAFÉ CARIOCA', sub: 'BISTRÔ & CAFETERIA', bg: '#451a03', accent: '#fb923c', interior: '#78350f', kind: 'food' },
+    { name: 'CYBER 50', sub: 'TECH & GAMES', bg: '#09090b', accent: '#06b6d4', interior: '#0e7490', kind: 'tech' },
+    { name: 'EXPRESS 24H', sub: 'MERCADO', bg: '#064e3b', accent: '#34d399', interior: '#065f46', kind: 'food' },
+    { name: 'BARBEARIA', sub: 'CLÁSSICA', bg: '#27272a', accent: '#ef4444', interior: '#3f3f46', kind: 'service' },
+    { name: 'SHOPPING METRÓPOLE', sub: 'GALERIA CENTRAL', bg: '#1e1b4b', accent: '#ec4899', interior: '#312e81', kind: 'fashion' },
+    { name: 'FARMÁCIA POPULAR', sub: 'SAÚDE 24H', bg: '#14532d', accent: '#4ade80', interior: '#dcfce7', kind: 'service' },
+    { name: 'PADARIA PÃO QUENTE', sub: 'CONFEITARIA & LANCHES', bg: '#7c2d12', accent: '#fde047', interior: '#9a3412', kind: 'food' },
+    { name: 'BURGER 50', sub: 'LANCHONETE & CHOPP', bg: '#7f1d1d', accent: '#facc15', interior: '#991b1b', kind: 'food' },
+    { name: 'OFICINA TURBO', sub: 'AUTO ELÉTRICA & PNEUS', bg: '#1e293b', accent: '#38bdf8', interior: '#334155', kind: 'auto' },
+    { name: 'ELETRÔNICOS BR', sub: 'CELULARES & ÁUDIO', bg: '#312e81', accent: '#22d3ee', interior: '#1e1b4b', kind: 'tech' },
+    { name: 'BAR DO ZÉ', sub: 'MERCADINHO DA VILA', bg: '#78350f', accent: '#fbbf24', interior: '#451a03', kind: 'food' },
+    // 12..17: Novas Lojas de Roupa & Moda + Restaurantes / Comida
+    { name: 'MODA URBANA', sub: 'ROUPAS & STREETWEAR', bg: '#18181b', accent: '#f472b6', interior: '#3f3f46', kind: 'fashion' },
+    { name: 'ATELIER VESTIR', sub: 'BOUTIQUE & CALÇADOS', bg: '#4c1d95', accent: '#fde047', interior: '#5b21b6', kind: 'fashion' },
+    { name: 'PIZZARIA NOBILE', sub: 'FORNO À LENHA & MASSAS', bg: '#7f1d1d', accent: '#4ade80', interior: '#450a0a', kind: 'food' },
+    { name: 'CHURRASCARIA BRASA', sub: 'GRILL & COMIDA TÍPICA', bg: '#78350f', accent: '#f59e0b', interior: '#451a03', kind: 'food' },
+    { name: 'AÇAÍ TROPICAL', sub: 'GELATOS & SUCOS', bg: '#581c87', accent: '#a3e635', interior: '#3b0764', kind: 'food' },
+    { name: 'TÊNIS & SNEAKERS', sub: 'MODA ESPORTIVA', bg: '#0f172a', accent: '#38bdf8', interior: '#1e293b', kind: 'fashion' },
+    // 18..21: Comércio Comunitário Autêntico do Morro da Esperança
+    { name: 'MERCEARIA ESPERANÇA', sub: 'PÃO · FRIOS · MERCADO', bg: '#064e3b', accent: '#facc15', interior: '#065f46', kind: 'food' },
+    { name: 'ESPETINHO DA LAJE', sub: 'CHURRASCO & SAMBA', bg: '#7f1d1d', accent: '#fb923c', interior: '#450a0a', kind: 'food' },
+    { name: 'AÇAÍ DO MORRO', sub: 'AÇAÍ & LANCHONETE', bg: '#4c1d95', accent: '#a3e635', interior: '#3b0764', kind: 'food' },
+    { name: 'CORTE REAL BARBER', sub: 'FADE & NAVALHA', bg: '#18181b', accent: '#38bdf8', interior: '#27272a', kind: 'service' },
+    // 22..24: Quiosques da Praia & Comércio do Entorno Escolar
+    { name: 'QUIOSQUE ÁGUA DE COCO', sub: 'ORLA · PASTEL & CALDO', bg: '#065f46', accent: '#fde047', interior: '#115e59', kind: 'food' },
+    { name: 'QUIOSQUE BRISA DO MAR', sub: 'AÇAÍ · PRANCHAS · SOL', bg: '#0369a1', accent: '#fb923c', interior: '#0c4a6e', kind: 'food' },
+    { name: 'PAPELARIA DO ESTUDANTE', sub: 'LIVROS · XEROX · LANCHES', bg: '#1e3a8a', accent: '#facc15', interior: '#1e40af', kind: 'tech' },
   ];
 
   const shopSigns = shopConfigs.map((sc) => {
@@ -568,16 +624,16 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
     ctx.lineWidth = 6;
     ctx.strokeRect(8, 8, 496, 112);
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 44px "Barlow Condensed", sans-serif';
+    ctx.font = 'bold 42px "Barlow Condensed", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(sc.name, 256, 68);
+    ctx.fillText(sc.name, 256, 66);
     ctx.fillStyle = sc.accent;
     ctx.font = '600 18px "Plus Jakarta Sans", sans-serif';
     ctx.fillText(sc.sub, 256, 100);
     return reg(finalizeColorTex(c, 1, 1, maxAniso));
   });
 
-  const shopVitrine = shopConfigs.map((sc, idx) => {
+  const shopVitrine = shopConfigs.map((sc) => {
     const [c, ctx] = makeCanvas(256, 192);
     const g = ctx.createLinearGradient(0, 0, 0, 192);
     g.addColorStop(0, '#fef3c7');
@@ -586,18 +642,51 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 256, 192);
 
-    // Interior shelves / mannequins / screens
-    ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    for (let s = 35; s <= 125; s += 35) {
-      ctx.fillRect(24, s, 208, 6);
-    }
-    ctx.fillStyle = sc.accent;
-    if (idx === 2) {
-      // Glowing TV screens
+    if (sc.kind === 'fashion') {
+      // Hanger rail + colorful garments & 2 display mannequins
+      ctx.strokeStyle = '#e4e4e7';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(20, 48);
+      ctx.lineTo(236, 48);
+      ctx.stroke();
+      const shirtCols = ['#f472b6', '#38bdf8', '#facc15', '#f8fafc', '#fb923c', '#34d399'];
+      for (let i = 0; i < 6; i++) {
+        ctx.fillStyle = shirtCols[i];
+        ctx.fillRect(28 + i * 33, 52, 22, 42);
+      }
+      // Mannequin silhouettes
+      [70, 184].forEach((mx, mi) => {
+        ctx.fillStyle = mi === 0 ? '#f8fafc' : sc.accent;
+        ctx.beginPath();
+        ctx.arc(mx, 102, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(mx - 12, 114, 24, 52);
+      });
+    } else if (sc.kind === 'food') {
+      // Warm menu board + lit glass food counter & stools
+      ctx.fillStyle = '#18181b';
+      ctx.fillRect(28, 22, 200, 42);
+      ctx.fillStyle = sc.accent;
+      ctx.fillRect(36, 30, 84, 8);
+      ctx.fillRect(36, 44, 120, 6);
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.fillRect(22, 106, 212, 34);
+      ctx.fillStyle = '#fbbf24';
+      for (let t = 0; t < 4; t++) {
+        ctx.fillRect(34 + t * 50, 112, 34, 16);
+      }
+    } else if (sc.kind === 'tech') {
+      ctx.fillStyle = sc.accent;
       ctx.fillRect(36, 48, 52, 34);
       ctx.fillRect(102, 48, 52, 34);
       ctx.fillRect(168, 48, 52, 34);
     } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      for (let s = 35; s <= 125; s += 35) {
+        ctx.fillRect(24, s, 208, 6);
+      }
+      ctx.fillStyle = sc.accent;
       for (let i = 0; i < 4; i++) {
         ctx.fillRect(36 + i * 50, 82, 28, 44);
       }
@@ -677,6 +766,58 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
     ctx.fillStyle = '#ffffff';
     ctx.font = '600 24px "Plus Jakarta Sans", sans-serif';
     ctx.fillText(sub, 256, 170);
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  });
+
+  const salesBillboards = [
+    ['NEXUS CORP · VENDAS B2B', 'SALAS & SEDES EMPRESARIAIS · 4004-5050', 'LANÇAMENTO', '#0f172a', '#f59e0b'],
+    ['VANGUARDA BUSINESS', 'LAJES CORPORATIVAS + ESTACIONAMENTO', 'OPORTUNIDADE', '#064e3b', '#22d3ee'],
+    ['ALVORADA TRADE CENTER', 'SHOWROOM, LOGÍSTICA & ESCRITÓRIOS', 'COMERCIAL', '#450a0a', '#fbbf24'],
+    ['METRÓPOLE PRIME B2B', 'ESPAÇOS PRONTOS PARA SUA EMPRESA', 'VISITE HOJE', '#1e1b4b', '#38bdf8'],
+  ].map(([title, sub, badge, bg, acc]) => {
+    const [c, ctx] = makeCanvas(512, 256);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 512, 256);
+
+    // Architectural diagonal accent stripe
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.beginPath();
+    ctx.moveTo(320, 0);
+    ctx.lineTo(512, 0);
+    ctx.lineTo(512, 256);
+    ctx.lineTo(240, 256);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = acc;
+    ctx.lineWidth = 8;
+    ctx.strokeRect(10, 10, 492, 236);
+
+    // Top badge
+    ctx.fillStyle = acc;
+    ctx.fillRect(28, 26, 176, 34);
+    ctx.fillStyle = '#09090b';
+    ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(badge, 116, 50);
+
+    // Main title & subtitle
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 38px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(title, 28, 128);
+
+    ctx.fillStyle = acc;
+    ctx.font = '600 20px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText(sub, 28, 172);
+
+    // Bottom CTA bar
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(28, 198, 456, 30);
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 16px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('PLANTÃO DE VENDAS NO LOCAL · ESTACIONAMENTO GRATUITO', 40, 219);
+
     return reg(finalizeColorTex(c, 1, 1, maxAniso));
   });
 
@@ -883,11 +1024,370 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
     return reg(finalizeColorTex(c, 1, 1, maxAniso));
   })();
 
+  const trafficSignPedestrian = (() => {
+    const [c, ctx] = makeCanvas(128, 128);
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.save();
+    ctx.translate(64, 64);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(-42, -42, 84, 84);
+    ctx.strokeStyle = '#18181b';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(-38, -38, 76, 76);
+    ctx.restore();
+    // Stylized pedestrian + crosswalk dashes
+    ctx.fillStyle = '#18181b';
+    ctx.beginPath();
+    ctx.arc(64, 38, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#18181b';
+    ctx.beginPath();
+    ctx.moveTo(64, 46);
+    ctx.lineTo(64, 68);
+    ctx.lineTo(52, 86);
+    ctx.moveTo(64, 68);
+    ctx.lineTo(76, 86);
+    ctx.moveTo(50, 56);
+    ctx.lineTo(78, 56);
+    ctx.stroke();
+    [40, 56, 72, 88].forEach((dx) => ctx.fillRect(dx - 4, 92, 8, 6));
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const trafficSignSlope = (() => {
+    const [c, ctx] = makeCanvas(128, 128);
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.save();
+    ctx.translate(64, 64);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(-42, -42, 84, 84);
+    ctx.strokeStyle = '#18181b';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(-38, -38, 76, 76);
+    ctx.restore();
+    // Steep incline wedge + truck icon
+    ctx.fillStyle = '#18181b';
+    ctx.beginPath();
+    ctx.moveTo(30, 86);
+    ctx.lineTo(96, 86);
+    ctx.lineTo(96, 52);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = 'bold 16px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('11%', 54, 54);
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const trafficSignNoParking = (() => {
+    const [c, ctx] = makeCanvas(128, 128);
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.fillStyle = '#1d4ed8';
+    ctx.beginPath();
+    ctx.arc(64, 64, 54, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#dc2626';
+    ctx.lineWidth = 12;
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 62px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('E', 64, 66);
+    ctx.strokeStyle = '#dc2626';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(26, 26);
+    ctx.lineTo(102, 102);
+    ctx.stroke();
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const makeTouristSign = (line1: string, line2: string) => {
+    const [c, ctx] = makeCanvas(256, 128);
+    ctx.fillStyle = '#5c3a21';
+    ctx.fillRect(0, 0, 256, 128);
+    ctx.strokeStyle = '#fef3c7';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(6, 6, 244, 116);
+    ctx.fillStyle = '#fde68a';
+    ctx.font = 'bold 26px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(line1, 128, 52);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 18px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText(line2, 128, 90);
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  };
+  const trafficSignTouristSpring = makeTouristSign('NASCENTE & CÓRREGO →', 'CACHOEIRA DA SERRA');
+  const trafficSignTouristOverlook = makeTouristSign('MIRANTE ALTO ↑', 'ALTITUDE +13,8m · VISTA');
+
+  const busStopPlaque = (() => {
+    const [c, ctx] = makeCanvas(128, 160);
+    ctx.fillStyle = '#1d4ed8';
+    ctx.fillRect(0, 0, 128, 160);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(6, 6, 116, 148);
+    // Bus pictogram
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(30, 24, 68, 54);
+    ctx.fillStyle = '#1d4ed8';
+    ctx.fillRect(36, 30, 56, 22);
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(36, 60, 12, 8);
+    ctx.fillRect(80, 60, 12, 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PONTO', 64, 110);
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 28px "Barlow Condensed", sans-serif';
+    ctx.fillText('LINHA 50', 64, 140);
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const busStopMap = (() => {
+    const [c, ctx] = makeCanvas(192, 256);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 192, 256);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(0, 0, 192, 38);
+    ctx.fillStyle = '#09090b';
+    ctx.font = 'bold 20px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ROTA EXPRESSA 50', 96, 26);
+    // Route line stops
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(32, 56);
+    ctx.lineTo(32, 228);
+    ctx.stroke();
+    const stops = ['CAIS & PRAIA DA ORLA', 'PRAÇA DA BANDEIRA', 'SHOPPING METRÓPOLE', 'ESCOLA MUNICIPAL', 'CIDADE ALTA (+9m)', 'MORRO ESPERANÇA'];
+    stops.forEach((st, idx) => {
+      const sy = 64 + idx * 32;
+      ctx.fillStyle = idx === 2 || idx === 3 ? '#facc15' : '#ffffff';
+      ctx.beginPath();
+      ctx.arc(32, sy, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = '600 12px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(st, 48, sy + 4);
+    });
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const streetNamePlates = [
+    ['AV. BEIRA-RIO', 'BAIXADA · CAIS'],
+    ['RUA DAS LOJAS', 'SHOPPING & MODA'],
+    ['AV. CENTRAL', 'EIXO NORTE–SUL'],
+    ['AV. CIDADE ALTA', 'BAIRRO SUL (+9m)'],
+    ['MARGINAL NORTE', 'ACESSO MORRO'],
+  ].map(([st, sub]) => {
+    const [c, ctx] = makeCanvas(256, 96);
+    ctx.fillStyle = '#1e3a8a';
+    ctx.fillRect(0, 0, 256, 96);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(5, 5, 246, 86);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 30px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(st, 128, 46);
+    ctx.fillStyle = '#93c5fd';
+    ctx.font = '600 15px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText(sub, 128, 74);
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  });
+
+  const gantrySigns = [
+    { left: '← PRÉDIOS OESTE', mid: 'PRAÇA & PONTES ↑', right: 'SHOPPING / MODA →', bg: '#065f46' },
+    { left: '← GASTRONOMIA', mid: 'CIDADE ALTA +9m ↑', right: 'MIRANTE SUL +14m →', bg: '#1e3a8a' },
+    { left: '← CAIS BAIXO (RIO)', mid: 'MORRO ESPERANÇA ↑', right: 'NASCENTE & CÓRREGO →', bg: '#065f46' },
+  ].map((g) => {
+    const [c, ctx] = makeCanvas(768, 192);
+    ctx.fillStyle = g.bg;
+    ctx.fillRect(0, 0, 768, 192);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(8, 8, 752, 176);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(256, 18);
+    ctx.lineTo(256, 174);
+    ctx.moveTo(512, 18);
+    ctx.lineTo(512, 174);
+    ctx.stroke();
+
+    const cols = [
+      { x: 128, t: g.left, badge: 'SAÍDA A' },
+      { x: 384, t: g.mid, badge: 'EIXO 01' },
+      { x: 640, t: g.right, badge: 'SAÍDA B' },
+    ];
+    cols.forEach((col) => {
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(col.x - 42, 26, 84, 26);
+      ctx.fillStyle = '#18181b';
+      ctx.font = 'bold 18px "Barlow Condensed", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(col.badge, col.x, 45);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px "Barlow Condensed", sans-serif';
+      ctx.fillText(col.t, col.x, 114);
+    });
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  });
+
+  const wayfindingMap = (() => {
+    const [c, ctx] = makeCanvas(256, 192);
+    ctx.fillStyle = '#09090b';
+    ctx.fillRect(0, 0, 256, 192);
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(6, 6, 244, 180);
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 20px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('GUIA · CIDADE NOVA', 128, 30);
+    // Stylized city map blocks
+    ctx.fillStyle = '#0ea5e9';
+    ctx.fillRect(24, 52, 208, 18); // river
+    ctx.fillStyle = '#fb7185';
+    ctx.fillRect(62, 34, 132, 16); // morro
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(26, 76, 62, 40); // buildings
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(94, 76, 22, 22); // plaza
+    ctx.fillStyle = '#fb923c';
+    ctx.fillRect(122, 76, 108, 40); // shopping/food/fashion
+    ctx.fillStyle = '#34d399';
+    ctx.fillRect(26, 122, 204, 48); // residential + overlook
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const calcadaPraia = (() => {
+    // Classic Copacabana black & cream Portuguese mosaic wave pattern
+    const [c, ctx] = makeCanvas(256, 256);
+    ctx.fillStyle = '#f5f0e1';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = '#18181b';
+    for (let row = 0; row < 4; row++) {
+      const y0 = row * 64;
+      ctx.beginPath();
+      ctx.moveTo(0, y0 + 22);
+      for (let x = 0; x <= 256; x += 16) {
+        ctx.lineTo(x, y0 + 22 + Math.sin((x / 256) * Math.PI * 2) * 14);
+      }
+      for (let x = 256; x >= 0; x -= 16) {
+        ctx.lineTo(x, y0 + 46 + Math.sin((x / 256) * Math.PI * 2) * 14);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    return reg(finalizeColorTex(c, 6, 1, maxAniso));
+  })();
+
+  const beachSand = (() => {
+    const [c, ctx] = makeCanvas(256, 256);
+    ctx.fillStyle = '#e8cf97';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 2400; i++) {
+      const x = (i * 73) % 256;
+      const y = (i * 137) % 256;
+      ctx.fillStyle = i % 3 === 0 ? '#d8ba78' : i % 2 === 0 ? '#f3dfb0' : '#cfb06e';
+      ctx.fillRect(x, y, 2, 2);
+    }
+    return reg(finalizeColorTex(c, 4, 2, maxAniso));
+  })();
+
+  const schoolSign = (() => {
+    const [c, ctx] = makeCanvas(512, 128);
+    ctx.fillStyle = '#1d4ed8';
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(0, 108, 512, 20);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(8, 8, 496, 96);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 40px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('E.M. CIDADE NOVA', 256, 56);
+    ctx.fillStyle = '#fef08a';
+    ctx.font = '600 18px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('ESCOLA PÚBLICA MUNICIPAL · ENSINO INTEGRAL', 256, 88);
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const schoolCourtyard = (() => {
+    const [c, ctx] = makeCanvas(256, 256);
+    ctx.fillStyle = '#1d4ed8';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = '#ea580c';
+    ctx.fillRect(28, 28, 200, 200);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(28, 28, 200, 200);
+    ctx.beginPath();
+    ctx.moveTo(28, 128);
+    ctx.lineTo(228, 128);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(128, 128, 26, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeRect(88, 28, 80, 32);
+    ctx.strokeRect(88, 196, 80, 32);
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const trafficSignSchool = (() => {
+    const [c, ctx] = makeCanvas(128, 128);
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.save();
+    ctx.translate(64, 64);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(-42, -42, 84, 84);
+    ctx.strokeStyle = '#18181b';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(-38, -38, 76, 76);
+    ctx.restore();
+    // Adult + smaller student walking silhouette
+    ctx.fillStyle = '#18181b';
+    ctx.beginPath();
+    ctx.arc(54, 42, 6, 0, Math.PI * 2);
+    ctx.arc(76, 52, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#18181b';
+    ctx.beginPath();
+    ctx.moveTo(54, 48);
+    ctx.lineTo(54, 72);
+    ctx.lineTo(44, 90);
+    ctx.moveTo(54, 72);
+    ctx.lineTo(62, 90);
+    ctx.moveTo(76, 57);
+    ctx.lineTo(76, 76);
+    ctx.lineTo(69, 90);
+    ctx.moveTo(76, 76);
+    ctx.lineTo(83, 90);
+    ctx.moveTo(54, 58);
+    ctx.lineTo(76, 63);
+    ctx.stroke();
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
   return {
     flagAlbedo,
     flagBump,
     asphalt,
     asphaltAvenue,
+    asphaltIntersection,
     sidewalk,
     plazaCompass,
     waterRipple,
@@ -901,6 +1401,7 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
     awningStripes,
     barberPole,
     billboard,
+    salesBillboards,
     graffitiWall,
     helipad,
     morroBrick,
@@ -910,7 +1411,22 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
     clothesline,
     trafficSignStop,
     trafficSignSpeed,
+    trafficSignPedestrian,
+    trafficSignSlope,
+    trafficSignNoParking,
+    trafficSignTouristSpring,
+    trafficSignTouristOverlook,
+    busStopPlaque,
+    busStopMap,
+    streetNamePlates,
+    gantrySigns,
+    wayfindingMap,
     soccerField,
+    calcadaPraia,
+    beachSand,
+    schoolSign,
+    schoolCourtyard,
+    trafficSignSchool,
     dispose: () => {
       all.forEach((t) => t.dispose());
     },

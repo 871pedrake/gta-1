@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Copy, Download } from 'lucide-react';
+import { BookOpen, Check, Code2, Copy, Download } from 'lucide-react';
 import { VehicleConcept } from '../types/vehicle';
 import { generateUnityCSharpForVehicle } from '../utils/unityExporter';
 import {
@@ -8,6 +8,7 @@ import {
   generateInteragirVeiculo50Cs,
   generateTrafegoCidade50Cs,
 } from '../utils/unityPackageTemplates';
+import { MapGddView } from './MapGddView';
 
 interface UnityExportViewProps {
   vehicles: VehicleConcept[];
@@ -15,6 +16,7 @@ interface UnityExportViewProps {
   onSelectVehicle: (v: VehicleConcept) => void;
 }
 
+type UnityWorkspaceTab = 'scripts' | 'gdd';
 type ScriptTab = 'fabrica' | 'controle' | 'interagir' | 'trafego' | 'single';
 
 export const UnityExportView: React.FC<UnityExportViewProps> = ({
@@ -22,6 +24,7 @@ export const UnityExportView: React.FC<UnityExportViewProps> = ({
   selectedVehicle,
   onSelectVehicle,
 }) => {
+  const [workspaceTab, setWorkspaceTab] = useState<UnityWorkspaceTab>('scripts');
   const [mode, setMode] = useState<ScriptTab>('fabrica');
   const [copied, setCopied] = useState(false);
 
@@ -61,8 +64,46 @@ export const UnityExportView: React.FC<UnityExportViewProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-zinc-950">
-      <div className="max-w-[1360px] mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+    <div className="flex-1 flex flex-col min-h-0 bg-zinc-950">
+      <div className="shrink-0 border-b border-zinc-800 bg-zinc-900/40 px-6 py-2.5">
+        <div className="max-w-[1440px] mx-auto flex items-center justify-between gap-4">
+          <div className="inline-flex items-center gap-1 p-1 bg-zinc-950 border border-zinc-800 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setWorkspaceTab('scripts')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors ${
+                workspaceTab === 'scripts'
+                  ? 'bg-amber-500 text-zinc-950 font-semibold'
+                  : 'text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              <Code2 className="w-3.5 h-3.5" />
+              Scripts C# (Frota 50)
+            </button>
+            <button
+              type="button"
+              onClick={() => setWorkspaceTab('gdd')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md cursor-pointer transition-colors ${
+                workspaceTab === 'gdd'
+                  ? 'bg-amber-500 text-zinc-950 font-semibold'
+                  : 'text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              GDD do Mapa 3D (Unity)
+            </button>
+          </div>
+          <span className="hidden sm:inline text-xs font-mono-tech text-zinc-500">
+            Documentação do mapa + pacotes C# para Unity URP
+          </span>
+        </div>
+      </div>
+
+      {workspaceTab === 'gdd' ? (
+        <MapGddView />
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-[1360px] mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Step-by-step Unity Installation Guide */}
         <div className="lg:col-span-4 space-y-5">
           <div>
@@ -198,6 +239,8 @@ export const UnityExportView: React.FC<UnityExportViewProps> = ({
           </pre>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 };

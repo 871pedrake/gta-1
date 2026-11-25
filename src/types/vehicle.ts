@@ -161,7 +161,19 @@ export interface VehicleConcept {
 export type StudioCameraPreset = 'hero' | 'side' | 'front' | 'rear' | 'top';
 export type AppViewMode = 'city' | 'studio' | 'catalog' | 'compare' | 'unity';
 
-export type CityCameraPreset = 'overview' | 'flag' | 'shops' | 'bridges' | 'morro' | 'traffic';
+export type CityCameraPreset =
+  | 'overview'
+  | 'downtown'
+  | 'condos'
+  | 'corporate'
+  | 'shops'
+  | 'residential'
+  | 'school'
+  | 'beach'
+  | 'morro'
+  | 'bridges'
+  | 'flag'
+  | 'traffic';
 export type CityTimeOfDay = 'sunset' | 'day' | 'night';
 
 export interface CityHotspot {

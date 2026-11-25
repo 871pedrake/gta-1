@@ -12,6 +12,7 @@ import {
   VegetationPlacement,
 } from './city/cityVegetation';
 import {
+  createExpandedBuildingsDistrict,
   createFinancialCenterAndHorizon,
   createResidentialDistrict,
   NeighborhoodBuildResult,
@@ -29,66 +30,138 @@ import {
   ShopAnimatedParts,
   TrafficLightRig,
 } from './city/cityParts';
+import {
+  blockTerraceY,
+  cityBasinTerrainY,
+  cityRoadSlopeDZ,
+  cityRoadY,
+  creekCenterX,
+  WEST_ISLAND_CENTER,
+  westCoveMask,
+  westIslandTerrainY,
+  westMainlandBeachY,
+  westShoreWave,
+} from './city/cityElevation';
 
 export const CITY_HOTSPOTS: Record<CityCameraPreset, CityHotspot> = {
   overview: {
     id: 'overview',
     title: 'Metrópole Cidade Nova · Conceito GTA',
-    subtitle: 'Visão Geral da Metrópole Expandida',
+    subtitle: 'Cais Baixo (-0,85m) → Cidade Alta (+9m) → Mirante (+13,8m)',
     highlights: [
-      'Centro financeiro vertical com dezenas de arranha-céus, brises, helipontos e viaduto elevado',
-      'Bairro residencial extenso com sobrados, casas térreas, muros, caixas d’água e praças arborizadas',
-      '5 pontes conectadas (3 estaiadas + arco + concreto) ligando ao Morro denso e mata atlântica ao vento',
+      'Desnível dramático com Cais Baixo (-0,85m), Baixada (0,0m), Terraço (+2,25m), Av. Média (+4,5m), Cidade Alta (+9,0m) e Mirante Sul (+13,8m)',
+      'Praia Oeste sem bugs conectada por avenida litorânea, calçadão, ponte em arco e Ilha do Sol com amplo reflorestamento botânico',
+      'Hidrologia completa: Nascente na Serra Norte (84,114), Córrego com corredeiras, Rio com 5 barcos e Baía Oeste',
     ],
   },
-  flag: {
-    id: 'flag',
-    title: 'Bandeira Monumental',
-    subtitle: 'Praça da Bandeira · Marco Central',
+  downtown: {
+    id: 'downtown',
+    title: 'Área de Prédios · Torres & Complexos Duplos',
+    subtitle: 'Quadrante Centro-Oeste (X = -102..-34)',
     highlights: [
-      'Pedestal octogonal de 3 degraus em granito, mármore e placas de bronze',
-      'Mastro telescópico com adriça, roldana e pináculo dourado',
-      'Tecido 3D alta resolução (56×34) com vento sincronizado às árvores da cidade',
+      '4 complexos arquitetônicos: Supertall Horizonte Brasil (84m+torre), Prédios Duplos Gêmeo Paulista, Torre Molduras em C e Complexo Duplo Atlântico',
+      'Fundações escalonadas em granito, pilotis, portas duplas de vidro com marquise iluminada, guaritas e portões de garagem',
+      'Centenas de condensadores de ar-condicionado 3D com ventoinha e dutos, sacadas com guarda-corpo de vidro e chillers na cobertura',
     ],
   },
   shops: {
     id: 'shops',
-    title: 'Rua das Lojas 2.0 & Shopping',
-    subtitle: 'Corredor Comercial Completo',
+    title: 'Shopping, Comida & Lojas de Roupa',
+    subtitle: 'Setor Leste · Metrópole, Gastronomia & Moda',
     highlights: [
-      'Motors 50, Café Carioca, Cyber 50, Barbearia, Farmácia, Padaria, Burger 50, Oficina e Eletrônicos',
-      'Shopping Metrópole com passarela aérea envidraçada sobre a avenida',
-      'Bancas de jornal, pontos de ônibus, orelhões, hidrantes, lixeiras e pedestres na calçada',
+      'Shopping Metrópole (+17,-17), Passarela Aérea (+34), Estacionamento com carros (+51) e Galeria Moda & Multiplex (+85)',
+      'Polo Gastronômico (+51,-51): Burger 50, Pizzaria Nobile, Churrascaria Brasa, Padaria Pão Quente e Açaí Tropical',
+      'Polo Moda & Comércio (+85,-51): Moda Urbana, Atelier Vestir, Tênis & Sneakers, Express 24H e pontos de ônibus com abrigo e mapa',
     ],
   },
-  bridges: {
-    id: 'bridges',
-    title: 'Pontes Estaiadas & Eixo Fluvial',
-    subtitle: '5 Travessias Niveladas & Marginais',
+  residential: {
+    id: 'residential',
+    title: 'Área de Residência & Mirante Alto Sul',
+    subtitle: 'Cidade Alta (+6,75m / +9,0m) & Mirante (+13,8m)',
     highlights: [
-      'Três pontes estaiadas iluminadas, ponte em arco metálico e ponte de concreto sem degraus',
-      'Marginais arborizadas com palmeiras reais balançando ao vento e canteiros',
-      'Rio refletivo animado com barcos navegando e tráfego contínuo nas faixas',
+      '11 quadras residenciais simétricas (44 lotes murados nos 4 lados) sem casas perdidas nas bordas laterais',
+      'Rampa panorâmica até o Mirante Alto da Serra Sul (+13,8m) com guarda-corpo de vidro, lunetas e vista da metrópole',
+      'Parque do Bairro com Coreto central em (+17,-85) e rotatórias arborizadas com Ipês e arbustos floridos',
     ],
   },
   morro: {
     id: 'morro',
-    title: 'Morro da Esperança',
-    subtitle: 'Comunidade Densa & Encosta Viva',
+    title: 'Morro da Esperança · Nascente & Córrego',
+    subtitle: 'Maciço Central Limpo · Mata Atlântica & Cachoeira',
     highlights: [
-      'Mais de 340 lajes e casas em tijolo baiano, reboco e fachadas coloridas com caixas d’água e varais',
-      'Muros com grafite urbano, comércios na base, 3 escadões com corrimão amarelo e fiação aérea',
-      'Quadra poliesportiva iluminada, Igrejinha no mirante e mata atlântica animada pelo vento',
+      'Nascente em paredão rochoso (+84, +114) alimentando córrego sinuoso com ponte rústica até desaguar no Rio',
+      '4 comércios autênticos na base (Mercearia, Espetinho, Açaí e Barbearia) livres das avenidas e escadões',
+      'Mata Atlântica com troncos ramificados multi-galho nos flancos e casas com janelas +Z/-Z e fundações hMin..hMax',
+    ],
+  },
+  bridges: {
+    id: 'bridges',
+    title: 'Cais Baixo, Pontes & Rio com Barcos',
+    subtitle: 'Orla Baixa (-0,85m) · Píer Náutico & 5 Embarcações',
+    highlights: [
+      'Cais Baixo em -0,85m ligado por escadarias em granito ao calçadão, com píer de madeira e lancha atracada',
+      '4 embarcações reais do catálogo (Lancha, Jet Ski, Bote Resgate e Rebocador) navegando sob as 5 pontes niveladas',
+      'Calçadões com palmeiras segmentadas de 11 frondes arqueadas, arbustos floridos e iluminação noturna',
+    ],
+  },
+  flag: {
+    id: 'flag',
+    title: 'Bandeira Monumental & Guias Urbanos',
+    subtitle: 'Praça da Bandeira (-17, -17) · Marco Cívico',
+    highlights: [
+      'Pedestal octogonal de 3 degraus em granito, mármore e bronze + totem de mapa turístico da cidade',
+      'Mastro telescópico com adriça, roldana e pináculo dourado entre Prédios e Shopping',
+      'Tecido 3D alta resolução (56×34) com vento sincronizado às copas multi-cluster das árvores',
     ],
   },
   traffic: {
     id: 'traffic',
-    title: 'Semáforos, Viaduto & Vida Urbana',
-    subtitle: 'Simulação Metropolitana Sincronizada',
+    title: 'Semáforos, Pórticos & Placas de Trânsito',
+    subtitle: 'Frota em Ladeira & Sinalização Viária Completa',
     highlights: [
-      '10 cruzamentos sincronizados com sinalização horizontal, placas PARE/60 km/h e faixas de pedestre',
-      'Frota variada circulando nas avenidas, marginais, pontes e bairros residenciais',
-      'Dezenas de NPCs articulados caminhando, aguardando ônibus, correndo na orla e parando no sinal',
+      '3 pórticos metálicos aéreos, placas azuis de esquina, advertência de ladeira (11%), faixa de pedestre, PARE e 60 km/h',
+      'Veículos aplicam pitch real ao subir/descer as ladeiras entre a Baixada (0m) e a Cidade Alta (+9,0m)',
+      'Pontos de ônibus modernizados com teto iluminado, painel MUPI de rotas e placa Linha 50 fora da pista',
+    ],
+  },
+  school: {
+    id: 'school',
+    title: 'Escola Pública E.M. Cidade Nova',
+    subtitle: 'Quadra (-17, -85) · Patamar +6,75m · Acesso & Sinalização',
+    highlights: [
+      'Inserida no tecido residencial em frente ao Parque do Bairro, ligada à Av. Panorâmica (+4,5m) por escadaria e rampa acessível',
+      'Portão monumental com letreiro iluminado, muro gradil, blocos de aula em L com varanda sombreada e quadra poliesportiva',
+      'Sinalização amarela de Área Escolar, faixa exclusiva na avenida, Escolar Amarelinho estacionado e Papelaria do Estudante na esquina',
+    ],
+  },
+  beach: {
+    id: 'beach',
+    title: 'Praia Oeste, Ponte & Ilha do Sol',
+    subtitle: 'Orla Esquerda (X < -154) · Calçadão, Ilha & Reflorestamento',
+    highlights: [
+      'Praia ampla e nivelada no flanco esquerdo (-X) ligada pela Av. Beira-Mar Oeste (-162) e calçadão contínuo em pedra portuguesa',
+      'Ponte em arco de madeira e pedra sobre a lagoa turquesa conectando o calçadão à trilha completa da Ilha do Sol (-236, -14)',
+      'Reflorestamento botânico com dezenas de coqueiros, Ipês e Mata Atlântica cobrindo a ilha, bosques litorâneos e encostas',
+    ],
+  },
+  condos: {
+    id: 'condos',
+    title: 'Prédios Largos de Moradia · 2 em 1',
+    subtitle: 'Quadras Largas 33×23m · (-125,-51/-85) e (+125,-85)',
+    highlights: [
+      '3 complexos residenciais largos (~30m) formados por dois prédios unidos por átrio envidraçado e passarelas elevadas',
+      'Fundações em granito, gradis com guarita, duas portarias envidraçadas com marquise e portões de garagem nos dois lados',
+      'Dezenas de sacadas com guarda-corpo de vidro, pilhas de condensadores 3D de ar-condicionado, caixas d’água e chillers',
+    ],
+  },
+  corporate: {
+    id: 'corporate',
+    title: 'Prédios de Vendas, Outdoors & Estacionamentos',
+    subtitle: 'Setores Empresariais · (-125,-17) e (+125,-17/-51)',
+    highlights: [
+      '3 complexos corporativos de vendas com showrooms em vidro duplo, torres envidraçadas, portarias e condensadores de AC',
+      'Outdoors metálicos iluminados no topo das torres e nas esquinas viárias divulgando salas comerciais e showrooms',
+      'Estacionamentos completos com asfalto, vagas demarcadas, bate-rodas amarelos, guarita, cancela, postes e carros estacionados',
     ],
   },
 };
@@ -131,6 +204,7 @@ export class CityConceptController {
   private vegetation!: CityVegetationSystem;
   private financialResult!: NeighborhoodBuildResult;
   private residentialResult!: NeighborhoodBuildResult;
+  private expandedResult!: NeighborhoodBuildResult;
   private shopAnimated: ShopAnimatedParts = {};
   private trafficLights: TrafficLightRig[] = [];
   private trafficActors: TrafficActor[] = [];
@@ -175,9 +249,9 @@ export class CityConceptController {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
-    this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = !isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setSize(container.clientWidth || 1000, container.clientHeight || 680);
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
@@ -209,7 +283,7 @@ export class CityConceptController {
       this.camTransitioning = false;
     });
 
-    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+    const maxAniso = Math.min(this.renderer.capabilities.getMaxAnisotropy(), 4);
     this.atlas = createCityTextureAtlas(maxAniso);
 
     this.setupLighting();
@@ -235,10 +309,10 @@ export class CityConceptController {
     this.sunLight = new THREE.DirectionalLight(0xffb36b, 2.2);
     this.sunLight.position.set(-95, 58, -72);
     this.sunLight.castShadow = !isSoftwareGl;
-    this.sunLight.shadow.mapSize.set(2048, 2048);
+    this.sunLight.shadow.mapSize.set(1024, 1024);
     this.sunLight.shadow.camera.near = 15;
     this.sunLight.shadow.camera.far = 360;
-    const d = 145;
+    const d = 158;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
@@ -278,13 +352,49 @@ export class CityConceptController {
       shrubs: [],
     };
 
-    // 1. Vast continuous outer terrain + inner metropolitan asphalt grid
+    // 1. Continuous sloped urban basin + sculpted West Bay, Island & lush coastal hills
+    const basinGeo = new THREE.PlaneGeometry(660, 440, 132, 92);
+    basinGeo.rotateX(-Math.PI / 2);
+    basinGeo.translate(-35, 0, -10);
+    const basinPos = basinGeo.attributes.position;
+    const basinColors = new Float32Array(basinPos.count * 3);
+    const colTmp = new THREE.Color();
+    for (let i = 0; i < basinPos.count; i++) {
+      const x = basinPos.getX(i);
+      const z = basinPos.getZ(i);
+      const rawY = cityBasinTerrainY(x, z);
+      let y = rawY - 0.14;
+      if (Math.abs(x) < 153.2 && z > -130 && z < 7.5) {
+        y -= 0.28;
+      } else if (x <= -153.0 && x >= -171.8 && z >= -42.5 && z <= 7.6) {
+        y -= 0.28;
+      } else if (x < -171.2 && x >= -196.0 && z >= -46.5 && z <= 9.5) {
+        // Depress slightly under dedicated high-res beach sand mesh to eliminate any z-fighting
+        y -= 0.18;
+      } else if (Math.hypot(x - WEST_ISLAND_CENTER.x, z - WEST_ISLAND_CENTER.z) < 35.5) {
+        // Depress slightly under high-res Ilha do Sol terrain mesh
+        y -= 0.22;
+      }
+      basinPos.setY(i, y);
+
+      if (rawY < -1.35) {
+        colTmp.setHex(0x0b2330);
+      } else if (x < -171 && z >= -50 && z <= 28 && rawY <= 0.42) {
+        colTmp.setHex(rawY < -0.25 ? 0xb49763 : 0xdcc288);
+      } else {
+        const shade = ((Math.abs(Math.round(x * 0.11 + z * 0.09)) % 3) - 1) * 0.018;
+        colTmp.setRGB(0.135 + shade * 0.5, 0.235 + shade, 0.145 + shade * 0.5);
+      }
+      basinColors[i * 3] = colTmp.r;
+      basinColors[i * 3 + 1] = colTmp.g;
+      basinColors[i * 3 + 2] = colTmp.b;
+    }
+    basinGeo.setAttribute('color', new THREE.BufferAttribute(basinColors, 3));
+    basinGeo.computeVertexNormals();
     const horizonGround = new THREE.Mesh(
-      new THREE.PlaneGeometry(920, 920),
-      new THREE.MeshStandardMaterial({ color: 0x1b261d, roughness: 0.95 }),
+      basinGeo,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94 }),
     );
-    horizonGround.rotation.x = -Math.PI / 2;
-    horizonGround.position.y = -0.15;
     horizonGround.receiveShadow = true;
     this.scene.add(horizonGround);
 
@@ -294,128 +404,309 @@ export class CityConceptController {
       metalness: 0.05,
     });
 
-    const southAsphalt = new THREE.Mesh(new THREE.BoxGeometry(274, 0.2, 142), matAsphalt);
-    southAsphalt.position.set(0, -0.06, -63);
+    // Continuous sloped metropolitan asphalt under-deck (X = -153.5..+153.5, Z = -130..+7.5)
+    const urbanDeckGeo = new THREE.PlaneGeometry(307, 137.5, 2, 96);
+    urbanDeckGeo.rotateX(-Math.PI / 2);
+    urbanDeckGeo.translate(0, 0, -61.25);
+    const deckPos = urbanDeckGeo.attributes.position;
+    for (let i = 0; i < deckPos.count; i++) {
+      deckPos.setY(i, cityRoadY(deckPos.getZ(i)) - 0.03);
+    }
+    urbanDeckGeo.computeVertexNormals();
+    const southAsphalt = new THREE.Mesh(urbanDeckGeo, matAsphalt);
     southAsphalt.receiveShadow = true;
     this.scene.add(southAsphalt);
 
-    const northAsphalt = new THREE.Mesh(new THREE.BoxGeometry(274, 0.2, 19), matAsphalt);
-    northAsphalt.position.set(0, -0.06, 35.5);
+    // West Coastal Drive asphalt under-deck connecting X = -153.5 out to X = -167.4 along Z = -40..+6.2
+    const westCoastalDeck = new THREE.Mesh(new THREE.PlaneGeometry(14.6, 46.5), matAsphalt);
+    westCoastalDeck.rotation.x = -Math.PI / 2;
+    westCoastalDeck.position.set(-160.3, -0.03, -16.8);
+    westCoastalDeck.receiveShadow = true;
+    this.scene.add(westCoastalDeck);
+
+    // North Marginal asphalt strip (Z = 26.5..42.5, X = -112..+112)
+    const northAsphalt = new THREE.Mesh(new THREE.BoxGeometry(224, 0.2, 16.5), matAsphalt);
+    northAsphalt.position.set(0, -0.06, 34.5);
     northAsphalt.receiveShadow = true;
     this.scene.add(northAsphalt);
 
-    // Wide River Channel (Z = 8 .. 26, X = -300 .. +300)
+    // River Bed (X = -171.5 .. +300) + Two Non-Overlapping Water Sheets (River + West Ocean Bay)
     const riverBed = new THREE.Mesh(
-      new THREE.BoxGeometry(600, 0.5, 19),
+      new THREE.BoxGeometry(471.5, 0.5, 19),
       new THREE.MeshStandardMaterial({ color: 0x091e29, roughness: 0.95 }),
     );
-    riverBed.position.set(0, -2.5, 17);
+    riverBed.position.set(64.25, -2.5, 17);
     this.scene.add(riverBed);
 
-    const matWater = new THREE.MeshPhysicalMaterial({
+    const matWater = new THREE.MeshStandardMaterial({
       map: this.atlas.waterRipple,
       color: 0x0ea5e9,
       roughness: 0.14,
-      metalness: 0.18,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.08,
+      metalness: 0.45,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.90,
     });
-    const waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(600, 18.2), matWater);
-    waterMesh.rotation.x = -Math.PI / 2;
-    waterMesh.position.set(0, -1.25, 17);
-    this.scene.add(waterMesh);
+    const riverWaterMesh = new THREE.Mesh(new THREE.PlaneGeometry(471.5, 18.2), matWater);
+    riverWaterMesh.rotation.x = -Math.PI / 2;
+    riverWaterMesh.position.set(64.25, -1.25, 17);
+    this.scene.add(riverWaterMesh);
 
-    // Stone river embankments (Muralhas da Orla) + Palm boardwalks & crash rails
+    const westBayWaterMesh = new THREE.Mesh(new THREE.PlaneGeometry(193.5, 152.0), matWater);
+    westBayWaterMesh.rotation.x = -Math.PI / 2;
+    westBayWaterMesh.position.set(-268.25, -1.25, -6.0);
+    this.scene.add(westBayWaterMesh);
+
+    // Stone river embankments (Muralhas da Orla) & Continuous Granite/Copacabana Boardwalks
     const matWall = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.82 });
     const matWalk = new THREE.MeshStandardMaterial({ map: this.atlas.sidewalk, roughness: 0.85 });
-    [7.5, 26.5].forEach((wz) => {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(300, 2.8, 1.2), matWall);
-      wall.position.set(0, -1.1, wz);
-      this.scene.add(wall);
+    const matCalcadaPraia = new THREE.MeshStandardMaterial({ map: this.atlas.calcadaPraia, roughness: 0.82 });
 
-      const boardwalk = new THREE.Mesh(new THREE.BoxGeometry(272, 0.24, 3.0), matWalk);
-      boardwalk.position.set(0, 0.12, wz + (wz < 17 ? -1.4 : 1.4));
-      boardwalk.receiveShadow = true;
-      this.scene.add(boardwalk);
-    });
+    // North embankment continuous wall + boardwalk
+    const northWall = new THREE.Mesh(new THREE.BoxGeometry(230, 2.8, 1.2), matWall);
+    northWall.position.set(0, -1.1, 26.5);
+    this.scene.add(northWall);
+    const northBoardwalk = new THREE.Mesh(new THREE.BoxGeometry(216, 0.24, 3.0), matWalk);
+    northBoardwalk.position.set(0, 0.12, 27.9);
+    northBoardwalk.receiveShadow = true;
+    this.scene.add(northBoardwalk);
 
-    // Painted Avenue Road Markings (Av. N-S at X = [-102, -68, -34, 0, 34, 68, 102] & E-W at Z = [-102, -68, -34, 0, 34])
+    // Continuous South river embankment wall from West Beach corner (-171.6) to East Edge (+154)
+    const southWall = new THREE.Mesh(new THREE.BoxGeometry(325.6, 2.8, 1.2), matWall);
+    southWall.position.set(-8.8, -1.1, 7.5);
+    this.scene.add(southWall);
+
+    // Continuous South granite boardwalk extending seamlessly west to connect with Praia Oeste
+    const southBoardwalk = new THREE.Mesh(new THREE.BoxGeometry(324.6, 0.24, 3.0), matWalk);
+    southBoardwalk.position.set(-9.3, 0.12, 6.1);
+    southBoardwalk.receiveShadow = true;
+    this.scene.add(southBoardwalk);
+
+    // Clean, Continuous Avenue Grid:
+    // N-S at X = [-102, -68, -34, 0, 34, 68, 102] (sloped along Ladeira 1 & 2)
+    // E-W at Z = [-102, -68, -34, 0, 34] (strictly horizontal via geometry rotation!)
     const matAveMark = new THREE.MeshStandardMaterial({
       map: this.atlas.asphaltAvenue,
       roughness: 0.86,
       metalness: 0.04,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     });
+    const matIntersection = new THREE.MeshStandardMaterial({
+      map: this.atlas.asphaltIntersection,
+      roughness: 0.86,
+      metalness: 0.04,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+
     const roadX = [-102, -68, -34, 0, 34, 68, 102];
-    const roadZ = [-102, -68, -34, 0, 34];
+    const outerRoadX = [-148, 148];
+    const southRoadZ = [-102, -68, -34, 0];
+    const roadZ = [...southRoadZ, 34];
+
+    const nsSouthGeo = new THREE.PlaneGeometry(10.4, 135.5, 1, 96);
+    nsSouthGeo.rotateX(-Math.PI / 2);
+    nsSouthGeo.translate(0, 0, -60.25);
+    const nsPos = nsSouthGeo.attributes.position;
+    const nsUv = nsSouthGeo.attributes.uv;
+    for (let i = 0; i < nsPos.count; i++) {
+      nsPos.setY(i, cityRoadY(nsPos.getZ(i)) + 0.04);
+      nsUv.setY(i, nsUv.getY(i) * 6);
+    }
+    nsSouthGeo.computeVertexNormals();
+
+    const nsNorthStubGeo = new THREE.PlaneGeometry(10.4, 13);
+    nsNorthStubGeo.rotateX(-Math.PI / 2);
 
     roadX.forEach((rx) => {
-      // Continuous avenue marking segments between intersections
-      [-119, -85, -51, -17, 35].forEach((cz) => {
-        const len = cz === 35 ? 12 : 21;
-        const lane = new THREE.Mesh(new THREE.PlaneGeometry(10.4, len), matAveMark);
-        lane.rotation.x = -Math.PI / 2;
-        lane.position.set(rx, 0.046, cz);
-        lane.receiveShadow = true;
-        this.scene.add(lane);
-      });
+      const southAve = new THREE.Mesh(nsSouthGeo, matAveMark);
+      southAve.position.x = rx;
+      southAve.receiveShadow = true;
+      this.scene.add(southAve);
+
+      const northStub = new THREE.Mesh(nsNorthStubGeo, matAveMark);
+      northStub.position.set(rx, 0.04, 33);
+      northStub.receiveShadow = true;
+      this.scene.add(northStub);
     });
+
+    // Outer West & East Boulevard Avenues (X = -148 & +148, spanning Z = -107.2 .. +5.2 across the 33m wide expansion)
+    const nsOuterGeo = new THREE.PlaneGeometry(10.4, 112.4, 1, 84);
+    nsOuterGeo.rotateX(-Math.PI / 2);
+    nsOuterGeo.translate(0, 0, -51.0);
+    const outerPos = nsOuterGeo.attributes.position;
+    const outerUv = nsOuterGeo.attributes.uv;
+    for (let i = 0; i < outerPos.count; i++) {
+      outerPos.setY(i, cityRoadY(outerPos.getZ(i)) + 0.04);
+      outerUv.setY(i, outerUv.getY(i) * 5);
+    }
+    nsOuterGeo.computeVertexNormals();
+
+    outerRoadX.forEach((rx) => {
+      const outerAve = new THREE.Mesh(nsOuterGeo, matAveMark);
+      outerAve.position.x = rx;
+      outerAve.receiveShadow = true;
+      this.scene.add(outerAve);
+    });
+
+    // Continuous E-W lanes rotated on geometry (South-half avenues extended to X = ±153.2; Marginal Norte kept at ±107.2)
+    const ewWideGeo = new THREE.PlaneGeometry(10.4, 306.4);
+    ewWideGeo.rotateX(-Math.PI / 2);
+    ewWideGeo.rotateY(Math.PI / 2);
+    const ewWideUv = ewWideGeo.attributes.uv;
+    for (let i = 0; i < ewWideUv.count; i++) {
+      ewWideUv.setY(i, ewWideUv.getY(i) * 13);
+    }
+
+    const ewNorthGeo = new THREE.PlaneGeometry(10.4, 214.4);
+    ewNorthGeo.rotateX(-Math.PI / 2);
+    ewNorthGeo.rotateY(Math.PI / 2);
+    const ewNorthUv = ewNorthGeo.attributes.uv;
+    for (let i = 0; i < ewNorthUv.count; i++) {
+      ewNorthUv.setY(i, ewNorthUv.getY(i) * 9);
+    }
 
     roadZ.forEach((rz) => {
-      [-119, -85, -51, -17, 17, 51, 85, 119].forEach((cx) => {
-        const lane = new THREE.Mesh(new THREE.PlaneGeometry(10.4, 21), matAveMark);
-        lane.rotation.x = -Math.PI / 2;
-        lane.rotation.y = Math.PI / 2;
-        lane.position.set(cx, 0.046, rz);
-        lane.receiveShadow = true;
-        this.scene.add(lane);
+      const geo = rz === 34 ? ewNorthGeo : ewWideGeo;
+      const ewAve = new THREE.Mesh(geo, matAveMark);
+      ewAve.position.set(0, cityRoadY(rz) + 0.044, rz);
+      ewAve.receiveShadow = true;
+      this.scene.add(ewAve);
+    });
+
+    // Crisp intersection squares covering all core crossings + 8 outer boulevard crossings
+    const interGeo = new THREE.PlaneGeometry(10.6, 10.6);
+    interGeo.rotateX(-Math.PI / 2);
+    roadX.forEach((rx) => {
+      roadZ.forEach((rz) => {
+        const inter = new THREE.Mesh(interGeo, matIntersection);
+        inter.position.set(rx, cityRoadY(rz) + 0.052, rz);
+        inter.receiveShadow = true;
+        this.scene.add(inter);
+      });
+    });
+    outerRoadX.forEach((rx) => {
+      southRoadZ.forEach((rz) => {
+        const inter = new THREE.Mesh(interGeo, matIntersection);
+        inter.position.set(rx, cityRoadY(rz) + 0.052, rz);
+        inter.receiveShadow = true;
+        this.scene.add(inter);
       });
     });
 
-    // Landscaped Roundabouts (Rotatórias) at (-68, -68) and (+68, -68)
+    // Av. Beira-Mar Oeste (X = -162) & E-W Connector Spurs from Av. Oeste (-148) at Z = 0 and Z = -34
+    const coastalAveGeo = new THREE.PlaneGeometry(10.4, 44.4);
+    coastalAveGeo.rotateX(-Math.PI / 2);
+    const coastalUv = coastalAveGeo.attributes.uv;
+    for (let i = 0; i < coastalUv.count; i++) coastalUv.setY(i, coastalUv.getY(i) * 2.2);
+    const coastalAve = new THREE.Mesh(coastalAveGeo, matAveMark);
+    coastalAve.position.set(-162, 0.044, -17.0);
+    coastalAve.receiveShadow = true;
+    this.scene.add(coastalAve);
+
+    const spurGeo = new THREE.PlaneGeometry(10.4, 15.0);
+    spurGeo.rotateX(-Math.PI / 2);
+    spurGeo.rotateY(Math.PI / 2);
+    [0, -34].forEach((sz) => {
+      const spur = new THREE.Mesh(spurGeo, matAveMark);
+      spur.position.set(-155.5, 0.046, sz);
+      spur.receiveShadow = true;
+      this.scene.add(spur);
+
+      const cInter = new THREE.Mesh(interGeo, matIntersection);
+      cInter.position.set(-162, 0.054, sz);
+      cInter.receiveShadow = true;
+      this.scene.add(cInter);
+    });
+
+    // Copacabana Portuguese Wave Boardwalk (Calçadão Praia Oeste: X ∈ [-171.6, -167.2], Z ∈ [-41, +7.6])
+    const westCalcadao = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.24, 48.6), matCalcadaPraia);
+    westCalcadao.position.set(-169.4, 0.12, -16.7);
+    westCalcadao.receiveShadow = true;
+    this.scene.add(westCalcadao);
+
+    // Landscaped Median Island between Av. Oeste Externa (-148) & Av. Beira-Mar Oeste (-162)
+    [-17].forEach((mz) => {
+      const median = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.22, 23.0), matWalk);
+      median.position.set(-155.0, 0.11, mz);
+      median.receiveShadow = true;
+      this.scene.add(median);
+    });
+
+    // Landscaped Roundabouts (Rotatórias) at (-68, -68) and (+68, -68) elevated at Y = +4.2m
     const matCurb = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.82 });
     const matTurf = new THREE.MeshStandardMaterial({ color: 0x2f6b2f, roughness: 0.9 });
+    const rotY = cityRoadY(-68);
     [-68, 68].forEach((rx, rIdx) => {
       const ring = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 5.8, 0.24, 20), matCurb);
-      ring.position.set(rx, 0.12, -68);
+      ring.position.set(rx, rotY + 0.12, -68);
       ring.receiveShadow = true;
       this.scene.add(ring);
 
       const turf = new THREE.Mesh(new THREE.CylinderGeometry(4.9, 4.9, 0.28, 20), matTurf);
-      turf.position.set(rx, 0.14, -68);
+      turf.position.set(rx, rotY + 0.14, -68);
       this.scene.add(turf);
 
-      if (rIdx === 0) treeCollector.ipesYellow.push({ x: rx, y: 0.28, z: -68, scale: 1.1 });
-      else treeCollector.ipesPink.push({ x: rx, y: 0.28, z: -68, scale: 1.1 });
+      if (rIdx === 0) treeCollector.ipesYellow.push({ x: rx, y: rotY + 0.28, z: -68, scale: 1.1 });
+      else treeCollector.ipesPink.push({ x: rx, y: rotY + 0.28, z: -68, scale: 1.1 });
 
       for (let s = 0; s < 6; s++) {
         const a = (s * Math.PI) / 3;
         treeCollector.shrubs.push({
           x: rx + Math.cos(a) * 3.4,
-          y: 0.28,
+          y: rotY + 0.28,
           z: -68 + Math.sin(a) * 3.4,
           scale: 0.95,
         });
       }
     });
 
-    // Sidewalk pads for Downtown, Plaza, Shopping & Commercial Blocks
+    // Sidewalk pads for Downtown (West), Praça (-17,-17) & Shopping/Gastronomia/Moda (East)
+    const matRetain = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.88 });
     const addSidewalkBlock = (cx: number, cz: number, w = 23, d = 23) => {
+      const ty = blockTerraceY(cz);
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.24, d), matWalk);
-      m.position.set(cx, 0.08, cz);
+      m.position.set(cx, ty + 0.08, cz);
       m.receiveShadow = true;
       this.scene.add(m);
+
+      if (ty > 0.1) {
+        const skirtH = 2.8;
+        const skirt = new THREE.Mesh(new THREE.BoxGeometry(w - 0.2, skirtH, d - 0.2), matRetain);
+        skirt.position.set(cx, ty - skirtH * 0.5 + 0.02, cz);
+        skirt.receiveShadow = true;
+        this.scene.add(skirt);
+      }
     };
     const coreBlocks: [number, number][] = [
-      [-119, -17], [-85, -17], [-51, -17], [-17, -17], [17, -17], [51, -17], [85, -17], [119, -17],
-      [-85, -51], [-51, -51], [-17, -51], [17, -51], [51, -51], [85, -51],
-      [-51, -85],
+      // Prédios (Centro-Oeste) — Baixada (0,0m) e Terraço (+2,1m)
+      [-85, -17], [-51, -17],
+      [-85, -51], [-51, -51],
+      // Praça da Bandeira (Marco Cívico — 0,0m)
+      [-17, -17],
+      // Shopping, Polo Gastronômico & Polo Moda (Leste — 0,0m e Terraço +2,1m)
+      [17, -17], [51, -17], [85, -17],
+      [-17, -51], [17, -51], [51, -51], [85, -51],
     ];
     coreBlocks.forEach(([cx, cz]) => addSidewalkBlock(cx, cz));
 
-    // North Marginal blocks flanking left & right of Morro (X = ±92, ±114, Z = 36)
-    [-92, 92, -114, 114].forEach((nx) => addSidewalkBlock(nx, 36, 16, 11));
+    // 6 Wide Sidewalk Blocks (33m × 23m) along X = -125 & +125 for Wide 2-in-1 Condos & Corporate Sales Hubs
+    const expandedBlocks: [number, number][] = [
+      [-125, -17],
+      [-125, -51],
+      [-125, -85],
+      [125, -17],
+      [125, -51],
+      [125, -85],
+    ];
+    expandedBlocks.forEach(([cx, cz]) => addSidewalkBlock(cx, cz, 33, 23));
+
+    // Marginal Norte: ipês de respiro fora da pista
+    [-85, -51, 51, 85].forEach((nx) => {
+      treeCollector.ipesYellow.push({ x: nx, y: 0.2, z: 28.4, scale: 0.9 });
+    });
 
     // 2. PRAÇA DA BANDEIRA (X = -17, Z = -17) + BANDEIRA MONUMENTAL
     const plazaPad = new THREE.Mesh(
@@ -467,26 +758,37 @@ export class CityConceptController {
       else treeCollector.ipesPink.push({ x: tx as number, y: ty as number, z: tz as number, scale: 1.02 });
     });
 
-    // Imperial Palms along BOTH river embankments (X = -124 .. +124) & Downtown Boulevards
-    for (let px = -124; px <= 124; px += 14) {
+    // Imperial Palms along BOTH continuous river embankments (Z = 6.2 & Z = 27.8)
+    for (let px = -100; px <= 100; px += 14) {
       if (Math.abs(px % 34) < 8) continue;
-      treeCollector.palms.push({ x: px, y: 0.24, z: 6.2, scale: 0.95 + (Math.abs(px) % 3) * 0.08 });
+      treeCollector.palms.push({
+        x: px,
+        y: 0.24,
+        z: 6.2,
+        scale: 0.95 + (Math.abs(px) % 3) * 0.08,
+      });
       treeCollector.palms.push({ x: px, y: 0.24, z: 27.8, scale: 0.95 + (Math.abs(px + 1) % 3) * 0.08 });
       treeCollector.shrubs.push({ x: px + 4.5, y: 0.24, z: 6.2, scale: 0.9 });
       treeCollector.shrubs.push({ x: px - 4.5, y: 0.24, z: 27.8, scale: 0.9 });
     }
 
-    // Sidewalk Ipês & leafy trees lining avenues
-    for (let sx = -114; sx <= 114; sx += 22) {
-      if (Math.abs(sx % 34) < 9) continue;
-      treeCollector.urbanLeafy.push({ x: sx, y: 0.2, z: -6.4, scale: 0.85 });
+    // Sidewalk Ipês & leafy trees lining avenues (grounded on cityRoadY!)
+    for (let sx = -138; sx <= 138; sx += 20) {
+      if (Math.abs(sx) > 100 && Math.abs(sx) < 110) continue;
+      if (Math.abs(sx) <= 102 && Math.abs(sx % 34) < 9) continue;
+      treeCollector.urbanLeafy.push({ x: sx, y: cityRoadY(-6.4) + 0.2, z: -6.4, scale: 0.85 });
       if (Math.abs(sx) > 36) {
-        treeCollector.ipesYellow.push({ x: sx, y: 0.2, z: -61.2, scale: 0.88 });
+        treeCollector.ipesYellow.push({ x: sx, y: cityRoadY(-61.2) + 0.2, z: -61.2, scale: 0.88 });
       }
-      if (sx % 44 === 0) {
-        treeCollector.ipesPink.push({ x: sx, y: 0.2, z: -74.8, scale: 0.92 });
+      if (sx % 40 === 0) {
+        treeCollector.ipesPink.push({ x: sx, y: cityRoadY(-74.8) + 0.2, z: -74.8, scale: 0.92 });
       }
     }
+    // Palms extending along South Waterfront boardwalk to West Beach corner & East Boulevard
+    [-168, -155, -142, -128, -114, 114, 128, 142].forEach((px, idx) => {
+      treeCollector.palms.push({ x: px, y: 0.24, z: 6.2, scale: 0.98 + (idx % 2) * 0.08 });
+      treeCollector.shrubs.push({ x: px + 3.5, y: 0.24, z: 6.2, scale: 0.9 });
+    });
 
     // 3. 5 PONTES CONECTADAS (3 ESTAIADAS + ARCO + CONCRETO)
     this.scene.add(createConnectedBridges(this.atlas, this.lampEmissiveMat));
@@ -506,6 +808,16 @@ export class CityConceptController {
     this.skylineGlowMats.push(...this.financialResult.skylineGlowMats);
     this.scene.add(this.financialResult.group);
 
+    // 5B. EXPANSÃO LATERAL: 3 PRÉDIOS LARGOS DE MORADIA (2-EM-1) + 3 PRÉDIOS DE VENDAS C/ OUTDOORS & ESTACIONAMENTOS
+    this.expandedResult = createExpandedBuildingsDistrict(
+      this.atlas,
+      this.lampEmissiveMat,
+      treeCollector,
+    );
+    this.beacons.push(...this.expandedResult.beaconMats);
+    this.skylineGlowMats.push(...this.expandedResult.skylineGlowMats);
+    this.scene.add(this.expandedResult.group);
+
     // 6. BAIRRO RESIDENCIAL DE CASAS URBANAS + PRAÇA + BARES + POSTES
     this.residentialResult = createResidentialDistrict(
       this.atlas,
@@ -515,34 +827,777 @@ export class CityConceptController {
     );
     this.scene.add(this.residentialResult.group);
 
-    // 7. MORRO / FAVELA DENSA CONECTADA (~340 CASAS + ESCADÕES + QUADRA + MATA)
+    // 7. MORRO / FAVELA DENSA CONECTADA + NASCENTE & CÓRREGO
     this.scene.add(createMorroDistrict(this.atlas, this.windowEmissiveMat, this.lampEmissiveMat, treeCollector));
 
-    // 8. INSTANCED VEGETATION SYSTEM (ALL TREES SWAYING WITH "VENTO NA BANDEIRA")
+    // 7B. CAIS BAIXO (-0.85m) NA ORLA + MIRANTE ALTO DA SERRA SUL (+13.8m)
+    this.buildWaterfrontCaisAndOverlook(treeCollector);
+
+    // 7C. PRAIA OESTE (X < -171.5), CAMINHO COMPLETO, PONTE EM ARCO & ILHA DO SOL
+    this.buildBeachAndOrla(treeCollector);
+
+    // 7D. REFLORESTAMENTO COMPLETO (Ilha do Sol, Orla Oeste, Bosques N/S, Serra Sul & Flancos)
+    this.populateReforestation(treeCollector);
+
+    // Extra flowering shrubs framing avenues, Praça, Cidade Alta & Expanded Boulevards
+    for (let sx = -136; sx <= 136; sx += 18) {
+      if (Math.abs(sx) > 96 && Math.abs(sx) < 112) continue;
+      if (Math.abs(sx) <= 102 && Math.abs(sx % 34) < 8) continue;
+      treeCollector.shrubs.push({ x: sx, y: cityRoadY(-6.2) + 0.14, z: -6.2, scale: 0.85 });
+      treeCollector.shrubs.push({ x: sx, y: cityRoadY(-27.8) + 0.14, z: -27.8, scale: 0.85 });
+    }
+
+    // 8. INSTANCED BOTANICAL VEGETATION SYSTEM (MULTI-BRANCH TREES + FLOWERING SHRUBS)
     this.vegetation = createVegetationSystem(treeCollector);
     this.scene.add(this.vegetation.group);
 
-    // 9. OUTDOORS, PLACAS DE TRÂNSITO, SEMÁFOROS SINCRONIZADOS & POSTES
+    // 9. OUTDOORS, PÓRTICOS, PLACAS DE ESQUINA/TRÂNSITO, MAPAS & SEMÁFOROS
     this.buildBillboardsAndTrafficSigns();
     this.buildIntersectionsAndLights();
 
-    // 10. TRÂNSITO INTENSO (Frota 50), BARCOS, HELICÓPTEROS & NPCS
+    // 10. TRÂNSITO INTENSO (Frota 50), 5 BARCOS REAIS, HELICÓPTEROS & NPCS
     this.spawnVehiclesAndBoats(maxAniso);
     this.spawnArticulatedNpcs();
   }
 
+  private buildWaterfrontCaisAndOverlook(treeCollector: {
+    ipesYellow: VegetationPlacement[];
+    ipesPink: VegetationPlacement[];
+    shrubs: VegetationPlacement[];
+  }) {
+    const matGranite = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.78 });
+    const matCaisDeck = new THREE.MeshStandardMaterial({ map: this.atlas.sidewalk, roughness: 0.82 });
+    const matWoodPier = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.76 });
+    const matIron = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.4, metalness: 0.75 });
+    const matBuoy = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.45 });
+    const matGlassRail = new THREE.MeshStandardMaterial({
+      color: 0xbae6fd,
+      transparent: true,
+      opacity: 0.38,
+      roughness: 0.12,
+      metalness: 0.45,
+    });
+
+    // CAIS BAIXO (-0.85m) flanking Central Bridge on South Riverbank: X ∈ [-28, -8] & [+8, +28]
+    [
+      { xCenter: -18, hasPier: true },
+      { xCenter: 18, hasPier: false },
+    ].forEach(({ xCenter, hasPier }) => {
+      // Lower riverside granite terrace at Y = -0.85m (top at -0.80m)
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(19.6, 1.3, 3.2), matCaisDeck);
+      deck.position.set(xCenter, -1.45, 8.2);
+      deck.receiveShadow = true;
+      this.scene.add(deck);
+
+      // Granite stairs stepping down from 0.24m boardwalk to -0.80m Cais Baixo
+      for (let st = 0; st < 5; st++) {
+        const stepY = 0.08 - st * 0.21;
+        const stepZ = 5.4 + st * 0.34;
+        const stepMesh = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.24, 0.44), matGranite);
+        stepMesh.position.set(xCenter, stepY, stepZ);
+        stepMesh.receiveShadow = true;
+        this.scene.add(stepMesh);
+      }
+
+      // Guardrails flanking the stair gap + promenade lantern bollards
+      [-6.8, 6.8].forEach((ox) => {
+        const bx = xCenter + ox;
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.85, 0.12), matIron);
+        rail.position.set(bx, 0.65, 6.7);
+        this.scene.add(rail);
+
+        const bollard = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.9, 10), matIron);
+        bollard.position.set(bx, -0.35, 9.45);
+        this.scene.add(bollard);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.18, 10), this.lampEmissiveMat);
+        cap.position.set(bx, 0.12, 9.45);
+        this.scene.add(cap);
+      });
+
+      treeCollector.shrubs.push({ x: xCenter - 8.2, y: 0.24, z: 5.1, scale: 0.9 });
+      treeCollector.shrubs.push({ x: xCenter + 8.2, y: 0.24, z: 5.1, scale: 0.9 });
+
+      if (hasPier) {
+        // Timber Yacht Pier jutting out over the river at -0.85m
+        const pierDeck = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.22, 2.8), matWoodPier);
+        pierDeck.position.set(xCenter, -0.84, 10.6);
+        pierDeck.castShadow = true;
+        pierDeck.receiveShadow = true;
+        this.scene.add(pierDeck);
+
+        [-4.8, 0, 4.8].forEach((px) => {
+          [9.5, 11.7].forEach((pz) => {
+            const piling = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 2.1, 8), matWoodPier);
+            piling.position.set(xCenter + px, -1.75, pz);
+            this.scene.add(piling);
+          });
+          const cleat = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.13, 0.34, 8), matIron);
+          cleat.position.set(xCenter + px, -0.58, 11.75);
+          this.scene.add(cleat);
+        });
+
+        const lifeRing = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.08, 8, 16), matBuoy);
+        lifeRing.position.set(xCenter + 4.8, -0.30, 9.45);
+        this.scene.add(lifeRing);
+      }
+    });
+
+    // MIRANTE ALTO DA SERRA SUL (+13.8m) at South Summit (X = 0, Z = -144)
+    const matAsphalt = new THREE.MeshStandardMaterial({ map: this.atlas.asphaltAvenue, roughness: 0.85 });
+    const rampSegs = 20;
+    const rampGeo = new THREE.PlaneGeometry(10.0, 20.0, 1, rampSegs);
+    rampGeo.rotateX(-Math.PI / 2);
+    rampGeo.translate(0, 0, -133.5);
+    const rPos = rampGeo.attributes.position;
+    const rUv = rampGeo.attributes.uv;
+    for (let i = 0; i < rPos.count; i++) {
+      const rz = rPos.getZ(i);
+      rPos.setY(i, cityBasinTerrainY(0, rz) + 0.08);
+      rUv.setY(i, rUv.getY(i) * 2.2);
+    }
+    rampGeo.computeVertexNormals();
+    const overlookRamp = new THREE.Mesh(rampGeo, matAsphalt);
+    overlookRamp.receiveShadow = true;
+    this.scene.add(overlookRamp);
+
+    const miranteY = 13.85;
+    const overlookDeck = new THREE.Mesh(new THREE.CylinderGeometry(13.5, 14.8, 1.8, 28), matGranite);
+    overlookDeck.position.set(0, miranteY - 0.85, -144);
+    overlookDeck.receiveShadow = true;
+    overlookDeck.castShadow = true;
+    this.scene.add(overlookDeck);
+
+    const overlookSurface = new THREE.Mesh(new THREE.CylinderGeometry(13.0, 13.0, 0.14, 28), matCaisDeck);
+    overlookSurface.position.set(0, miranteY + 0.06, -144);
+    overlookSurface.receiveShadow = true;
+    this.scene.add(overlookSurface);
+
+    // Panoramic glass balcony rim looking North over the entire metropolis
+    for (let a = -Math.PI * 0.38; a <= Math.PI * 0.38; a += Math.PI * 0.095) {
+      const gx = Math.sin(a) * 12.6;
+      const gz = -144 + Math.cos(a) * 12.6;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.15, 8), matIron);
+      post.position.set(gx, miranteY + 0.65, gz);
+      this.scene.add(post);
+
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.92, 0.06), matGlassRail);
+      glass.position.set(gx, miranteY + 0.62, gz);
+      glass.rotation.y = a;
+      this.scene.add(glass);
+    }
+
+    // Architectural Lookout Monument + Observation Binoculars + Lamps at Mirante Sul
+    const obelisk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.45, 0.95, 5.4, 4),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.7 }),
+    );
+    obelisk.position.set(0, miranteY + 2.75, -149.5);
+    obelisk.rotation.y = Math.PI / 4;
+    obelisk.castShadow = true;
+    this.scene.add(obelisk);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12), this.lampEmissiveMat);
+    beacon.position.set(0, miranteY + 5.65, -149.5);
+    this.scene.add(beacon);
+
+    [-4.2, 4.2].forEach((bx) => {
+      const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.35, 8), matIron);
+      stand.position.set(bx, miranteY + 0.72, -133.0);
+      this.scene.add(stand);
+      const bino = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.18, 0.45), matIron);
+      bino.position.set(bx, miranteY + 1.44, -132.9);
+      this.scene.add(bino);
+    });
+
+    // Flowering Ipês & shrubs crowning the Mirante Sul terrace
+    treeCollector.ipesYellow.push({ x: -10.5, y: miranteY + 0.1, z: -146.5, scale: 1.05 });
+    treeCollector.ipesPink.push({ x: 10.5, y: miranteY + 0.1, z: -146.5, scale: 1.05 });
+    [-8.5, -5.5, 5.5, 8.5].forEach((sx) => {
+      treeCollector.shrubs.push({ x: sx, y: miranteY + 0.1, z: -148.5, scale: 0.95 });
+    });
+  }
+
+  private buildBeachAndOrla(treeCollector: {
+    palms: VegetationPlacement[];
+    shrubs: VegetationPlacement[];
+  }) {
+    const beachGroup = new THREE.Group();
+    beachGroup.name = 'Praia_Oeste_Ilha_do_Sol';
+    beachGroup.userData.hotspot = 'beach';
+
+    const matSand = new THREE.MeshStandardMaterial({ map: this.atlas.beachSand, roughness: 0.92 });
+    const matFoam = new THREE.MeshBasicMaterial({
+      color: 0xf8fafc,
+      transparent: true,
+      opacity: 0.50,
+    });
+    const matWood = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.78 });
+    const matDarkWood = new THREE.MeshStandardMaterial({ color: 0x713f12, roughness: 0.82 });
+    const matStone = new THREE.MeshStandardMaterial({ map: this.atlas.sidewalk, roughness: 0.84 });
+    const matGranite = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.82 });
+    const matKioskWall = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.75 });
+    const matWhite = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.65 });
+    const matPole = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.45, metalness: 0.35 });
+    const matRed = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 });
+    const matYellow = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 });
+    const matCourtLine = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+
+    // 1. HIGH-RES MAINLAND WEST BEACH SAND MESH (X ∈ [-197.5, -171.5], Z ∈ [-46.5, +9.5])
+    const sandGeo = new THREE.PlaneGeometry(26.0, 56.0, 32, 48);
+    sandGeo.rotateX(-Math.PI / 2);
+    sandGeo.translate(-184.5, 0, -18.5);
+    const sPos = sandGeo.attributes.position;
+    for (let i = 0; i < sPos.count; i++) {
+      const vx = sPos.getX(i);
+      const vz = sPos.getZ(i);
+      sPos.setY(i, westMainlandBeachY(vx, vz) + 0.02);
+    }
+    sandGeo.computeVertexNormals();
+    const sandMesh = new THREE.Mesh(sandGeo, matSand);
+    sandMesh.receiveShadow = true;
+    beachGroup.add(sandMesh);
+
+    // 2. CURVED MAINLAND SURF FOAM RIBBON FOLLOWING EXACT WATERLINE (Y = -1.25m)
+    const foamSegsZ = 40;
+    const foamGeo = new THREE.BufferGeometry();
+    const foamVerts: number[] = [];
+    const foamIdx: number[] = [];
+    for (let i = 0; i <= foamSegsZ; i++) {
+      const fz = THREE.MathUtils.lerp(-42.5, 6.0, i / foamSegsZ);
+      let lo = -195.0;
+      let hi = -171.5;
+      for (let step = 0; step < 8; step++) {
+        const mid = (lo + hi) * 0.5;
+        if (westMainlandBeachY(mid, fz) > -1.25) hi = mid;
+        else lo = mid;
+      }
+      const xWater = (lo + hi) * 0.5;
+      foamVerts.push(xWater - 0.55, -1.21, fz);
+      foamVerts.push(xWater + 0.55, -1.21, fz);
+      if (i < foamSegsZ) {
+        const b = i * 2;
+        foamIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
+      }
+    }
+    foamGeo.setAttribute('position', new THREE.Float32BufferAttribute(foamVerts, 3));
+    foamGeo.setIndex(foamIdx);
+    const mainlandFoam = new THREE.Mesh(foamGeo, matFoam);
+    beachGroup.add(mainlandFoam);
+
+    // Curbed concrete coping along the boardwalk/sand edge (X = -171.6, Z ∈ [-41, +7.6])
+    const beachCurb = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.36, 48.6), matGranite);
+    beachCurb.position.set(-171.55, 0.08, -16.7);
+    beachGroup.add(beachCurb);
+
+    // 3. TWO BEACHFRONT KIOSKS ON THE COPACABANA CALÇADÃO (Facing West toward Lagoon & Island!)
+    [
+      { z: -4.5, signIdx: 22, surfColor: 0x06b6d4 }, // Quiosque Água de Coco
+      { z: -27.5, signIdx: 23, surfColor: 0xf97316 }, // Quiosque Brisa do Mar
+    ].forEach(({ z, signIdx, surfColor }) => {
+      const kg = new THREE.Group();
+      kg.position.set(-169.3, 0.24, z);
+      kg.rotation.y = -Math.PI / 2; // Local +Z now faces -X (onto the sand & ocean!)
+
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.12, 3.0), matWood);
+      deck.position.y = 0.06;
+      deck.receiveShadow = true;
+      kg.add(deck);
+
+      const core = new THREE.Mesh(new THREE.BoxGeometry(3.4, 2.35, 1.8), matKioskWall);
+      core.position.set(0, 1.24, -0.35);
+      core.castShadow = true;
+      kg.add(core);
+
+      const counter = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.0, 0.55), matWood);
+      counter.position.set(0, 0.58, 0.85);
+      kg.add(counter);
+
+      [-2.4, 2.4].forEach((px) => {
+        [-1.1, 1.1].forEach((pz) => {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 2.65, 8), matWood);
+          post.position.set(px, 1.4, pz);
+          kg.add(post);
+        });
+      });
+      const canopy = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.16, 3.1), matWood);
+      canopy.position.set(0, 2.75, 0);
+      canopy.castShadow = true;
+      kg.add(canopy);
+
+      const signMat = new THREE.MeshStandardMaterial({
+        map: this.atlas.shopSigns[signIdx],
+        emissive: 0xffffff,
+        emissiveMap: this.atlas.shopSigns[signIdx],
+        emissiveIntensity: 0.55,
+      });
+      const signF = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.72, 0.12), signMat);
+      signF.position.set(0, 3.15, 1.35);
+      kg.add(signF);
+      const signB = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.72, 0.12), signMat);
+      signB.position.set(0, 3.15, -1.35);
+      kg.add(signB);
+
+      [-1.3, 0, 1.3].forEach((sx) => {
+        const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 0.62, 10), matWhite);
+        stool.position.set(sx, 0.38, 1.38);
+        kg.add(stool);
+      });
+
+      const board = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.22, 1.5, 4, 8),
+        new THREE.MeshStandardMaterial({ color: surfColor, roughness: 0.3 }),
+      );
+      board.scale.set(1.2, 1, 0.25);
+      board.position.set(3.25, 0.95, 0.4);
+      board.rotation.z = -0.18;
+      kg.add(board);
+
+      beachGroup.add(kg);
+      treeCollector.shrubs.push({ x: -168.4, y: 0.24, z: z - 3.6, scale: 0.85 });
+    });
+
+    // 4. BEACH UMBRELLAS & SUN LOUNGERS (Seated level on the flat dry sand terrace!)
+    const umbrellaColors = [0xef4444, 0x0ea5e9, 0xf59e0b, 0x10b981, 0xf97316, 0x3b82f6];
+    const umbrellaSpots: [number, number][] = [
+      [-175.4, -3.5],
+      [-178.2, -7.8],
+      [-176.2, -9.8],
+      [-175.2, -18.5],
+      [-178.5, -27.2],
+      [-176.0, -31.5],
+      [-178.6, -34.8],
+    ];
+    const umbPoleGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.2, 8);
+    const umbDomeGeo = new THREE.ConeGeometry(1.32, 0.55, 8);
+    const loungerGeo = new THREE.BoxGeometry(0.75, 0.14, 1.85);
+    const backrestGeo = new THREE.BoxGeometry(0.75, 0.52, 0.14);
+    const umbrellaMats = umbrellaColors.map(
+      (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, side: THREE.DoubleSide }),
+    );
+    umbrellaSpots.forEach(([ux, uz], idx) => {
+      const sy = westMainlandBeachY(ux, uz);
+      const umb = new THREE.Group();
+      umb.position.set(ux, sy, uz);
+      umb.rotation.y = -Math.PI / 2; // Sun loungers face West toward water & Island!
+
+      const pole = new THREE.Mesh(umbPoleGeo, matPole);
+      pole.position.y = 1.05;
+      umb.add(pole);
+
+      const dome = new THREE.Mesh(umbDomeGeo, umbrellaMats[idx % umbrellaMats.length]);
+      dome.position.y = 2.08;
+      umb.add(dome);
+
+      const lounger = new THREE.Mesh(loungerGeo, matWhite);
+      lounger.position.set(0.72, 0.14, 0.15);
+      umb.add(lounger);
+      const backrest = new THREE.Mesh(backrestGeo, matWhite);
+      backrest.position.set(0.72, 0.36, -0.72);
+      backrest.rotation.x = 0.42;
+      umb.add(backrest);
+
+      beachGroup.add(umb);
+    });
+
+    // 5. FLAT BEACH VOLLEYBALL / FUTEVÔLEI COURT ON DRY SAND (-177.2, -22.5)
+    const courtY = westMainlandBeachY(-177.2, -22.5) + 0.04;
+    const courtGroup = new THREE.Group();
+    courtGroup.position.set(-177.2, courtY, -22.5);
+    courtGroup.rotation.y = Math.PI / 2;
+    const lineN = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.02, 0.10), matCourtLine);
+    lineN.position.z = 1.65;
+    const lineS = lineN.clone();
+    lineS.position.z = -1.65;
+    const lineW = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.02, 3.3), matCourtLine);
+    lineW.position.x = -3.6;
+    const lineE = lineW.clone();
+    lineE.position.x = 3.6;
+    courtGroup.add(lineN, lineS, lineW, lineE);
+
+    [-1.75, 1.75].forEach((pz) => {
+      const netPost = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.0, 8), matPole);
+      netPost.position.set(0, 1.0, pz);
+      courtGroup.add(netPost);
+    });
+    const netBand = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.72, 3.5),
+      new THREE.MeshBasicMaterial({ color: 0xf1f5f9, transparent: true, opacity: 0.55 }),
+    );
+    netBand.position.set(0, 1.48, 0);
+    courtGroup.add(netBand);
+    beachGroup.add(courtGroup);
+
+    // 6. LIFEGUARD TOWER (-175.4, +1.0) & BEACH PARKING COURT (-162, -41.5)
+    const lgY = westMainlandBeachY(-175.4, 1.0);
+    const lg = new THREE.Group();
+    lg.position.set(-175.4, lgY, 1.0);
+    lg.rotation.y = -Math.PI / 2;
+    [-0.75, 0.75].forEach((lx) => {
+      [-0.75, 0.75].forEach((lz) => {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.2, 0.14), matWood);
+        leg.position.set(lx, 1.1, lz);
+        lg.add(leg);
+      });
+    });
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.65, 2.0), matYellow);
+    cabin.position.y = 2.9;
+    cabin.castShadow = true;
+    lg.add(cabin);
+    const lgRoof = new THREE.Mesh(new THREE.ConeGeometry(1.75, 0.75, 4), matRed);
+    lgRoof.rotation.y = Math.PI / 4;
+    lgRoof.position.y = 4.1;
+    lg.add(lgRoof);
+    beachGroup.add(lg);
+
+    // Paved Beach Wayfinding Totem at Bridge Entrance (-168.4, -14.0)
+    const totem = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.35, 1.9), matDarkWood);
+    totem.position.set(-167.8, 1.25, -11.2);
+    beachGroup.add(totem);
+    const mapFace = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.65, 1.25),
+      new THREE.MeshStandardMaterial({
+        map: this.atlas.wayfindingMap,
+        emissive: 0xffffff,
+        emissiveMap: this.atlas.wayfindingMap,
+        emissiveIntensity: 0.25,
+      }),
+    );
+    mapFace.rotation.y = Math.PI / 2;
+    mapFace.position.set(-167.64, 1.48, -11.2);
+    beachGroup.add(mapFace);
+
+    // 7. ARCHED TIMBER & STONE LAGOON BRIDGE ("Ponte da Ilha do Sol": Z = -14, X = -171.2 → -208.5)
+    const bridgeDeckY = (bx: number) => {
+      const t = THREE.MathUtils.clamp((-171.2 - bx) / (-171.2 - -208.5), 0, 1);
+      return 0.24 + Math.sin(t * Math.PI) * 1.95 + t * 0.50;
+    };
+    const bridgeSegs = 18;
+    const bxStart = -171.2;
+    const bxEnd = -208.5;
+    for (let i = 0; i < bridgeSegs; i++) {
+      const t0 = i / bridgeSegs;
+      const t1 = (i + 1) / bridgeSegs;
+      const x0 = THREE.MathUtils.lerp(bxStart, bxEnd, t0);
+      const x1 = THREE.MathUtils.lerp(bxStart, bxEnd, t1);
+      const y0 = bridgeDeckY(x0);
+      const y1 = bridgeDeckY(x1);
+      const xm = (x0 + x1) * 0.5;
+      const ym = (y0 + y1) * 0.5;
+      const segLen = Math.hypot(x1 - x0, y1 - y0) + 0.08;
+      const pitch = Math.atan2(y1 - y0, x0 - x1);
+
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(segLen, 0.22, 3.4), matWood);
+      plank.position.set(xm, ym - 0.10, -14);
+      plank.rotation.z = pitch;
+      plank.castShadow = true;
+      plank.receiveShadow = true;
+      beachGroup.add(plank);
+
+      [-1.58, 1.58].forEach((rz) => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(segLen, 0.09, 0.12), matDarkWood);
+        rail.position.set(xm, ym + 0.88, -14 + rz);
+        rail.rotation.z = pitch;
+        beachGroup.add(rail);
+      });
+
+      if (i % 2 === 0 || i === bridgeSegs - 1) {
+        const px = i === bridgeSegs - 1 ? x1 : x0;
+        const py = i === bridgeSegs - 1 ? y1 : y0;
+        [-1.55, 1.55].forEach((rz) => {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, py + 3.4, 8), matDarkWood);
+          post.position.set(px, (py - 2.6) * 0.5 + 0.45, -14 + rz);
+          beachGroup.add(post);
+
+          if (i % 4 === 0) {
+            const lampHead = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), this.lampEmissiveMat);
+            lampHead.position.set(px, py + 1.04, -14 + rz);
+            beachGroup.add(lampHead);
+          }
+        });
+      }
+    }
+
+    // Side Boat Landing Jetty branching off Bridge at X = -196, Z = -12..-6.5
+    const jettyDeck = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.20, 6.2), matWood);
+    jettyDeck.position.set(-196, -0.78, -9.2);
+    jettyDeck.receiveShadow = true;
+    beachGroup.add(jettyDeck);
+    const jettyRamp = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.18, 3.6), matWood);
+    jettyRamp.position.set(-196, 0.35, -11.4);
+    jettyRamp.rotation.x = 0.62;
+    beachGroup.add(jettyRamp);
+    [-197.2, -194.8].forEach((jx) => {
+      const jp = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 2.2, 8), matDarkWood);
+      jp.position.set(jx, -1.7, -6.5);
+      beachGroup.add(jp);
+    });
+
+    // 8. HIGH-RES ILHA DO SOL TERRAIN CAP + FOAM HALO + ARRIVAL PIER + LOOP PATH + MIRANTE GAZEBO
+    const islGeo = new THREE.PlaneGeometry(72, 72, 44, 44);
+    islGeo.rotateX(-Math.PI / 2);
+    islGeo.translate(WEST_ISLAND_CENTER.x, 0, WEST_ISLAND_CENTER.z);
+    const iPos = islGeo.attributes.position;
+    const iColors = new Float32Array(iPos.count * 3);
+    const iCol = new THREE.Color();
+    for (let i = 0; i < iPos.count; i++) {
+      const ix = iPos.getX(i);
+      const iz = iPos.getZ(i);
+      const iy = westIslandTerrainY(ix, iz) + 0.03;
+      iPos.setY(i, iy);
+      if (iy < -1.35) {
+        iCol.setHex(0x0b2330);
+      } else if (iy <= 0.48) {
+        iCol.setHex(iy < -0.2 ? 0xc2a46e : 0xe3ca91);
+      } else {
+        const shade = ((Math.abs(Math.round(ix * 0.2 + iz * 0.2)) % 3) - 1) * 0.022;
+        iCol.setRGB(0.145 + shade * 0.4, 0.29 + shade, 0.155 + shade * 0.4);
+      }
+      iColors[i * 3] = iCol.r;
+      iColors[i * 3 + 1] = iCol.g;
+      iColors[i * 3 + 2] = iCol.b;
+    }
+    islGeo.setAttribute('color', new THREE.BufferAttribute(iColors, 3));
+    islGeo.computeVertexNormals();
+    const islandTerrain = new THREE.Mesh(
+      islGeo,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.90 }),
+    );
+    islandTerrain.receiveShadow = true;
+    beachGroup.add(islandTerrain);
+
+    // 360-degree Island Surf Foam Halo along exact -1.25m waterline (u = 1.0)
+    const haloSegs = 40;
+    const haloGeo = new THREE.BufferGeometry();
+    const haloVerts: number[] = [];
+    const haloIdx: number[] = [];
+    for (let i = 0; i <= haloSegs; i++) {
+      const a = (i / haloSegs) * Math.PI * 2;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const rShore =
+        26.5 +
+        2.8 * Math.cos(2 * a - 0.5) +
+        1.8 * Math.sin(3 * a + 0.7) +
+        0.9 * Math.cos(4 * a + 1.2);
+      const rIn = rShore - 0.5;
+      const rOut = rShore + 0.6;
+      haloVerts.push(WEST_ISLAND_CENTER.x + ca * rIn, -1.21, WEST_ISLAND_CENTER.z + sa * rIn);
+      haloVerts.push(WEST_ISLAND_CENTER.x + ca * rOut, -1.21, WEST_ISLAND_CENTER.z + sa * rOut);
+      if (i < haloSegs) {
+        const b = i * 2;
+        haloIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
+      }
+    }
+    haloGeo.setAttribute('position', new THREE.Float32BufferAttribute(haloVerts, 3));
+    haloGeo.setIndex(haloIdx);
+    beachGroup.add(new THREE.Mesh(haloGeo, matFoam));
+
+    // Island Arrival Pier Plaza (-211.0, 0.74, -14) connecting Bridge to Island Loop Trail
+    const arrDeck = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.24, 5.4), matWood);
+    arrDeck.position.set(-211.4, 0.64, -14.0);
+    arrDeck.receiveShadow = true;
+    beachGroup.add(arrDeck);
+
+    // Full Perimeter Stone Loop Trail circling the entire Island ("Trilha Completa da Ilha")
+    const trailSteps = 22;
+    const trailPoints: [number, number, number][] = [];
+    for (let i = 0; i <= trailSteps; i++) {
+      const a = (i / trailSteps) * Math.PI * 2;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const rShore =
+        26.5 +
+        2.8 * Math.cos(2 * a - 0.5) +
+        1.8 * Math.sin(3 * a + 0.7) +
+        0.9 * Math.cos(4 * a + 1.2);
+      const rTrail = rShore * 0.68;
+      const tx = WEST_ISLAND_CENTER.x + ca * rTrail;
+      const tz = WEST_ISLAND_CENTER.z + sa * rTrail;
+      trailPoints.push([tx, westIslandTerrainY(tx, tz) + 0.09, tz]);
+    }
+    for (let i = 0; i < trailSteps; i++) {
+      const [x0, y0, z0] = trailPoints[i];
+      const [x1, y1, z1] = trailPoints[i + 1];
+      const xm = (x0 + x1) * 0.5;
+      const ym = (y0 + y1) * 0.5;
+      const zm = (z0 + z1) * 0.5;
+      const dx = x1 - x0;
+      const dz = z1 - z0;
+      const horiz = Math.hypot(dx, dz);
+      const segLen = Math.hypot(horiz, y1 - y0) + 0.35;
+      const segGroup = new THREE.Group();
+      segGroup.position.set(xm, ym, zm);
+      segGroup.rotation.order = 'YXZ';
+      segGroup.rotation.y = Math.atan2(dx, dz);
+      segGroup.rotation.x = -Math.atan2(y1 - y0, horiz);
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.16, segLen), matStone);
+      slab.receiveShadow = true;
+      segGroup.add(slab);
+      beachGroup.add(segGroup);
+
+      if (i % 2 === 0) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.10, 0.95, 7), matDarkWood);
+        post.position.set(x0, y0 + 0.45, z0);
+        beachGroup.add(post);
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.16, 7), this.lampEmissiveMat);
+        cap.position.set(x0, y0 + 0.98, z0);
+        beachGroup.add(cap);
+      }
+    }
+
+    // Island Summit Lookout Gazebo ("Mirante da Ilha") at SW hillock (-243, -22)
+    const mirX = -243.0;
+    const mirZ = -22.0;
+    const mirY = westIslandTerrainY(mirX, mirZ);
+    const gazebo = new THREE.Group();
+    gazebo.position.set(mirX, mirY, mirZ);
+    const gzBase = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.6, 0.45, 8), matGranite);
+    gzBase.position.y = 0.20;
+    gzBase.receiveShadow = true;
+    gazebo.add(gzBase);
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 3.1, 8), matDarkWood);
+      col.position.set(Math.cos(a) * 3.2, 1.75, Math.sin(a) * 3.2);
+      gazebo.add(col);
+    }
+    const gzRoof = new THREE.Mesh(new THREE.ConeGeometry(4.4, 1.65, 8), matWood);
+    gzRoof.position.y = 4.05;
+    gzRoof.castShadow = true;
+    gazebo.add(gzRoof);
+    const gzLantern = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), this.lampEmissiveMat);
+    gzLantern.position.y = 3.2;
+    gazebo.add(gzLantern);
+    beachGroup.add(gazebo);
+
+    // North Island Overlook Timber Deck (-234, +9.0) facing North Bay & River Mouth
+    const northDeckY = westIslandTerrainY(-234, 8.5);
+    const northDeck = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.24, 4.4), matWood);
+    northDeck.position.set(-234, Math.max(northDeckY + 0.15, 0.45), 9.2);
+    northDeck.receiveShadow = true;
+    beachGroup.add(northDeck);
+
+    // Coastal palm curb along Av. Beira-Mar Median (-155) & Calçadão Oeste (-168.4)
+    [-38, -28, -19, -9, 1].forEach((pz) => {
+      treeCollector.palms.push({ x: -168.2, y: 0.24, z: pz, scale: 0.96 + (Math.abs(pz) % 3) * 0.06 });
+      if (pz > -26 && pz < -8) {
+        treeCollector.palms.push({ x: -155.0, y: 0.22, z: pz, scale: 0.92 });
+        treeCollector.shrubs.push({ x: -155.0, y: 0.22, z: pz - 3.5, scale: 0.90 });
+      }
+    });
+
+    this.scene.add(beachGroup);
+  }
+
+  private populateReforestation(treeCollector: {
+    palms: VegetationPlacement[];
+    ipesYellow: VegetationPlacement[];
+    ipesPink: VegetationPlacement[];
+    urbanLeafy: VegetationPlacement[];
+    atlanticForest: VegetationPlacement[];
+    shrubs: VegetationPlacement[];
+  }) {
+    const canPlant = (x: number, z: number): boolean => {
+      if (z > 6.5 && z < 27.5 && x >= -172.5) return false; // river channel
+      if (Math.abs(x) <= 154.5 && z >= -131 && z <= 7.6) return false; // urban asphalt grid
+      if (Math.abs(x) <= 113.5 && z >= 26 && z <= 43.2) return false; // Marginal Norte
+      if (x >= -172.5 && x <= -153.0 && z >= -42.5 && z <= 8.0) return false; // Av. Beira-Mar + Calçadão
+      if (x > 73 && x < 97 && z > 25 && z < 122 && Math.abs(x - creekCenterX(z)) < 5.8) return false; // Córrego
+      if (Math.hypot(x, z + 144) < 16.0) return false; // Mirante Sul terrace
+      if (Math.abs(x) < 7.5 && z < -123 && z > -145) return false; // Mirante Sul ramp
+      return cityBasinTerrainY(x, z) >= 0.32;
+    };
+
+    const pushSpecies = (idx: number, x: number, y: number, z: number, scale: number) => {
+      const m = idx % 10;
+      if (m < 5) treeCollector.atlanticForest.push({ x, y, z, scale });
+      else if (m < 7) treeCollector.urbanLeafy.push({ x, y, z, scale: scale * 0.92 });
+      else if (m === 7) treeCollector.ipesYellow.push({ x, y, z, scale: scale * 0.92 });
+      else if (m === 8) treeCollector.ipesPink.push({ x, y, z, scale: scale * 0.92 });
+      else treeCollector.palms.push({ x, y, z, scale: scale * 0.95 });
+    };
+
+    // 1. REFLORESTAMENTO COMPLETO DA ILHA DO SOL (~72 árvores + 34 arbustos)
+    for (let i = 0; i < 95; i++) {
+      const a = (i * 2.39996) % (Math.PI * 2);
+      const frac = 0.14 + 0.66 * Math.sqrt((i + 0.5) / 95);
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const rShore =
+        26.5 +
+        2.8 * Math.cos(2 * a - 0.5) +
+        1.8 * Math.sin(3 * a + 0.7) +
+        0.9 * Math.cos(4 * a + 1.2);
+      const rx = rShore * frac;
+      const tx = WEST_ISLAND_CENTER.x + ca * rx;
+      const tz = WEST_ISLAND_CENTER.z + sa * rx;
+      // Keep trail band (frac ~ 0.68), Arrival Plaza, Gazebo (-243,-22), & North Deck (-234,9) clear
+      if (Math.abs(frac - 0.68) < 0.085) continue;
+      if (Math.hypot(tx - -211.4, tz - -14.0) < 4.5) continue;
+      if (Math.hypot(tx - -243.0, tz - -22.0) < 5.2) continue;
+      if (Math.hypot(tx - -234.0, tz - 8.5) < 4.5) continue;
+      const ty = westIslandTerrainY(tx, tz);
+      if (ty < 0.35) continue;
+      if (frac > 0.74) {
+        treeCollector.palms.push({ x: tx, y: ty, z: tz, scale: 0.92 + (i % 3) * 0.08 });
+      } else {
+        pushSpecies(i, tx, ty, tz, 0.88 + (i % 4) * 0.11);
+      }
+      if (i % 3 === 0) {
+        treeCollector.shrubs.push({ x: tx + 1.1, y: westIslandTerrainY(tx + 1.1, tz), z: tz, scale: 0.88 });
+      }
+    }
+
+    // 2. BOSQUE DE REFLORESTAMENTO NOROESTE (X ∈ [-210, -116], Z ∈ [+29, +110])
+    for (let i = 0; i < 88; i++) {
+      const tx = -208 + ((i * 37) % 90);
+      const tz = 30 + ((i * 23) % 78);
+      if (!canPlant(tx, tz)) continue;
+      const ty = cityBasinTerrainY(tx, tz);
+      pushSpecies(i + 2, tx, ty, tz, 0.96 + (i % 4) * 0.13);
+      if (i % 4 === 0) treeCollector.shrubs.push({ x: tx + 1.5, y: ty, z: tz + 1.2, scale: 0.95 });
+    }
+
+    // 3. MATA DO COSTÃO SUDOESTE (X ∈ [-228, -157], Z ∈ [-158, -46])
+    for (let i = 0; i < 82; i++) {
+      const tx = -224 + ((i * 31) % 66);
+      const tz = -156 + ((i * 29) % 108);
+      if (!canPlant(tx, tz)) continue;
+      const ty = cityBasinTerrainY(tx, tz);
+      pushSpecies(i + 5, tx, ty, tz, 0.95 + (i % 3) * 0.14);
+      if (i % 4 === 0) treeCollector.shrubs.push({ x: tx, y: ty, z: tz - 1.6, scale: 0.95 });
+    }
+
+    // 4. SERRA SUL & CINTURÃO VERDE LESTE (Z ∈ [-192, -135] & X ∈ [+157, +225])
+    for (let i = 0; i < 72; i++) {
+      const tx = -148 + ((i * 43) % 296);
+      const tz = -188 + ((i * 19) % 52);
+      if (!canPlant(tx, tz)) continue;
+      const ty = cityBasinTerrainY(tx, tz);
+      pushSpecies(i + 1, tx, ty, tz, 1.0 + (i % 4) * 0.12);
+    }
+    for (let i = 0; i < 82; i++) {
+      const tx = 158 + ((i * 29) % 66);
+      const tz = -165 + ((i * 37) % 270);
+      if (!canPlant(tx, tz)) continue;
+      const ty = cityBasinTerrainY(tx, tz);
+      pushSpecies(i + 3, tx, ty, tz, 0.96 + (i % 3) * 0.14);
+      if (i % 5 === 0) treeCollector.shrubs.push({ x: tx - 1.4, y: ty, z: tz, scale: 0.95 });
+    }
+  }
+
   private buildBillboardsAndTrafficSigns() {
     const matDarkSteel = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.7 });
+    const matGalvanized = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.35, metalness: 0.82 });
 
-    // Highway / Avenue Billboards
+    // Highway Advertising Billboards on sidewalk corners
     [
-      [-26, -39.5, 0.35, 0],
-      [28, 30, -0.25, 1],
-      [74, -27.5, -0.45, 0],
-      [-74, -27.5, 0.45, 1],
+      [-28.2, -39.5, 0.35, 0],
+      [28.0, 29.2, -0.25, 1],
+      [74.0, -28.0, -0.45, 0],
+      [-74.0, -28.0, 0.45, 1],
     ].forEach(([bx, bz, ry, idx]) => {
       const bg = new THREE.Group();
-      bg.position.set(bx, 0.2, bz);
+      bg.position.set(bx, cityRoadY(bz) + 0.15, bz);
       bg.rotation.y = ry;
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 7.5, 10), matDarkSteel);
       post.position.y = 3.75;
@@ -562,39 +1617,164 @@ export class CityConceptController {
       this.scene.add(bg);
     });
 
-    // Traffic Signs (PARE & 60 km/h)
-    const matStop = new THREE.MeshStandardMaterial({
-      map: this.atlas.trafficSignStop,
-      transparent: true,
-      alphaTest: 0.3,
-      side: THREE.DoubleSide,
+    // 3 Overhead Steel Truss Highway Gantries (Pórticos Viários com placas direcionais)
+    [
+      { x: 0, z: -40.5, rotY: 0, texIdx: 0 },
+      { x: 0, z: -63.5, rotY: 0, texIdx: 1 },
+      { x: 16.5, z: 34, rotY: Math.PI / 2, texIdx: 2 },
+    ].forEach(({ x, z, rotY, texIdx }) => {
+      const gGroup = new THREE.Group();
+      gGroup.position.set(x, cityRoadY(z) + 0.08, z);
+      gGroup.rotation.y = rotY;
+      [-6.2, 6.2].forEach((px) => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 7.2, 8), matGalvanized);
+        leg.position.set(px, 3.6, 0);
+        leg.castShadow = true;
+        gGroup.add(leg);
+      });
+      const beamTop = new THREE.Mesh(new THREE.BoxGeometry(13.0, 0.24, 0.34), matGalvanized);
+      beamTop.position.set(0, 7.1, 0);
+      gGroup.add(beamTop);
+      const beamBot = new THREE.Mesh(new THREE.BoxGeometry(13.0, 0.18, 0.30), matGalvanized);
+      beamBot.position.set(0, 5.65, 0);
+      gGroup.add(beamBot);
+
+      const signMat = new THREE.MeshStandardMaterial({
+        map: this.atlas.gantrySigns[texIdx],
+        emissive: 0xffffff,
+        emissiveMap: this.atlas.gantrySigns[texIdx],
+        emissiveIntensity: 0.25,
+        roughness: 0.35,
+      });
+      const signBox = new THREE.Mesh(new THREE.BoxGeometry(10.8, 2.35, 0.22), signMat);
+      signBox.position.set(0, 6.42, 0);
+      signBox.castShadow = true;
+      gGroup.add(signBox);
+      this.scene.add(gGroup);
     });
-    const matSpeed = new THREE.MeshStandardMaterial({
-      map: this.atlas.trafficSignSpeed,
-      transparent: true,
-      alphaTest: 0.3,
-      side: THREE.DoubleSide,
+
+    // 5 Corner Blue Street-Name Totems (Placas de Nome de Rua)
+    [
+      [-6.0, -5.8, 0, 0],
+      [6.0, -28.2, Math.PI, 1],
+      [-6.0, -73.8, Math.PI, 3],
+      [6.0, 28.2, 0, 4],
+      [40.2, -28.2, -Math.PI / 2, 2],
+    ].forEach(([sx, sz, ry, pIdx]) => {
+      const st = new THREE.Group();
+      st.position.set(sx, cityRoadY(sz) + 0.14, sz);
+      st.rotation.y = ry;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.1, 8), matDarkSteel);
+      pole.position.y = 1.55;
+      st.add(pole);
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(1.75, 0.65, 0.08),
+        new THREE.MeshStandardMaterial({ map: this.atlas.streetNamePlates[pIdx], roughness: 0.4 }),
+      );
+      plate.position.y = 2.95;
+      st.add(plate);
+      this.scene.add(st);
     });
-    const signSpots: [number, number, number, boolean][] = [
-      [-6.5, -62.2, 0, true],
-      [6.5, -73.8, Math.PI, true],
-      [-28.2, 6.2, Math.PI / 2, false],
-      [28.2, -6.2, -Math.PI / 2, false],
-      [-62.2, -39.8, 0, true],
-      [62.2, -28.2, Math.PI, false],
+
+    // 2 City Wayfinding Map Kiosks (Praça da Bandeira & Parque do Bairro)
+    [
+      [-17, 0.30, -9.4, 0],
+      [17, blockTerraceY(-85) + 0.22, -77.5, Math.PI],
+    ].forEach(([kx, ky, kz, ry]) => {
+      const kiosk = new THREE.Group();
+      kiosk.position.set(kx, ky, kz);
+      kiosk.rotation.y = ry;
+      const base = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.45, 0.26), matDarkSteel);
+      base.position.y = 1.22;
+      base.castShadow = true;
+      kiosk.add(base);
+      const mapMat = new THREE.MeshStandardMaterial({
+        map: this.atlas.wayfindingMap,
+        emissive: 0xffffff,
+        emissiveMap: this.atlas.wayfindingMap,
+        emissiveIntensity: 0.3,
+        roughness: 0.3,
+      });
+      const faceF = new THREE.Mesh(new THREE.PlaneGeometry(2.05, 1.55), mapMat);
+      faceF.position.set(0, 1.45, 0.14);
+      kiosk.add(faceF);
+      const faceB = new THREE.Mesh(new THREE.PlaneGeometry(2.05, 1.55), mapMat);
+      faceB.position.set(0, 1.45, -0.14);
+      faceB.rotation.y = Math.PI;
+      kiosk.add(faceB);
+      this.scene.add(kiosk);
+    });
+
+    // Regulatory, Warning & Tourist Signs (PARE, 60km/h, Pedestre, Ladeira 11%, Proibido Estacionar, Mirante)
+    const makeSignMat = (tex: THREE.Texture, alpha = true) =>
+      new THREE.MeshStandardMaterial({
+        map: tex,
+        transparent: alpha,
+        alphaTest: alpha ? 0.3 : 0,
+        side: THREE.DoubleSide,
+        roughness: 0.42,
+      });
+    const signMats = {
+      stop: makeSignMat(this.atlas.trafficSignStop),
+      speed: makeSignMat(this.atlas.trafficSignSpeed),
+      ped: makeSignMat(this.atlas.trafficSignPedestrian),
+      slope: makeSignMat(this.atlas.trafficSignSlope),
+      noPark: makeSignMat(this.atlas.trafficSignNoParking),
+      overlook: makeSignMat(this.atlas.trafficSignTouristOverlook, false),
+      school: makeSignMat(this.atlas.trafficSignSchool),
+    };
+    const signSpots: [number, number, number, keyof typeof signMats, number, number][] = [
+      [-6.5, -62.2, 0, 'stop', 0.95, 0.95],
+      [6.5, -73.8, Math.PI, 'stop', 0.95, 0.95],
+      [-28.2, 6.2, Math.PI / 2, 'speed', 0.95, 0.95],
+      [28.2, -6.2, -Math.PI / 2, 'speed', 0.95, 0.95],
+      [-62.2, -39.8, 0, 'stop', 0.95, 0.95],
+      [62.2, -28.2, Math.PI, 'speed', 0.95, 0.95],
+      [-5.8, -40.2, 0, 'slope', 0.98, 0.98],
+      [5.8, -74.5, Math.PI, 'slope', 0.98, 0.98],
+      [-6.2, -7.8, 0, 'ped', 0.95, 0.95],
+      [6.2, -26.2, Math.PI, 'ped', 0.95, 0.95],
+      [-39.8, -7.8, Math.PI / 2, 'ped', 0.95, 0.95],
+      [-5.8, 5.2, 0, 'noPark', 0.88, 0.88],
+      [5.8, 28.6, Math.PI, 'noPark', 0.88, 0.88],
+      [-6.2, -125.5, 0, 'overlook', 1.85, 0.92],
+      // Escola Pública E.M. Cidade Nova — Área Escolar signs
+      [-25.4, -73.4, -Math.PI / 2, 'school', 1.05, 1.05],
+      [-8.8, -73.4, Math.PI / 2, 'school', 1.05, 1.05],
     ];
-    signSpots.forEach(([sx, sz, ry, isStop]) => {
+    const signPoleGeo = new THREE.CylinderGeometry(0.05, 0.06, 2.8, 8);
+    signSpots.forEach(([sx, sz, ry, kind, pw, ph]) => {
       const sg = new THREE.Group();
-      sg.position.set(sx, 0.2, sz);
+      sg.position.set(sx, cityRoadY(sz) + 0.12, sz);
       sg.rotation.y = ry;
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.8, 8), matDarkSteel);
+      const pole = new THREE.Mesh(signPoleGeo, matDarkSteel);
       pole.position.y = 1.4;
       sg.add(pole);
-      const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.95), isStop ? matStop : matSpeed);
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), signMats[kind]);
       plate.position.y = 2.65;
       sg.add(plate);
       this.scene.add(sg);
     });
+
+    // Dedicated yellow-accented school crosswalk across Av. Panorâmica Z = -68 (InstancedMesh)
+    const unitCrossGeo = new THREE.BoxGeometry(1, 1, 1);
+    const crossDummy = new THREE.Object3D();
+    const matSchoolCross = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.55 });
+    const crossY = cityRoadY(-68) + 0.068;
+    const schoolCoords: number[] = [];
+    for (let sz = -72.0; sz <= -64.0; sz += 1.45) {
+      schoolCoords.push(sz);
+    }
+    const schoolCrossInst = new THREE.InstancedMesh(unitCrossGeo, matSchoolCross, schoolCoords.length);
+    schoolCrossInst.frustumCulled = false;
+    schoolCoords.forEach((sz, i) => {
+      crossDummy.position.set(-17, crossY, sz);
+      crossDummy.scale.set(2.6, 0.02, 0.65);
+      crossDummy.updateMatrix();
+      schoolCrossInst.setMatrixAt(i, crossDummy.matrix);
+    });
+    schoolCrossInst.instanceMatrix.needsUpdate = true;
+    this.scene.add(schoolCrossInst);
   }
 
   private buildIntersectionsAndLights() {
@@ -610,54 +1790,80 @@ export class CityConceptController {
       [34, -34],
       [0, -68],
       [34, -68],
+      [-68, -34],
+      [68, -34],
+      [-148, 0],
+      [148, 0],
+      [-148, -34],
+      [148, -34],
+      [-148, -68],
+      [148, -68],
+      [-148, -102],
+      [148, -102],
+      [-162, 0],
+      [-162, -34],
     ];
 
-    intersections.forEach(([ix, iz], idx) => {
-      // Zebra crosswalk stripes on 4 approaches
+    // Batch all ~560 crosswalk stripes into 1 single InstancedMesh!
+    const crossTransforms: THREE.Matrix4[] = [];
+    const crossDummy = new THREE.Object3D();
+    intersections.forEach(([ix, iz]) => {
+      const iy = cityRoadY(iz);
       for (let s = -4; s <= 4; s += 1.4) {
-        const zx1 = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.02, 2.2), matCross);
-        zx1.position.set(ix + s, 0.055, iz - 6.8);
-        this.scene.add(zx1);
-        const zx2 = zx1.clone();
-        zx2.position.z = iz + 6.8;
-        this.scene.add(zx2);
+        crossDummy.scale.set(0.65, 0.02, 2.2);
+        crossDummy.position.set(ix + s, iy + 0.065, iz - 6.8);
+        crossDummy.updateMatrix();
+        crossTransforms.push(crossDummy.matrix.clone());
 
-        const zz1 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.02, 0.65), matCross);
-        zz1.position.set(ix - 6.8, 0.055, iz + s);
-        this.scene.add(zz1);
-        const zz2 = zz1.clone();
-        zz2.position.x = ix + 6.8;
-        this.scene.add(zz2);
+        crossDummy.position.set(ix + s, iy + 0.065, iz + 6.8);
+        crossDummy.updateMatrix();
+        crossTransforms.push(crossDummy.matrix.clone());
+
+        crossDummy.scale.set(2.2, 0.02, 0.65);
+        crossDummy.position.set(ix - 6.8, iy + 0.065, iz + s);
+        crossDummy.updateMatrix();
+        crossTransforms.push(crossDummy.matrix.clone());
+
+        crossDummy.position.set(ix + 6.8, iy + 0.065, iz + s);
+        crossDummy.updateMatrix();
+        crossTransforms.push(crossDummy.matrix.clone());
       }
+    });
+    const whiteCrossInst = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), matCross, crossTransforms.length);
+    whiteCrossInst.frustumCulled = false;
+    crossTransforms.forEach((m, i) => whiteCrossInst.setMatrixAt(i, m));
+    whiteCrossInst.instanceMatrix.needsUpdate = true;
+    this.scene.add(whiteCrossInst);
 
-      // 4 Functional traffic lights at key downtown intersections (skip outer residential pairs for cleaner draw budget)
-      if (idx < 8) {
+    intersections.forEach(([ix, iz], idx) => {
+      const iy = cityRoadY(iz);
+
+      if (idx < 8 || Math.abs(ix) === 148 && iz >= -34) {
         const rigZ1 = createTrafficLightRig('z');
-        rigZ1.group.position.set(ix - 6.0, 0.2, iz - 6.0);
+        rigZ1.group.position.set(ix - 6.0, iy + 0.15, iz - 6.0);
         this.scene.add(rigZ1.group);
         this.trafficLights.push(rigZ1);
 
         const rigZ2 = createTrafficLightRig('z');
-        rigZ2.group.position.set(ix + 6.0, 0.2, iz + 6.0);
+        rigZ2.group.position.set(ix + 6.0, iy + 0.15, iz + 6.0);
         rigZ2.group.rotation.y = Math.PI;
         this.scene.add(rigZ2.group);
         this.trafficLights.push(rigZ2);
 
         const rigX1 = createTrafficLightRig('x');
-        rigX1.group.position.set(ix + 6.0, 0.2, iz - 6.0);
+        rigX1.group.position.set(ix + 6.0, iy + 0.15, iz - 6.0);
         rigX1.group.rotation.y = -Math.PI / 2;
         this.scene.add(rigX1.group);
         this.trafficLights.push(rigX1);
 
         const rigX2 = createTrafficLightRig('x');
-        rigX2.group.position.set(ix - 6.0, 0.2, iz + 6.0);
+        rigX2.group.position.set(ix - 6.0, iy + 0.15, iz + 6.0);
         rigX2.group.rotation.y = Math.PI / 2;
         this.scene.add(rigX2.group);
         this.trafficLights.push(rigX2);
       }
     });
 
-    // Streetlights along main avenues, bridges, commercial strip & plaza
     const lampSpots: [number, number, number, boolean][] = [
       [-17, -6.2, Math.PI / 2, false],
       [-17, -27.8, -Math.PI / 2, false],
@@ -674,20 +1880,36 @@ export class CityConceptController {
       [34, -17, 0, true],
       [-68, -17, 0, true],
       [68, -17, 0, true],
-      [0, -51, 0, true],
-      [-34, -51, 0, true],
-      [34, -51, 0, true],
+      [0, -68, Math.PI / 2, true],
+      [-34, -68, Math.PI / 2, true],
+      [34, -68, Math.PI / 2, true],
+      // Outer Boulevards X = ±148 & Wide Blocks X = ±125
+      [-125, -6.2, Math.PI / 2, false],
+      [125, -6.2, Math.PI / 2, false],
+      [-125, -39.8, Math.PI / 2, false],
+      [125, -39.8, Math.PI / 2, false],
+      [-125, -73.8, Math.PI / 2, false],
+      [125, -73.8, Math.PI / 2, false],
+      [-142.2, -17, Math.PI, false],
+      [-142.2, -51, Math.PI, false],
+      [-142.2, -85, Math.PI, false],
+      [142.2, -17, 0, false],
+      [142.2, -51, 0, false],
+      [142.2, -85, 0, false],
+      // Av. Beira-Mar Oeste (X = -162) coastal streetlights
+      [-167.2, -2, Math.PI, false],
+      [-167.2, -16, Math.PI, false],
+      [-167.2, -30, Math.PI, false],
     ];
     lampSpots.forEach(([lx, lz, rot, dbl]) => {
       const lamp = createStreetlightRig(dbl, this.lampEmissiveMat);
-      lamp.position.set(lx, 0.2, lz);
+      lamp.position.set(lx, cityRoadY(lz) + 0.16, lz);
       lamp.rotation.y = rot;
       this.scene.add(lamp);
     });
   }
 
   private spawnVehiclesAndBoats(maxAniso: number) {
-    // 24 distinct vehicles circulating cleanly across 5 bridges, avenues, Rua das Lojas, and neighborhoods
     const laneConfigs: {
       vid: number;
       axis: 'x' | 'z';
@@ -698,49 +1920,53 @@ export class CityConceptController {
       maxC: number;
       speed: number;
     }[] = [
-      // Av. Central & Ponte Estaiada (X = 0)
+      // Av. Central & Ponte Estaiada (X = 0) — sobe e desce as ladeiras!
       { vid: 9, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: -76, minC: -124, maxC: 38, speed: 13.0 },
-      { vid: 23, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: -22, minC: -124, maxC: 38, speed: 10.5 }, // Bus
+      { vid: 23, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: -22, minC: -124, maxC: 38, speed: 10.5 },
       { vid: 2, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: 14, minC: -124, maxC: 38, speed: 12.0 },
-      { vid: 20, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: 26, minC: -124, maxC: 38, speed: 13.5 }, // Ambulance
-      { vid: 31, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: -18, minC: -124, maxC: 38, speed: 14.5 }, // Sportbike
+      { vid: 20, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: 26, minC: -124, maxC: 38, speed: 13.5 },
+      { vid: 31, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: -18, minC: -124, maxC: 38, speed: 14.5 },
       { vid: 5, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: -86, minC: -124, maxC: 38, speed: 12.2 },
       // Av. Oeste & Ponte em Arco (X = -34)
       { vid: 1, axis: 'z', dir: 1, laneCoord: -34 + 2.6, posCoord: -54, minC: -124, maxC: 38, speed: 11.8 },
       { vid: 14, axis: 'z', dir: 1, laneCoord: -34 + 2.6, posCoord: 12, minC: -124, maxC: 38, speed: 12.6 },
-      { vid: 17, axis: 'z', dir: -1, laneCoord: -34 - 2.6, posCoord: 22, minC: -124, maxC: 38, speed: 12.4 }, // Police
+      { vid: 17, axis: 'z', dir: -1, laneCoord: -34 - 2.6, posCoord: 22, minC: -124, maxC: 38, speed: 12.4 },
       { vid: 27, axis: 'z', dir: -1, laneCoord: -34 - 2.6, posCoord: -72, minC: -124, maxC: 38, speed: 10.8 },
       // Av. Leste & Ponte Concreto (X = +34)
       { vid: 12, axis: 'z', dir: 1, laneCoord: 34 + 2.6, posCoord: -44, minC: -124, maxC: 38, speed: 11.5 },
-      { vid: 24, axis: 'z', dir: -1, laneCoord: 34 - 2.6, posCoord: 18, minC: -124, maxC: 38, speed: 10.2 }, // Bus
+      { vid: 24, axis: 'z', dir: -1, laneCoord: 34 - 2.6, posCoord: 18, minC: -124, maxC: 38, speed: 10.2 },
       // Pontes Estaiadas Oeste & Leste (X = -68 & X = +68)
       { vid: 11, axis: 'z', dir: 1, laneCoord: -68 + 2.6, posCoord: -12, minC: -56, maxC: 38, speed: 13.8 },
       { vid: 19, axis: 'z', dir: -1, laneCoord: 68 - 2.6, posCoord: 18, minC: -56, maxC: 38, speed: 12.5 },
-      // Av. Beira-Centro (Z = 0)
-      { vid: 10, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -88, minC: -126, maxC: 126, speed: 13.5 },
-      { vid: 3, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -14, minC: -126, maxC: 126, speed: 12.0 }, // Taxi
-      { vid: 15, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: 52, minC: -126, maxC: 126, speed: 12.8 },
-      { vid: 33, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: 76, minC: -126, maxC: 126, speed: 14.0 }, // Moto
-      { vid: 6, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: 12, minC: -126, maxC: 126, speed: 11.4 },
-      // Rua das Lojas (Z = -34)
-      { vid: 8, axis: 'x', dir: 1, laneCoord: -34 - 2.6, posCoord: -72, minC: -126, maxC: 126, speed: 11.5 },
-      { vid: 25, axis: 'x', dir: -1, laneCoord: -34 + 2.6, posCoord: 42, minC: -126, maxC: 126, speed: 10.2 },
-      // Av. Marginal Norte (Z = 34)
-      { vid: 4, axis: 'x', dir: 1, laneCoord: 34 - 2.6, posCoord: -54, minC: -122, maxC: 122, speed: 12.2 },
-      { vid: 35, axis: 'x', dir: -1, laneCoord: 34 + 2.6, posCoord: 48, minC: -122, maxC: 122, speed: 13.2 },
-      // Av. Residencial Sul (Z = -68)
-      { vid: 7, axis: 'x', dir: 1, laneCoord: -68 - 2.6, posCoord: -32, minC: -56, maxC: 56, speed: 11.0 },
+      // Av. Beira-Centro (Z = 0, Y = 0.0m — estendida para X = ±148)
+      { vid: 10, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -124, minC: -148, maxC: 148, speed: 13.5 },
+      { vid: 3, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -14, minC: -148, maxC: 148, speed: 12.0 },
+      { vid: 15, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: 52, minC: -148, maxC: 148, speed: 12.8 },
+      { vid: 33, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: 120, minC: -148, maxC: 148, speed: 14.0 },
+      { vid: 6, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: 12, minC: -148, maxC: 148, speed: 11.4 },
+      // Rua das Lojas (Z = -34, Y = 0.0m — estendida para X = ±148)
+      { vid: 8, axis: 'x', dir: 1, laneCoord: -34 - 2.6, posCoord: -112, minC: -148, maxC: 148, speed: 11.5 },
+      { vid: 25, axis: 'x', dir: -1, laneCoord: -34 + 2.6, posCoord: 118, minC: -148, maxC: 148, speed: 10.2 },
+      // Av. Marginal Norte (Z = 34, Y = 0.0m)
+      { vid: 4, axis: 'x', dir: 1, laneCoord: 34 - 2.6, posCoord: -54, minC: -100, maxC: 100, speed: 12.2 },
+      { vid: 35, axis: 'x', dir: -1, laneCoord: 34 + 2.6, posCoord: 48, minC: -100, maxC: 100, speed: 13.2 },
+      // Av. Cidade Alta / Residencial (Z = -68, Y = +4.5m & Z = -102, Y = +9.0m)
+      { vid: 7, axis: 'x', dir: 1, laneCoord: -68 - 2.6, posCoord: -110, minC: -146, maxC: 146, speed: 11.0 },
+      { vid: 16, axis: 'x', dir: -1, laneCoord: -102 + 2.6, posCoord: 114, minC: -146, maxC: 146, speed: 11.8 },
+      // Avenidas Periféricas Oeste & Leste (X = -148 e X = +148)
+      { vid: 18, axis: 'z', dir: 1, laneCoord: -148 + 2.6, posCoord: -84, minC: -104, maxC: 2, speed: 12.6 },
+      { vid: 22, axis: 'z', dir: -1, laneCoord: -148 - 2.6, posCoord: -12, minC: -104, maxC: 2, speed: 12.0 },
+      { vid: 29, axis: 'z', dir: 1, laneCoord: 148 + 2.6, posCoord: -74, minC: -104, maxC: 2, speed: 13.0 },
+      { vid: 30, axis: 'z', dir: -1, laneCoord: 148 - 2.6, posCoord: -18, minC: -104, maxC: 2, speed: 11.8 },
     ];
 
     laneConfigs.forEach((cfg) => {
       const concept = VEHICLES_50.find((v) => v.id === cfg.vid) ?? VEHICLES_50[0];
-      const built = buildCraftedVehicle(concept, maxAniso);
+      const built = buildCraftedVehicle(concept, maxAniso, { cityMode: true });
       this.disposableBuilt.push(built);
-      built.group.position.set(
-        cfg.axis === 'x' ? cfg.posCoord : cfg.laneCoord,
-        0.04,
-        cfg.axis === 'z' ? cfg.posCoord : cfg.laneCoord,
-      );
+      const vx = cfg.axis === 'x' ? cfg.posCoord : cfg.laneCoord;
+      const vz = cfg.axis === 'z' ? cfg.posCoord : cfg.laneCoord;
+      built.group.position.set(vx, cityRoadY(vz) + 0.04, vz);
       built.group.rotation.y =
         cfg.axis === 'z'
           ? (cfg.dir > 0 ? 0 : Math.PI)
@@ -759,14 +1985,17 @@ export class CityConceptController {
       });
     });
 
-    // 3 Boats cruising in the river (Z = 13.6, 17.0, 20.5)
+    // Real Aquatic Boats from VEHICLES_50 (4 navigating + moored piers at Cais Baixo & Ilha do Sol!)
     [
-      { vid: 41, dir: 1 as const, x: -72, z: 13.8, speed: 6.0 },
-      { vid: 44, dir: -1 as const, x: 58, z: 19.8, speed: 4.5 },
-      { vid: 42, dir: 1 as const, x: 18, z: 16.8, speed: 5.2 },
+      { vid: 44, dir: 1 as const, x: -78, z: 14.2, speed: 6.4 },    // Lancha Esportiva Ipanema
+      { vid: 45, dir: 1 as const, x: 16, z: 17.4, speed: 8.2 },     // Jet Ski Turbinado
+      { vid: 46, dir: -1 as const, x: 64, z: 20.6, speed: 5.8 },    // Bote Salva-Vidas Inflável
+      { vid: 47, dir: -1 as const, x: -24, z: 19.4, speed: 4.1 },   // Rebocador / Barca Fluvial
+      { vid: 50, dir: 1 as const, x: -18, z: 13.0, speed: 0.0 },    // Anfíbio/Lancha atracada no Píer do Cais Baixo
+      { vid: 44, dir: 1 as const, x: -196.0, z: -5.4, speed: 0.0 }, // Lancha atracada no Píer da Ponte da Ilha do Sol
     ].forEach((bc) => {
-      const concept = VEHICLES_50.find((v) => v.id === bc.vid) ?? VEHICLES_50[40];
-      const built = buildCraftedVehicle(concept, maxAniso);
+      const concept = VEHICLES_50.find((v) => v.id === bc.vid) ?? VEHICLES_50[43];
+      const built = buildCraftedVehicle(concept, maxAniso, { cityMode: true });
       this.disposableBuilt.push(built);
       built.group.position.set(bc.x, -1.22, bc.z);
       built.group.rotation.y = bc.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -774,40 +2003,53 @@ export class CityConceptController {
       this.boatActors.push({ built, dir: bc.dir, x: bc.x, z: bc.z, speed: bc.speed });
     });
 
-    // 2 Helicopters patrolling above skyscrapers and Morro
     const heliConfigs = [
-      { vid: 46, cx: -12, cz: -14, rx: 64, rz: 52, alt: 58, speed: 0.24 },
-      { vid: 47, cx: 18, cz: 36, rx: 72, rz: 44, alt: 64, speed: -0.19 },
+      { vid: 48, cx: -12, cz: -14, rx: 60, rz: 48, alt: 58, speed: 0.24 },
+      { vid: 49, cx: 18, cz: 36, rx: 64, rz: 42, alt: 64, speed: -0.19 },
     ];
     heliConfigs.forEach((hc) => {
       const heliConcept =
         VEHICLES_50.find((v) => v.id === hc.vid) ??
         VEHICLES_50.find((v) => v.geometry.archetype === 'helicopter') ??
-        VEHICLES_50[45];
-      const built = buildCraftedVehicle(heliConcept, maxAniso);
+        VEHICLES_50[47];
+      const built = buildCraftedVehicle(heliConcept, maxAniso, { cityMode: true });
       this.disposableBuilt.push(built);
       built.group.position.set(hc.cx + hc.rx, hc.alt, hc.cz);
       this.scene.add(built.group);
       this.heliActors.push({ built, ...hc });
     });
+
+    // Parked Yellow School Micro-bus (Escolar Amarelinho VHC-33) outside E.M. Cidade Nova curb
+    const schoolBusConcept = VEHICLES_50.find((v) => v.id === 33) ?? VEHICLES_50[32];
+    const schoolBus = buildCraftedVehicle(schoolBusConcept, maxAniso, { cityMode: true });
+    this.disposableBuilt.push(schoolBus);
+    schoolBus.group.position.set(-10.2, cityRoadY(-71.8) + 0.04, -71.8);
+    schoolBus.group.rotation.y = -Math.PI / 2;
+    this.scene.add(schoolBus.group);
   }
 
   private spawnArticulatedNpcs() {
-    // 1. Sidewalk pedestrians across Plaza, Rua das Lojas, Shopping, Riverfront & Residential Bairro
     const walkPaths: { axis: 'x' | 'z'; dir: 1 | -1; laneCoord: number; start: number; min: number; max: number; count: number; mode?: ArticulatedNpc['mode'] }[] = [
       { axis: 'x', dir: 1, laneCoord: -6.4, start: -42, min: -84, max: 84, count: 3 },
       { axis: 'x', dir: -1, laneCoord: -6.8, start: 28, min: -84, max: 84, count: 3 },
       { axis: 'x', dir: 1, laneCoord: -27.4, start: -52, min: -84, max: 84, count: 3 },
-      { axis: 'x', dir: -1, laneCoord: -40.2, start: -48, min: -84, max: 84, count: 4 }, // Rua das Lojas crowded sidewalk
+      { axis: 'x', dir: -1, laneCoord: -38.8, start: -48, min: -84, max: 84, count: 4 },
       { axis: 'z', dir: 1, laneCoord: -6.6, start: -52, min: -92, max: 4, count: 3 },
       { axis: 'z', dir: -1, laneCoord: 6.6, start: -12, min: -92, max: 4, count: 3 },
       { axis: 'z', dir: 1, laneCoord: -27.5, start: -46, min: -92, max: 4, count: 2 },
-      // Residential sidewalks (Av. Z = -68 / -102)
-      { axis: 'x', dir: 1, laneCoord: -61.5, start: -42, min: -58, max: 84, count: 3 },
-      { axis: 'x', dir: -1, laneCoord: -74.5, start: 34, min: -58, max: 84, count: 3 },
-      // River boardwalk joggers!
-      { axis: 'x', dir: 1, laneCoord: 6.2, start: -76, min: -96, max: 96, count: 3, mode: 'jog' },
-      { axis: 'x', dir: -1, laneCoord: 27.6, start: 44, min: -96, max: 96, count: 3, mode: 'jog' },
+      // Calçadas da Cidade Alta (Z = -68 -> Y = +4.2m)
+      { axis: 'x', dir: 1, laneCoord: -62.5, start: -42, min: -58, max: 84, count: 3 },
+      { axis: 'x', dir: -1, laneCoord: -73.4, start: 34, min: -58, max: 84, count: 3 },
+      // Orla fluvial
+      { axis: 'x', dir: 1, laneCoord: 6.2, start: -76, min: -90, max: 90, count: 3, mode: 'jog' },
+      { axis: 'x', dir: -1, laneCoord: 27.6, start: 44, min: -90, max: 90, count: 3, mode: 'jog' },
+      // Calçadas da Expansão (Moradias Largas & Prédios de Vendas X = ±125..±142)
+      { axis: 'z', dir: 1, laneCoord: -142.3, start: -82, min: -96, max: -6, count: 3 },
+      { axis: 'z', dir: -1, laneCoord: 142.3, start: -12, min: -96, max: -6, count: 3 },
+      { axis: 'x', dir: 1, laneCoord: -6.4, start: -136, min: -142, max: -108, count: 2 },
+      { axis: 'x', dir: -1, laneCoord: -6.4, start: 116, min: 108, max: 142, count: 2 },
+      // Calçadão da Praia Oeste (Av. Beira-Mar X = -168.8)
+      { axis: 'z', dir: 1, laneCoord: -168.8, start: -34, min: -38, max: 4, count: 3, mode: 'jog' },
     ];
 
     walkPaths.forEach((wp, idx) => {
@@ -820,11 +2062,9 @@ export class CityConceptController {
         npc.minLimit = wp.min;
         npc.maxLimit = wp.max;
         const coord = wp.start + k * 24;
-        npc.group.position.set(
-          npc.axis === 'x' ? coord : npc.laneCoord,
-          0.22,
-          npc.axis === 'z' ? coord : npc.laneCoord,
-        );
+        const nx = npc.axis === 'x' ? coord : npc.laneCoord;
+        const nz = npc.axis === 'z' ? coord : npc.laneCoord;
+        npc.group.position.set(nx, cityRoadY(nz) + 0.16, nz);
         npc.group.rotation.y =
           npc.axis === 'x' ? (npc.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (npc.dir > 0 ? 0 : Math.PI);
         this.scene.add(npc.group);
@@ -832,13 +2072,19 @@ export class CityConceptController {
       }
     });
 
-    // 2. Seated NPCs on Flag Plaza benches & Bus Stops
+    // Seated NPCs on Flag Plaza benches, Bus Stops, School & West Beach Calçadão
     [
       [-17 - 6.6, 0.32, -17, Math.PI / 2],
       [-17 + 6.6, 0.32, -17, -Math.PI / 2],
       [-17, 0.32, -17 + 6.6, Math.PI],
-      [-17, 0.32, -39.7, 0], // Waiting at Rua das Lojas bus stop
-      [51, 0.32, -39.7, 0],  // Waiting at Burger 50 bus stop
+      [-17, 0.14, -27.75, Math.PI],
+      [51, 0.14, -27.75, Math.PI],
+      [-9.2, 0.14, 38.95, 0],
+      // West Beach Kiosk Barstools & Sun Loungers
+      [-170.7, 0.36, -4.5, -Math.PI / 2],
+      [-170.7, 0.36, -27.5, -Math.PI / 2],
+      [-176.2, westMainlandBeachY(-176.2, -9.8) + 0.14, -9.1, -Math.PI / 2],
+      [-176.0, westMainlandBeachY(-176.0, -31.5) + 0.14, -30.8, -Math.PI / 2],
     ].forEach(([sx, sy, sz, rot], idx) => {
       const npc = createArticulatedNpc(40 + idx * 5, 'sit');
       npc.group.position.set(sx, sy, sz);
@@ -847,16 +2093,35 @@ export class CityConceptController {
       this.npcs.push(npc);
     });
 
-    // 3. Conversing pairs near Café, Flag Monument, Bairro Park & Bar do Zé
+    // Conversing pairs at Café, Praça, Parque, Escola, Praia Oeste, Ponte & Mirante da Ilha
+    const cafeY = blockTerraceY(-51) + 0.22;
+    const parkY = blockTerraceY(-85) + 0.28;
+    const islandGazY = westIslandTerrainY(-243.0, -22.0) + 0.44;
     [
-      [-11.8, 0.22, -37.2, 0.7],
-      [-10.8, 0.22, -37.6, -2.4],
+      [-11.8, cafeY, -39.5, 0.7],
+      [-10.8, cafeY, -39.9, -2.4],
       [-13.2, 0.30, -13.5, -2.2],
       [-12.4, 0.30, -14.2, 0.9],
-      [16.2, 0.28, -84.6, 0.8],
-      [17.2, 0.28, -85.2, -2.3],
-      [-12.2, 0.22, -74.6, 0.6],
-      [-11.3, 0.22, -75.0, -2.5],
+      [16.2, parkY, -84.6, 0.8],
+      [17.2, parkY, -85.2, -2.3],
+      // School Gate, Courtyard & Papelaria do Estudante NPCs
+      [-17.6, parkY, -75.4, 0.5],
+      [-16.4, parkY, -75.8, -2.5],
+      [-14.2, parkY, -82.0, 0.7],
+      [-13.1, parkY, -82.4, -2.3],
+      [-7.2, parkY, -77.4, -1.5],
+      // West Beach Volleyball Players & Bridge / Ilha do Sol Visitors
+      [-177.2, westMainlandBeachY(-177.2, -24.2) + 0.04, -24.2, 0.0],
+      [-177.2, westMainlandBeachY(-177.2, -20.8) + 0.04, -20.8, Math.PI],
+      [-168.6, 0.24, -14.8, -1.4],
+      [-189.8, 2.45, -13.5, 2.2],
+      [-210.8, 0.76, -13.4, -2.2],
+      [-242.6, islandGazY, -21.5, 0.7],
+      [-243.6, islandGazY, -22.2, -2.3],
+      [-16.2, -0.80, 8.2, 0.4],
+      [-15.1, -0.80, 8.6, -2.6],
+      [-1.1, 13.98, -135.8, 0.5],
+      [0.9, 13.98, -136.2, -2.4],
     ].forEach(([cx, cy, cz, rot], idx) => {
       const npc = createArticulatedNpc(70 + idx * 3, 'chat');
       npc.group.position.set(cx, cy, cz);
@@ -869,33 +2134,52 @@ export class CityConceptController {
   public setCameraPreset(preset: CityCameraPreset, immediate = false) {
     switch (preset) {
       case 'overview':
-        this.camTargetPos.set(-76, 54, -84);
-        this.camTargetLook.set(-2, 6, 4);
+        this.camTargetPos.set(-96, 60, -112);
+        this.camTargetLook.set(0, 7, -18);
+        break;
+      case 'downtown':
+        this.camTargetPos.set(-24, 24, 10);
+        this.camTargetLook.set(-66, 22, -34);
+        break;
+      case 'shops':
+        this.camTargetPos.set(-14, 18, -32);
+        this.camTargetLook.set(52, 4.5, -42);
+        break;
+      case 'residential':
+        this.camTargetPos.set(-44, 29, -58);
+        this.camTargetLook.set(4, 9.5, -114);
+        break;
+      case 'morro':
+        this.camTargetPos.set(-16, 34, 2);
+        this.camTargetLook.set(22, 12, 78);
+        break;
+      case 'bridges':
+        this.camTargetPos.set(-46, 14.5, 2.5);
+        this.camTargetLook.set(0, 2.0, 14.5);
         break;
       case 'flag':
-        // Unobstructed hero close-up of the Monumental Flag, pedestal, plaza & city skyline
         this.camTargetPos.set(-28.5, 13.0, -30.5);
         this.camTargetLook.set(-14.5, 13.5, -17.0);
         break;
-      case 'shops':
-        // Positioned cleanly along open avenue Z = -34 facing the illuminated storefronts & Shopping!
-        this.camTargetPos.set(-30, 9.2, -31);
-        this.camTargetLook.set(6, 4.2, -41);
-        break;
-      case 'bridges':
-        // Over open riverfront Marginal framing Cable-Stayed & Arch bridges + boats + palms
-        this.camTargetPos.set(-48, 15.5, 4.5);
-        this.camTargetLook.set(8, 5.5, 17);
-        break;
-      case 'morro':
-        // Over open river channel framing the 340+ house dense Morro, graffiti wall, escadões & Mirante
-        this.camTargetPos.set(-42, 30, 12);
-        this.camTargetLook.set(4, 15, 78);
-        break;
       case 'traffic':
-        // Clean corner view from Plaza edge into (0, 0) synchronized intersection
-        this.camTargetPos.set(-14.5, 11.0, -14.5);
-        this.camTargetLook.set(1.5, 2.5, 1.5);
+        this.camTargetPos.set(-14.5, 13.0, -14.5);
+        this.camTargetLook.set(1.5, 2.5, -12.0);
+        break;
+      case 'school':
+        this.camTargetPos.set(-33.5, 19.5, -60.5);
+        this.camTargetLook.set(-15.5, 7.2, -84.0);
+        break;
+      case 'beach':
+        this.camTargetPos.set(-154.0, 29.0, -48.0);
+        this.camTargetLook.set(-206.0, 1.5, -10.0);
+        break;
+      case 'condos':
+        this.camTargetPos.set(-168, 34, -22);
+        this.camTargetLook.set(-124, 15, -66);
+        break;
+      case 'corporate':
+        this.camTargetPos.set(166, 26, 14);
+        this.camTargetLook.set(122, 11, -30);
         break;
     }
 
@@ -1009,6 +2293,7 @@ export class CityConceptController {
 
     if (!this.simPaused) {
       this.atlas.waterRipple.offset.x = (this.elapsed * 0.06) % 1;
+      this.atlas.waterRipple.offset.y = -((this.elapsed * 0.16) % 1);
 
       if (this.shopAnimated.showroomCar) {
         this.shopAnimated.showroomCar.rotation.y += dt * 0.6;
@@ -1020,16 +2305,24 @@ export class CityConceptController {
       const blink = Math.sin(this.elapsed * 4.2) > 0 ? 2.4 : 0.15;
       this.beacons.forEach((m) => (m.emissiveIntensity = blink));
 
-      // 3. Synchronized Traffic Lights
+      // 3. Synchronized Traffic Lights (only mutate shared materials on phase transition!)
       const sig = this.getSignalStates();
       const phaseIdx = Math.floor((this.elapsed % 16) / 2);
       if (phaseIdx !== this.lastPhaseIdx) {
         this.lastPhaseIdx = phaseIdx;
         this.callbacks.onTrafficPhase?.(sig.label);
+        this.trafficLights.forEach((rig) => {
+          rig.setPhase(rig.axis === 'z' ? sig.zState : sig.xState);
+        });
       }
-      this.trafficLights.forEach((rig) => {
-        rig.setPhase(rig.axis === 'z' ? sig.zState : sig.xState);
-      });
+
+      // Update shared emergency siren flash once per frame
+      const sirenSin = Math.sin(this.elapsed * 14);
+      const firstSirenActor = this.trafficActors.find((a) => a.built.materials.sirenRed);
+      if (firstSirenActor) {
+        firstSirenActor.built.materials.sirenRed.emissiveIntensity = sirenSin > 0 ? 2.6 : 0.2;
+        firstSirenActor.built.materials.sirenBlue.emissiveIntensity = sirenSin <= 0 ? 2.6 : 0.2;
+      }
 
       // 4. Traffic Vehicles obeying signals & spacing
       const stopCoords = [-68, -34, 0, 34];
@@ -1067,26 +2360,32 @@ export class CityConceptController {
         if (actor.dir > 0 && actor.posCoord > actor.maxC) actor.posCoord = actor.minC;
         if (actor.dir < 0 && actor.posCoord < actor.minC) actor.posCoord = actor.maxC;
 
-        if (actor.axis === 'x') actor.built.group.position.x = actor.posCoord;
-        else actor.built.group.position.z = actor.posCoord;
+        if (actor.axis === 'x') {
+          actor.built.group.position.x = actor.posCoord;
+          actor.built.group.position.y = cityRoadY(actor.laneCoord) + 0.04;
+        } else {
+          actor.built.group.position.z = actor.posCoord;
+          actor.built.group.position.y = cityRoadY(actor.posCoord) + 0.04;
+          actor.built.group.rotation.x = -actor.dir * Math.atan(cityRoadSlopeDZ(actor.posCoord));
+        }
 
         const wheelSpin = actor.speed * dt * 2.4;
-        actor.built.animatedParts.wheels.forEach((w) => (w.rotation.x += wheelSpin));
-        if (actor.built.materials.sirenRed) {
-          const st = Math.sin(this.elapsed * 14);
-          actor.built.materials.sirenRed.emissiveIntensity = st > 0 ? 2.6 : 0.2;
-          actor.built.materials.sirenBlue.emissiveIntensity = st <= 0 ? 2.6 : 0.2;
+        const wheels = actor.built.animatedParts.wheels;
+        for (let wi = 0; wi < wheels.length; wi++) {
+          wheels[wi].rotation.x += wheelSpin;
         }
       });
 
-      // 5. River Boats
+      // 5. River Boats (navigating + moored at Cais Baixo pier)
       this.boatActors.forEach((b) => {
-        b.x += b.dir * b.speed * dt;
-        if (b.dir > 0 && b.x > 110) b.x = -110;
-        if (b.dir < 0 && b.x < -110) b.x = 110;
+        if (b.speed > 0) {
+          b.x += b.dir * b.speed * dt;
+          if (b.dir > 0 && b.x > 96) b.x = -96;
+          if (b.dir < 0 && b.x < -96) b.x = 96;
+        }
         b.built.group.position.x = b.x;
-        b.built.group.position.y = -1.22 + Math.sin(this.elapsed * 2.4 + b.x * 0.2) * 0.08;
-        b.built.group.rotation.z = Math.sin(this.elapsed * 1.9 + b.x * 0.15) * 0.03;
+        b.built.group.position.y = -1.22 + Math.sin(this.elapsed * 2.4 + b.x * 0.2) * (b.speed > 0 ? 0.08 : 0.04);
+        b.built.group.rotation.z = Math.sin(this.elapsed * 1.9 + b.x * 0.15) * (b.speed > 0 ? 0.03 : 0.015);
       });
 
       // 6. Patrol Helicopters high above skyscrapers
@@ -1105,7 +2404,7 @@ export class CityConceptController {
       });
 
       // 7. Articulated Realistic NPCs
-      const crossStops = [-68, -34, 0, 34, 68];
+      const crossStops = [-148, -68, -34, 0, 34, 68, 148];
       this.npcs.forEach((npc) => {
         if (npc.mode === 'sit') {
           npc.head.rotation.y = Math.sin(this.elapsed * 0.7 + npc.phase) * 0.28;
@@ -1152,12 +2451,14 @@ export class CityConceptController {
 
         if (npc.axis === 'x') {
           npc.group.position.x += npc.dir * npc.speed * dt;
+          npc.group.position.y = cityRoadY(npc.laneCoord) + 0.16;
           if (npc.group.position.x > npc.maxLimit || npc.group.position.x < npc.minLimit) {
             npc.dir = (npc.dir * -1) as 1 | -1;
             npc.group.rotation.y = npc.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
           }
         } else {
           npc.group.position.z += npc.dir * npc.speed * dt;
+          npc.group.position.y = cityRoadY(npc.group.position.z) + 0.16;
           if (npc.group.position.z > npc.maxLimit || npc.group.position.z < npc.minLimit) {
             npc.dir = (npc.dir * -1) as 1 | -1;
             npc.group.rotation.y = npc.dir > 0 ? 0 : Math.PI;
@@ -1245,6 +2546,7 @@ export class CityConceptController {
     this.disposableBuilt = [];
     this.vegetation?.dispose();
     this.financialResult?.dispose();
+    this.expandedResult?.dispose();
     this.residentialResult?.dispose();
     this.atlas.dispose();
     this.controls.dispose();

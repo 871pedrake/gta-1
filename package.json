@@ -20,6 +20,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@types/three": "^0.176.0",
+    "@vitejs/plugin-react": "^5.0.0",
     "tailwindcss": "^4.3.5",
     "typescript": "^5.8.3",
     "vite": "^7.3.8"

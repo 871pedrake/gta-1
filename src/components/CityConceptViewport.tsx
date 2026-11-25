@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  BookOpen,
   ChevronDown,
   ChevronUp,
   Info,
@@ -13,13 +14,20 @@ import {
 } from 'lucide-react';
 import { CityCameraPreset, CityTimeOfDay } from '../types/vehicle';
 import { CITY_HOTSPOTS, CityConceptController } from '../three/cityConceptScene';
+import { MapGddView } from './MapGddView';
 
 const CAMERA_TABS: { id: CityCameraPreset; label: string }[] = [
   { id: 'overview', label: 'Visão Geral' },
-  { id: 'flag', label: 'Bandeira' },
-  { id: 'shops', label: 'Rua das Lojas' },
+  { id: 'downtown', label: 'Prédios' },
+  { id: 'condos', label: 'Moradia Larga' },
+  { id: 'corporate', label: 'Vendas & Outdoors' },
+  { id: 'shops', label: 'Shopping' },
+  { id: 'residential', label: 'Residencial' },
+  { id: 'school', label: 'Escola Pública' },
+  { id: 'beach', label: 'Praia & Ilha' },
+  { id: 'morro', label: 'Morro / Favelas' },
   { id: 'bridges', label: 'Pontes & Rio' },
-  { id: 'morro', label: 'Morro' },
+  { id: 'flag', label: 'Bandeira' },
   { id: 'traffic', label: 'Semáforos' },
 ];
 
@@ -39,6 +47,7 @@ export const CityConceptViewport: React.FC = () => {
   const [paused, setPaused] = useState(false);
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [gddOpen, setGddOpen] = useState(false);
   const [trafficPhase, setTrafficPhase] = useState('Avenidas N-S: Verde · Cruzamentos E-O: Pare');
 
   useEffect(() => {
@@ -113,8 +122,19 @@ export const CityConceptViewport: React.FC = () => {
         </p>
       </div>
 
-      {/* Top-Right Single Action to Open Concept Inspection Notes */}
+      {/* Top-Right Actions: GDD Mapa 3D & Concept Notes */}
       <div className="absolute top-5 right-6 z-10 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setNotesOpen(false);
+            setGddOpen(true);
+          }}
+          className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-zinc-950 bg-amber-500 rounded-lg hover:bg-amber-400 transition-colors whitespace-nowrap cursor-pointer"
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          GDD Mapa 3D (Unity)
+        </button>
         <button
           type="button"
           onClick={() => setNotesOpen((v) => !v)}
@@ -185,7 +205,7 @@ export const CityConceptViewport: React.FC = () => {
 
       {/* Collapsible Bottom Control Dock */}
       <div
-        className={`absolute bottom-5 left-1/2 -translate-x-1/2 z-20 w-[min(980px,95vw)] transition-transform duration-200 ease-out ${
+        className={`absolute bottom-5 left-1/2 -translate-x-1/2 z-20 w-[min(1080px,96vw)] transition-transform duration-200 ease-out ${
           dockCollapsed ? 'translate-y-[calc(100%+20px)]' : 'translate-y-0'
         }`}
       >
@@ -274,6 +294,18 @@ export const CityConceptViewport: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Full-Screen GDD Modal Overlay */}
+      {gddOpen && (
+        <div className="absolute inset-0 z-30 flex flex-col bg-zinc-950">
+          <MapGddView
+            onClose={() => setGddOpen(false)}
+            onJumpToZone={(preset) => {
+              handlePreset(preset);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };

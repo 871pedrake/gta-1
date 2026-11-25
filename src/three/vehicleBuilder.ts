@@ -1658,7 +1658,12 @@ function buildAircraftOrHovercraft(
   return group;
 }
 
-export function buildCraftedVehicle(v: VehicleConcept, maxAniso = 4): BuiltVehicle {
+export function buildCraftedVehicle(
+  v: VehicleConcept,
+  maxAniso = 4,
+  options?: { cityMode?: boolean },
+): BuiltVehicle {
+  const cityMode = Boolean(options?.cityMode);
   const mats = createVehicleMaterials(
     v.palette.primary,
     v.palette.secondary,
@@ -1667,6 +1672,7 @@ export function buildCraftedVehicle(v: VehicleConcept, maxAniso = 4): BuiltVehic
     v.palette.finish,
     v.palette.trim,
     maxAniso,
+    { cityMode },
   );
 
   const animated: BuiltVehicle['animatedParts'] = {
@@ -1692,7 +1698,15 @@ export function buildCraftedVehicle(v: VehicleConcept, maxAniso = 4): BuiltVehic
 
   let partsCount = 0;
   group.traverse((child) => {
-    if ((child as THREE.Mesh).isMesh) partsCount++;
+    if ((child as THREE.Mesh).isMesh) {
+      partsCount++;
+      if (cityMode) {
+        const mesh = child as THREE.Mesh;
+        // Only primary body shell casts shadow onto the street; tiny wheels/trims/glass skip shadow pass
+        mesh.castShadow = mesh.material === mats.body && arch !== 'helicopter';
+        mesh.receiveShadow = false;
+      }
+    }
   });
 
   const dispose = () => {
