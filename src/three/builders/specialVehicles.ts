@@ -5,6 +5,7 @@ import {
   BuiltVehicle,
   createEngineBayAssembly,
   createExtrudedProfile,
+  createHeadlightBeamMesh,
   createRoundedBoxGeo,
   enableShadows,
   makeStrutBetween,
@@ -81,37 +82,41 @@ function buildConnectedHandlebar(
   mats: VehicleMaterialSet,
   opts: HandlebarOpts,
   cityMode = false,
-) {
+): THREE.Group {
   const barGrp = new THREE.Group();
+  barGrp.position.set(0, opts.mountY, opts.mountZ);
+  const ly = (y: number) => y - opts.mountY;
+  const lz = (z: number) => z - opts.mountZ;
+
   const halfW = opts.barW * 0.5;
   const sweep = opts.sweepBack ?? (opts.style === 'cruiser' ? 0.11 : opts.style === 'atv' ? 0.05 : 0.06);
   const rise = opts.barRise ?? (opts.style === 'cruiser' ? 0.05 : opts.style === 'dirt' ? 0.035 : 0.02);
   const barMat = opts.barMat ?? (opts.style === 'cruiser' || opts.style === 'naked' ? mats.chrome : mats.trim);
   const tubeR = opts.style === 'jetski' ? 0.015 : 0.016;
 
-  // Perch & grip coordinates along the swept bar
+  // Perch & grip coordinates along the swept bar (local to mountY/mountZ)
   const perchRatio = 0.66;
   const perchX = halfW * perchRatio;
-  const perchY = opts.barY + rise * 0.82;
-  const perchZ = opts.barZ - sweep * 0.62;
-  const gripEndY = opts.barY + rise;
-  const gripEndZ = opts.barZ - sweep;
+  const perchY = ly(opts.barY + rise * 0.82);
+  const perchZ = lz(opts.barZ - sweep * 0.62);
+  const gripEndY = ly(opts.barY + rise);
+  const gripEndZ = lz(opts.barZ - sweep);
+  const locBarY = ly(opts.barY);
+  const locBarZ = lz(opts.barZ);
 
   if (opts.style === 'sport_clipon') {
     const fSpan = opts.forkSpanX ?? 0.105;
     [-1, 1].forEach((side) => {
-      // Forged billet fork-tube clamp collar around upper stanchion
       const collar = new THREE.Mesh(
         new THREE.CylinderGeometry(0.036, 0.036, 0.042, 12),
         mats.alloy,
       );
-      collar.position.set(side * fSpan, opts.mountY, opts.mountZ);
+      collar.position.set(side * fSpan, 0, 0);
       barGrp.add(collar);
 
-      // Angled clip-on bar directly out of the fork collar
       const clipBar = makeStrutBetween(
-        new THREE.Vector3(side * fSpan, opts.mountY, opts.mountZ),
-        new THREE.Vector3(side * halfW, gripEndY - 0.018, opts.barZ - sweep),
+        new THREE.Vector3(side * fSpan, 0, 0),
+        new THREE.Vector3(side * halfW, gripEndY - 0.018, locBarZ - sweep),
         tubeR,
         tubeR,
         mats.alloy,
@@ -120,13 +125,12 @@ function buildConnectedHandlebar(
       barGrp.add(clipBar);
     });
   } else {
-    // Swept 3D Tube handlebar curve (continuous, no sharp primitive cylinder)
     const curve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-halfW, gripEndY, gripEndZ),
       new THREE.Vector3(-perchX, perchY, perchZ),
-      new THREE.Vector3(-halfW * 0.24, opts.barY, opts.barZ),
-      new THREE.Vector3(0, opts.barY, opts.barZ + 0.008),
-      new THREE.Vector3(halfW * 0.24, opts.barY, opts.barZ),
+      new THREE.Vector3(-halfW * 0.24, locBarY, locBarZ),
+      new THREE.Vector3(0, locBarY, locBarZ + 0.008),
+      new THREE.Vector3(halfW * 0.24, locBarY, locBarZ),
       new THREE.Vector3(perchX, perchY, perchZ),
       new THREE.Vector3(halfW, gripEndY, gripEndZ),
     ]);
@@ -137,27 +141,25 @@ function buildConnectedHandlebar(
     barGrp.add(barMesh);
 
     if (opts.style === 'atv' || opts.style === 'trike' || opts.style === 'jetski' || opts.style === 'scooter') {
-      // Central steering column shaft rising smoothly from cowl/body into billet handlebar clamp
-      const stemBase = new THREE.Vector3(0, opts.mountY - 0.08, opts.mountZ + 0.03);
-      const stemTop = new THREE.Vector3(0, opts.barY - 0.012, opts.barZ + 0.005);
+      const stemBase = new THREE.Vector3(0, -0.08, 0.03);
+      const stemTop = new THREE.Vector3(0, locBarY - 0.012, locBarZ + 0.005);
       const stemShaft = makeStrutBetween(stemBase, stemTop, 0.024, 0.021, mats.trim, 12);
       const bootCollar = new THREE.Mesh(
         new THREE.CylinderGeometry(0.038, 0.052, 0.06, 12),
         mats.rubber,
       );
-      bootCollar.position.set(0, opts.mountY + 0.01, opts.mountZ + 0.01);
+      bootCollar.position.set(0, 0.01, 0.01);
       const topClamp = new THREE.Mesh(
         createRoundedBoxGeo(0.115, 0.036, 0.058, 0.012, 2, 8),
         mats.alloy,
       );
-      topClamp.position.set(0, opts.barY - 0.004, opts.barZ + 0.006);
+      topClamp.position.set(0, locBarY - 0.004, locBarZ + 0.006);
       barGrp.add(stemShaft, bootCollar, topClamp);
     } else {
-      // Twin billet handlebar risers anchored firmly from upper triple clamp to bar clamps
       const clampX = Math.min(0.068, halfW * 0.24);
       [-1, 1].forEach((side) => {
-        const pClamp = new THREE.Vector3(side * clampX, opts.mountY + 0.01, opts.mountZ);
-        const pBar = new THREE.Vector3(side * clampX, opts.barY, opts.barZ + 0.003);
+        const pClamp = new THREE.Vector3(side * clampX, 0.01, 0);
+        const pBar = new THREE.Vector3(side * clampX, locBarY, locBarZ + 0.003);
         const riser = makeStrutBetween(pClamp, pBar, 0.021, 0.024, mats.alloy, 10);
         const saddle = new THREE.Mesh(
           createRoundedBoxGeo(0.044, 0.032, 0.048, 0.01, 2, 6),
@@ -166,18 +168,17 @@ function buildConnectedHandlebar(
         saddle.position.copy(pBar);
         barGrp.add(riser, saddle);
       });
-      // Connecting riser bridge bar for extra structural rigidity on cruiser/naked
       const bridge = new THREE.Mesh(
         createRoundedBoxGeo(clampX * 2.2, 0.026, 0.042, 0.01, 2, 6),
         mats.alloy,
       );
-      bridge.position.set(0, opts.barY - 0.018, opts.barZ + 0.002);
+      bridge.position.set(0, locBarY - 0.018, locBarZ + 0.002);
       barGrp.add(bridge);
     }
 
     if (opts.hasCrossbar) {
-      const cbY = opts.barY + rise * 0.65;
-      const cbZ = opts.barZ - sweep * 0.35;
+      const cbY = locBarY + rise * 0.65;
+      const cbZ = locBarZ - sweep * 0.35;
       const crossbar = makeStrutBetween(
         new THREE.Vector3(-halfW * 0.52, cbY, cbZ),
         new THREE.Vector3(halfW * 0.52, cbY, cbZ),
@@ -201,13 +202,13 @@ function buildConnectedHandlebar(
       opts.style === 'sport_clipon'
         ? new THREE.Vector3(
             THREE.MathUtils.lerp(opts.forkSpanX ?? 0.105, halfW, 0.42) * side,
-            THREE.MathUtils.lerp(opts.mountY, gripEndY - 0.018, 0.42),
-            THREE.MathUtils.lerp(opts.mountZ, opts.barZ - sweep, 0.42),
+            THREE.MathUtils.lerp(0, gripEndY - 0.018, 0.42),
+            THREE.MathUtils.lerp(0, locBarZ - sweep, 0.42),
           )
         : new THREE.Vector3(side * perchX * 1.04, perchY, perchZ);
     const gEnd =
       opts.style === 'sport_clipon'
-        ? new THREE.Vector3(side * halfW, gripEndY - 0.018, opts.barZ - sweep)
+        ? new THREE.Vector3(side * halfW, gripEndY - 0.018, locBarZ - sweep)
         : new THREE.Vector3(side * halfW, gripEndY, gripEndZ);
 
     const grip = makeStrutBetween(gStart, gEnd, 0.023, 0.023, mats.rubber, cityMode ? 6 : 10);
@@ -268,7 +269,7 @@ function buildConnectedHandlebar(
     if (opts.hasMirrors !== false) {
       const mBase =
         opts.style === 'sport_clipon'
-          ? new THREE.Vector3(side * (halfW * 0.62), (opts.mountY + gripEndY) * 0.5 + 0.01, opts.barZ - sweep * 0.45)
+          ? new THREE.Vector3(side * (halfW * 0.62), gripEndY * 0.5 + 0.01, locBarZ - sweep * 0.45)
           : new THREE.Vector3(side * perchX, perchY + 0.012, perchZ);
       const mirTop = new THREE.Vector3(mBase.x + side * 0.075, mBase.y + 0.105, mBase.z - 0.025);
 
@@ -296,6 +297,7 @@ function buildConnectedHandlebar(
 
   tagPart(barGrp, 'Guidão Conectado, Mesa & Retrovisores', 0, 0.48, 0.18);
   group.add(barGrp);
+  return barGrp;
 }
 
 // =========================================================================
@@ -379,7 +381,7 @@ export function buildMotorcycleOrAtv(
     // Connected steering column, billet clamp, digital TFT pod & perch mirrors
     const trikeBarY = g.groundClearance + 0.68;
     const trikeBarZ = length * 0.04;
-    buildConnectedHandlebar(
+    const trikeBar = buildConnectedHandlebar(
       group,
       mats,
       {
@@ -395,6 +397,8 @@ export function buildMotorcycleOrAtv(
       },
       cityMode,
     );
+    animated.steeringPivots.push(trikeBar);
+
     if (!cityMode) {
       const dash = new THREE.Mesh(
         createRoundedBoxGeo(0.16, 0.075, 0.026, 0.01, 2, 6),
@@ -434,6 +438,8 @@ export function buildMotorcycleOrAtv(
       );
       group.add(lowerArm, upperArm, fShock);
 
+      const steerPivot = new THREE.Group();
+      steerPivot.position.set(side * (width * 0.44), g.wheelRadius, fZ);
       const fw = createCraftedWheel(
         g.wheelRadius,
         g.wheelWidth,
@@ -443,9 +449,10 @@ export function buildMotorcycleOrAtv(
         false,
         cityMode,
       );
-      fw.position.set(side * (width * 0.44), g.wheelRadius, fZ);
       tagPart(fw, 'Roda Dianteira Trike', side * 0.45, -0.05, 0);
-      group.add(fw);
+      steerPivot.add(fw);
+      group.add(steerPivot);
+      animated.steeringPivots.push(steerPivot);
       animated.wheels.push(fw);
 
       const hl = new THREE.Mesh(
@@ -453,7 +460,15 @@ export function buildMotorcycleOrAtv(
         mats.headlight,
       );
       hl.position.set(side * width * 0.16, g.groundClearance + 0.36, length * 0.44);
-      group.add(hl);
+      const blinkF = new THREE.Mesh(
+        createRoundedBoxGeo(0.055, 0.032, 0.035, 0.01, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      blinkF.position.set(side * (width * 0.25), g.groundClearance + 0.36, length * 0.43);
+      const beam = createHeadlightBeamMesh(3.6, 0.72, 0.08);
+      beam.position.set(side * width * 0.16, g.groundClearance + 0.36, length * 0.46);
+      group.add(hl, blinkF, beam);
+      animated.headlightBeams.push(beam);
     });
 
     const rearW = createCraftedWheel(
@@ -469,6 +484,21 @@ export function buildMotorcycleOrAtv(
     tagPart(rearW, 'Roda Traseira Larga', 0, -0.05, -0.4);
     group.add(rearW);
     animated.wheels.push(rearW);
+
+    const rearTl = new THREE.Mesh(
+      createRoundedBoxGeo(0.22, 0.055, 0.045, 0.015, 2, 8),
+      mats.taillight,
+    );
+    rearTl.position.set(0, g.groundClearance + 0.48, -length * 0.43);
+    group.add(rearTl);
+    [-1, 1].forEach((side) => {
+      const blinkR = new THREE.Mesh(
+        createRoundedBoxGeo(0.06, 0.035, 0.04, 0.01, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      blinkR.position.set(side * 0.17, g.groundClearance + 0.48, -length * 0.43);
+      group.add(blinkR);
+    });
 
     addExhaustSystem(group, width * 0.5, length * 0.48, g.groundClearance + 0.05, mats, 'dual');
     enableShadows(group);
@@ -646,7 +676,7 @@ export function buildMotorcycleOrAtv(
     rearAxle.position.set(0, g.wheelRadius, rZ);
     group.add(rShock, rearAxle);
 
-    // 5. Recessed LED Headlight Strip + Integrated Front Bash Bumper (if bullbar) + Rear Tubular Rack
+    // 5. Recessed LED Headlight Strip + Turn Signals + Headlight Beams
     const hlBar = new THREE.Mesh(
       createRoundedBoxGeo(width * 0.42, 0.055, 0.05, 0.012, 2, 6),
       mats.headlight,
@@ -659,6 +689,25 @@ export function buildMotorcycleOrAtv(
     );
     tlBar.position.set(0, baseChassisY + 0.48, -halfL * 0.88);
     group.add(hlBar, tlBar);
+
+    [-1, 1].forEach((side) => {
+      const fBlink = new THREE.Mesh(
+        createRoundedBoxGeo(0.06, 0.038, 0.04, 0.01, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      fBlink.position.set(side * (width * 0.26), baseChassisY + 0.38, halfL * 0.89);
+      const rBlink = new THREE.Mesh(
+        createRoundedBoxGeo(0.06, 0.038, 0.04, 0.01, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      rBlink.position.set(side * (width * 0.24), baseChassisY + 0.48, -halfL * 0.88);
+      group.add(fBlink, rBlink);
+
+      const beam = createHeadlightBeamMesh(3.2, 0.54, 0.09);
+      beam.position.set(side * (width * 0.14), baseChassisY + 0.38, halfL * 0.92);
+      group.add(beam);
+      animated.headlightBeams.push(beam);
+    });
 
     if (g.attachments.includes('bullbar')) {
       const bullGrp = new THREE.Group();
@@ -716,7 +765,7 @@ export function buildMotorcycleOrAtv(
     tagPart(seat, 'Assento Anatômico ATV', 0, 0.45, 0);
     group.add(seat);
 
-    buildConnectedHandlebar(
+    const atvBar = buildConnectedHandlebar(
       group,
       mats,
       {
@@ -734,9 +783,11 @@ export function buildMotorcycleOrAtv(
       },
       cityMode,
     );
+    animated.steeringPivots.push(atvBar);
 
-    // 7. Four Chunky Balloon Quad Wheels
+    // 7. Four Chunky Balloon Quad Wheels (front wheels steered; tagPart AFTER positioning!)
     [fZ, rZ].forEach((wz) => {
+      const isFront = wz === fZ;
       [-1, 1].forEach((side) => {
         const w = createCraftedWheel(
           g.wheelRadius,
@@ -747,9 +798,18 @@ export function buildMotorcycleOrAtv(
           false,
           cityMode,
         );
-        w.position.set(side * wheelX, g.wheelRadius, wz);
-        tagPart(w, 'Roda Balão ATV', side * 0.4, -0.05, 0);
-        group.add(w);
+        if (isFront) {
+          const steerPivot = new THREE.Group();
+          steerPivot.position.set(side * wheelX, g.wheelRadius, wz);
+          steerPivot.add(w);
+          tagPart(steerPivot, 'Roda Balão ATV Dianteira', side * 0.4, -0.05, 0);
+          group.add(steerPivot);
+          animated.steeringPivots.push(steerPivot);
+        } else {
+          w.position.set(side * wheelX, g.wheelRadius, wz);
+          tagPart(w, 'Roda Balão ATV Traseira', side * 0.4, -0.05, 0);
+          group.add(w);
+        }
         animated.wheels.push(w);
       });
     });
@@ -809,6 +869,17 @@ export function buildMotorcycleOrAtv(
   const isMaxiScooter = isScooter && v.id === 77;
   const isElectricMoto = g.exhaustStyle === 'none';
 
+  const headZ = isCruiser ? fZ * 0.52 : isDirt ? fZ * 0.62 : isScooter ? fZ * 0.66 : fZ * 0.65;
+  const headY = isCruiser ? g.groundClearance + 0.68 : isDirt ? g.groundClearance + 0.78 : g.groundClearance + 0.70;
+  const forkSpanX = isScooter ? 0.085 : 0.105;
+  const forkMat = isFairedSport || isDirt ? mats.accent : mats.chrome;
+  const sliderMat = isCruiser || isNaked ? mats.trim : mats.alloy;
+
+  const frontForkPivot = new THREE.Group();
+  frontForkPivot.position.set(0, headY, headZ);
+  group.add(frontForkPivot);
+  animated.steeringPivots.push(frontForkPivot);
+
   // 1. Front & Rear Crafted Wheels + Brake Discs + Calipers + Drive Chain / Sprocket
   const frontW = createCraftedWheel(
     g.wheelRadius,
@@ -819,9 +890,9 @@ export function buildMotorcycleOrAtv(
     false,
     cityMode,
   );
-  frontW.position.set(0, g.wheelRadius, fZ);
+  frontW.position.set(0, g.wheelRadius - headY, fZ - headZ);
   tagPart(frontW, 'Roda Dianteira', 0, -0.05, 0.35);
-  group.add(frontW);
+  frontForkPivot.add(frontW);
   animated.wheels.push(frontW);
 
   const rearW = createCraftedWheel(
@@ -845,55 +916,49 @@ export function buildMotorcycleOrAtv(
       mats.brakeDisc,
     );
     fDisc.rotation.z = Math.PI / 2;
-    fDisc.position.set(g.wheelWidth * 0.56, g.wheelRadius, fZ);
+    fDisc.position.set(g.wheelWidth * 0.56, g.wheelRadius - headY, fZ - headZ);
     const rSprocket = new THREE.Mesh(
       new THREE.CylinderGeometry(g.wheelRadius * 0.38, g.wheelRadius * 0.38, 0.018, 18),
       mats.alloy,
     );
     rSprocket.rotation.z = Math.PI / 2;
     rSprocket.position.set(-g.wheelWidth * 0.72, g.wheelRadius, rZ);
-    group.add(fDisc, rSprocket);
+    frontForkPivot.add(fDisc);
+    group.add(rSprocket);
   }
 
   // 2. Steering Head, Upper & Lower Triple Clamps, USD/Telescopic Forks & Front Fender
-  const headZ = isCruiser ? fZ * 0.52 : isDirt ? fZ * 0.62 : isScooter ? fZ * 0.66 : fZ * 0.65;
-  const headY = isCruiser ? g.groundClearance + 0.68 : isDirt ? g.groundClearance + 0.78 : g.groundClearance + 0.70;
-  const forkSpanX = isScooter ? 0.085 : 0.105;
-  const forkMat = isFairedSport || isDirt ? mats.accent : mats.chrome;
-  const sliderMat = isCruiser || isNaked ? mats.trim : mats.alloy;
-
-  // Steering neck tube + triple-tree clamps
   const neck = makeStrutBetween(
-    new THREE.Vector3(0, headY - 0.14, headZ + 0.05),
-    new THREE.Vector3(0, headY + 0.04, headZ - 0.02),
+    new THREE.Vector3(0, -0.14, 0.05),
+    new THREE.Vector3(0, 0.04, -0.02),
     0.036,
     0.038,
     mats.trim,
     10,
   );
-  group.add(neck);
+  frontForkPivot.add(neck);
 
   [0.02, -0.13].forEach((dy, idx) => {
     const clamp = new THREE.Mesh(
       createRoundedBoxGeo(forkSpanX * 2.5, 0.032, 0.085, 0.012, 2, 8),
       mats.alloy,
     );
-    clamp.position.set(0, headY + dy, headZ + (idx === 1 ? 0.045 : -0.01));
-    group.add(clamp);
+    clamp.position.set(0, dy, idx === 1 ? 0.045 : -0.01);
+    frontForkPivot.add(clamp);
   });
 
   [-1, 1].forEach((side) => {
-    const botPt = new THREE.Vector3(side * forkSpanX, g.wheelRadius, fZ);
+    const botPt = new THREE.Vector3(side * forkSpanX, g.wheelRadius - headY, fZ - headZ);
     const midPt = new THREE.Vector3(
       side * forkSpanX,
-      THREE.MathUtils.lerp(g.wheelRadius, headY, 0.56),
-      THREE.MathUtils.lerp(fZ, headZ, 0.56),
+      THREE.MathUtils.lerp(g.wheelRadius, headY, 0.56) - headY,
+      THREE.MathUtils.lerp(fZ, headZ, 0.56) - headZ,
     );
-    const topPt = new THREE.Vector3(side * forkSpanX, headY + 0.04, headZ - 0.015);
+    const topPt = new THREE.Vector3(side * forkSpanX, 0.04, -0.015);
     const lowerTube = makeStrutBetween(botPt, midPt, 0.022, 0.020, sliderMat, cityMode ? 6 : 12);
     const upperStanchion = makeStrutBetween(midPt, topPt, 0.027, 0.027, forkMat, cityMode ? 6 : 12);
     tagPart(upperStanchion, 'Suspensão Dianteira (Garfo)', side * 0.25, 0.2, 0.25);
-    group.add(lowerTube, upperStanchion);
+    frontForkPivot.add(lowerTube, upperStanchion);
   });
 
   // Front Fender (High motocross beak on dirtbikes, valanced arc on others)
@@ -906,8 +971,8 @@ export function buildMotorcycleOrAtv(
     beakPts.closePath();
     const beakGeo = createExtrudedProfile(beakPts, 0.16, 0.015, 0.015, 2, 10);
     const beak = new THREE.Mesh(beakGeo, mats.body);
-    beak.position.set(0, headY - 0.15, headZ + 0.05);
-    group.add(beak);
+    beak.position.set(0, -0.15, 0.05);
+    frontForkPivot.add(beak);
   } else {
     const fenderArc = isCruiser ? Math.PI * 0.68 : Math.PI * 0.55;
     const fFender = new THREE.Mesh(
@@ -916,8 +981,8 @@ export function buildMotorcycleOrAtv(
     );
     fFender.rotation.y = Math.PI / 2;
     fFender.rotation.x = isCruiser ? -0.24 : -0.35;
-    fFender.position.set(0, g.wheelRadius, fZ);
-    group.add(fFender);
+    fFender.position.set(0, g.wheelRadius - headY, fZ - headZ);
+    frontForkPivot.add(fFender);
   }
 
   // 3. Tubular Cradle / Trellis Frame, Swingarm, Coil-Over Shocks & Kickstand
@@ -1442,14 +1507,14 @@ export function buildMotorcycleOrAtv(
           : 'naked';
 
   buildConnectedHandlebar(
-    group,
+    frontForkPivot,
     mats,
     {
       barW,
-      barY,
-      barZ,
-      mountY: headY + 0.02,
-      mountZ: headZ - 0.01,
+      barY: barY - headY,
+      barZ: barZ - headZ,
+      mountY: 0.02,
+      mountZ: -0.01,
       forkSpanX,
       style: hbStyle,
       sweepBack: isCruiser ? 0.11 : isFairedSport ? 0.08 : 0.06,
@@ -1467,21 +1532,21 @@ export function buildMotorcycleOrAtv(
       [-0.055, 0.055].forEach((gx) => {
         const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.038, 0.06, 12), mats.trim);
         pod.rotation.x = Math.PI / 3;
-        pod.position.set(gx, headY + 0.09, headZ + 0.04);
+        pod.position.set(gx, 0.09, 0.04);
         const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.064, 12), mats.sirenBlue);
         dial.rotation.x = Math.PI / 3;
         dial.position.copy(pod.position);
-        group.add(pod, dial);
+        frontForkPivot.add(pod, dial);
       });
     } else {
       const tft = new THREE.Mesh(createRoundedBoxGeo(0.14, 0.075, 0.024, 0.01, 2, 6), mats.sirenBlue);
-      tft.position.set(0, headY + 0.09, headZ + 0.02);
+      tft.position.set(0, 0.09, 0.02);
       tft.rotation.x = -0.48;
-      group.add(tft);
+      frontForkPivot.add(tft);
     }
   }
 
-  // 8. Authentic Headlights (Twin Recessed Projectors on Sport/Maxi vs Faceted Round Bucket on Naked/Cruiser) & Taillight
+  // 8. Authentic Headlights + Turn Signals + Beams & Taillight
   if (isFairedSport || isMaxiScooter) {
     [-1, 1].forEach((side) => {
       const bezel = new THREE.Mesh(createRoundedBoxGeo(0.12, 0.075, 0.06, 0.015, 2, 8), mats.grille);
@@ -1490,7 +1555,15 @@ export function buildMotorcycleOrAtv(
       const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.07, 12), mats.headlight);
       lens.rotation.x = Math.PI / 2;
       lens.position.copy(bezel.position);
-      group.add(bezel, lens);
+      const blinkF = new THREE.Mesh(
+        createRoundedBoxGeo(0.052, 0.03, 0.035, 0.01, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      blinkF.position.set(side * 0.22, g.groundClearance + 0.64, fZ * 0.72);
+      const beam = createHeadlightBeamMesh(3.8, 0.72, 0.08);
+      beam.position.set(side * 0.105, g.groundClearance + 0.65, fZ * 0.84);
+      group.add(bezel, lens, blinkF, beam);
+      animated.headlightBeams.push(beam);
     });
     tagPart(group.children[group.children.length - 1], 'Conjunto Óptico Duplo Projetor', 0, 0.25, 0.4);
   } else {
@@ -1499,12 +1572,24 @@ export function buildMotorcycleOrAtv(
       isCruiser || isNaked ? mats.chrome : mats.trim,
     );
     hlBucket.rotation.x = Math.PI / 2;
-    hlBucket.position.set(0, headY - 0.02, headZ + 0.10);
+    hlBucket.position.set(0, -0.02, 0.10);
     const hlLens = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.04, 16), mats.headlight);
     hlLens.rotation.x = Math.PI / 2;
-    hlLens.position.set(0, headY - 0.02, headZ + 0.16);
+    hlLens.position.set(0, -0.02, 0.16);
+    const beam = createHeadlightBeamMesh(3.6, 0.72, 0.08);
+    beam.position.set(0, -0.02, 0.18);
     tagPart(hlBucket, 'Farol Dianteiro Projetor', 0, 0.25, 0.4);
-    group.add(hlBucket, hlLens);
+    frontForkPivot.add(hlBucket, hlLens, beam);
+    animated.headlightBeams.push(beam);
+
+    [-1, 1].forEach((side) => {
+      const blinkF = new THREE.Mesh(
+        createRoundedBoxGeo(0.05, 0.032, 0.036, 0.01, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      blinkF.position.set(side * 0.14, -0.02, 0.08);
+      frontForkPivot.add(blinkF);
+    });
   }
 
   const tl = new THREE.Mesh(
@@ -1518,6 +1603,15 @@ export function buildMotorcycleOrAtv(
   );
   tagPart(tl, 'Lanterna Traseira LED', 0, 0.2, -0.4);
   group.add(tl);
+
+  [-1, 1].forEach((side) => {
+    const blinkR = new THREE.Mesh(
+      createRoundedBoxGeo(0.05, 0.032, 0.038, 0.01, 2, 6),
+      side < 0 ? mats.signalLeft : mats.signalRight,
+    );
+    blinkR.position.set(side * 0.13, tl.position.y, tl.position.z);
+    group.add(blinkR);
+  });
 
   // 9. Sculpted Exhaust Headers + Upswept / Megaphone / Shotgun Muffler (none on Electric EV!)
   if (!isElectricMoto) {
@@ -1585,12 +1679,24 @@ export function buildMotorcycleOrAtv(
   }
 
   if (g.attachments.includes('lightbar_police')) {
-    const sirenPole = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.34, 10), mats.chrome);
-    sirenPole.position.set(-0.18, g.groundClearance + 0.78, rZ - 0.12);
-    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.09, 14), mats.sirenBlue);
-    beacon.position.set(-0.18, g.groundClearance + 0.96, rZ - 0.12);
-    tagPart(beacon, 'Giroflex Traseiro Polícia', -0.2, 0.5, -0.2);
-    group.add(sirenPole, beacon);
+    [-1, 1].forEach((side) => {
+      const sirenPole = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.34, 10), mats.chrome);
+      sirenPole.position.set(side * 0.18, g.groundClearance + 0.78, rZ - 0.12);
+      const beacon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.055, 0.09, 14),
+        side < 0 ? mats.sirenBlue : mats.sirenRed,
+      );
+      beacon.position.set(side * 0.18, g.groundClearance + 0.96, rZ - 0.12);
+      tagPart(beacon, 'Giroflex Traseiro Polícia', side * 0.2, 0.5, -0.2);
+      group.add(sirenPole, beacon);
+
+      const frontStrobe = new THREE.Mesh(
+        createRoundedBoxGeo(0.06, 0.036, 0.04, 0.01, 2, 6),
+        side < 0 ? mats.sirenRed : mats.sirenBlue,
+      );
+      frontStrobe.position.set(side * 0.14, g.groundClearance + 0.54, fZ * 0.84);
+      group.add(frontStrobe);
+    });
   }
 
   enableShadows(group);
@@ -1802,6 +1908,7 @@ function addMarineHelmConsole(
   mats: VehicleMaterialSet,
   sideOffset = 0,
   cityMode = false,
+  animated?: BuiltVehicle['animatedParts'],
 ) {
   const helm = new THREE.Group();
   const cons = new THREE.Mesh(
@@ -1823,7 +1930,11 @@ function addMarineHelmConsole(
   gpsScreen.rotation.x = -0.25;
   helm.add(gpsScreen);
 
-  // Stainless 3-spoke marine helm wheel
+  // Stainless 3-spoke marine helm wheel inside tilted column mount
+  const wheelMount = new THREE.Group();
+  wheelMount.position.set(0.12, 0.68, -0.24);
+  wheelMount.rotation.x = 0.42;
+
   const wheelGrp = new THREE.Group();
   wheelGrp.add(
     new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.018, 8, cityMode ? 14 : 24), mats.chrome),
@@ -1835,9 +1946,9 @@ function addMarineHelmConsole(
     sp.rotation.z = -a;
     wheelGrp.add(sp);
   }
-  wheelGrp.position.set(0.12, 0.68, -0.24);
-  wheelGrp.rotation.x = 0.42;
-  helm.add(wheelGrp);
+  wheelMount.add(wheelGrp);
+  helm.add(wheelMount);
+  animated?.steeringWheels.push(wheelGrp);
 
   // Twin chrome throttle levers
   const thrBase = new THREE.Mesh(
@@ -2101,7 +2212,7 @@ export function buildWatercraft(
     tagPart(wind, 'Defletor Acrílico Transparente', 0, 0.45, 0.25);
     group.add(wind);
 
-    buildConnectedHandlebar(
+    const jetBar = buildConnectedHandlebar(
       group,
       mats,
       {
@@ -2117,6 +2228,35 @@ export function buildWatercraft(
       },
       cityMode,
     );
+    animated.steeringPivots.push(jetBar);
+
+    [-1, 1].forEach((side) => {
+      const hl = new THREE.Mesh(
+        createRoundedBoxGeo(0.09, 0.048, 0.06, 0.015, 2, 6),
+        mats.headlight,
+      );
+      hl.position.set(side * (width * 0.14), hullH * 1.18, halfL * 0.62);
+      const beam = createHeadlightBeamMesh(3.4, 0.56, 0.08);
+      beam.position.set(side * (width * 0.14), hullH * 1.18, halfL * 0.66);
+      const fBlink = new THREE.Mesh(
+        createRoundedBoxGeo(0.055, 0.032, 0.04, 0.01, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      fBlink.position.set(side * (width * 0.25), hullH * 1.13, halfL * 0.52);
+      const rBlink = new THREE.Mesh(
+        createRoundedBoxGeo(0.055, 0.032, 0.04, 0.01, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      rBlink.position.set(side * (width * 0.24), hullH * 0.96, -halfL * 0.88);
+      group.add(hl, beam, fBlink, rBlink);
+      animated.headlightBeams.push(beam);
+    });
+    const sternTl = new THREE.Mesh(
+      createRoundedBoxGeo(0.18, 0.045, 0.04, 0.012, 2, 6),
+      mats.taillight,
+    );
+    sternTl.position.set(0, hullH * 0.96, -halfL * 0.88);
+    group.add(sternTl);
 
     const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.28, 18), mats.trim);
     nozzle.rotation.x = Math.PI / 2;
@@ -2151,7 +2291,7 @@ export function buildWatercraft(
     group.add(sole);
 
     // Center Jockey Console + Framed Windshield (elevated above bow collar) + Rescue Jockey Seats
-    addMarineHelmConsole(group, width, floorY + 0.14, length * 0.06, mats, 0, cityMode);
+    addMarineHelmConsole(group, width, floorY + 0.14, length * 0.06, mats, 0, cityMode, animated);
     addFramedBoatWindshield(group, width * 0.46, floorY + 0.88, length * 0.14, 0.46, mats, cityMode);
 
     [-0.22, 0.22].forEach((sx) => {
@@ -2216,12 +2356,23 @@ export function buildWatercraft(
     tagPart(arch, 'Arco de Resgate com Sinalizador', 0, 0.65, -0.4);
     group.add(arch);
 
-    const strobe = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.34, 0.09, 0.14, 0.02, 2, 6),
+    const podW = width * 0.12;
+    const strobeL = new THREE.Mesh(
+      createRoundedBoxGeo(podW, 0.09, 0.14, 0.02, 2, 6),
+      mats.sirenRed,
+    );
+    strobeL.position.set(-podW * 1.05, hullH + 1.0, -halfL + 0.3);
+    const strobeC = new THREE.Mesh(
+      createRoundedBoxGeo(podW, 0.09, 0.14, 0.02, 2, 6),
       mats.sirenAmber,
     );
-    strobe.position.set(0, hullH + 1.0, -halfL + 0.3);
-    group.add(strobe);
+    strobeC.position.set(0, hullH + 1.0, -halfL + 0.3);
+    const strobeR = new THREE.Mesh(
+      createRoundedBoxGeo(podW, 0.09, 0.14, 0.02, 2, 6),
+      mats.sirenBlue,
+    );
+    strobeR.position.set(podW * 1.05, hullH + 1.0, -halfL + 0.3);
+    group.add(strobeL, strobeC, strobeR);
   } else if (g.archetype === 'yacht') {
     // Teak foredeck + cockpit floor + stern swim platform
     const foreDeck = new THREE.Mesh(
@@ -2270,7 +2421,7 @@ export function buildWatercraft(
     );
     sofa.position.set(-salW * 0.1, hullH + 0.18, salZ - salL * 0.08);
     group.add(sofa);
-    addMarineHelmConsole(group, width, hullH + 0.06, salZ + salL * 0.26, mats, salW * 0.18, cityMode);
+    addMarineHelmConsole(group, width, hullH + 0.06, salZ + salL * 0.26, mats, salW * 0.18, cityMode, animated);
 
     // Salon Side & Aft Pillars + Roof Deck
     const salRoof = new THREE.Mesh(
@@ -2367,7 +2518,7 @@ export function buildWatercraft(
     );
     flyLounge.position.set(0, flyY + 0.14, salZ - 0.18);
     group.add(flyLounge);
-    addMarineHelmConsole(group, salW * 0.72, flyY, salZ + salL * 0.2, mats, 0, cityMode);
+    addMarineHelmConsole(group, salW * 0.72, flyY, salZ + salL * 0.2, mats, 0, cityMode, animated);
     addFramedBoatWindshield(group, salW * 0.74, flyY + 0.16, salZ + salL * 0.36, 0.34, mats, cityMode);
 
     const archPts = [
@@ -2444,7 +2595,7 @@ export function buildWatercraft(
     group.add(cabBase);
 
     // Upper bridge interior + helm wheel
-    addMarineHelmConsole(group, cabW * 0.72, cabY + cabH * 0.42, cabZ + cabL * 0.14, mats, 0, cityMode);
+    addMarineHelmConsole(group, cabW * 0.72, cabY + cabH * 0.42, cabZ + cabL * 0.14, mats, 0, cityMode, animated);
 
     // Bridge corner posts + flush window bands (inside cabW/cabL!)
     [-1, 1].forEach((sx) => {
@@ -2589,7 +2740,7 @@ export function buildWatercraft(
     }
 
     // 3. Detailed Helm Console + Twin Bolster Captain Seats + Aft Bench Sofa
-    addMarineHelmConsole(group, width, floorY, wsBaseZ - 0.22, mats, width * 0.16, cityMode);
+    addMarineHelmConsole(group, width, floorY, wsBaseZ - 0.22, mats, width * 0.16, cityMode, animated);
     [-1, 1].forEach((side) => {
       const seatGrp = new THREE.Group();
       const base = new THREE.Mesh(
@@ -2773,6 +2924,39 @@ export function buildWatercraft(
       obGroup.position.set(ox, hullH * 0.72, -halfL - 0.2);
       tagPart(obGroup, 'Motor de Popa com Hélice', ox * 0.6, 0.15, -0.55);
       group.add(obGroup);
+    });
+  }
+
+  // Bow marine spotlights, directional blinkers & stern taillight for all non-jetski watercraft
+  if (g.archetype !== 'jetski') {
+    const spotY =
+      g.archetype === 'yacht'
+        ? hullH * 1.12
+        : g.archetype === 'tugboat'
+          ? hullH * 1.04
+          : hullH * (1 + hullOpts.bowLift * 0.52);
+    const spotZ = halfL * 0.56;
+    const spotX = width * 0.25;
+    [-1, 1].forEach((side) => {
+      const spot = new THREE.Mesh(
+        createRoundedBoxGeo(0.14, 0.08, 0.08, 0.02, 2, 6),
+        mats.headlight,
+      );
+      spot.position.set(side * spotX, spotY, spotZ);
+      const beam = createHeadlightBeamMesh(5.0, 1.0, 0.05);
+      beam.position.set(side * spotX, spotY, spotZ + 0.04);
+      const bBlink = new THREE.Mesh(
+        createRoundedBoxGeo(0.08, 0.045, 0.07, 0.015, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      bBlink.position.set(side * (width * 0.38), hullH * 1.04, halfL * 0.36);
+      const sBlink = new THREE.Mesh(
+        createRoundedBoxGeo(0.08, 0.05, 0.06, 0.015, 2, 6),
+        side < 0 ? mats.signalLeft : mats.signalRight,
+      );
+      sBlink.position.set(side * (width * 0.34), hullH * 0.96, -halfL + 0.14);
+      group.add(spot, beam, bBlink, sBlink);
+      animated.headlightBeams.push(beam);
     });
   }
 

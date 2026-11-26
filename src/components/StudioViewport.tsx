@@ -74,6 +74,8 @@ const WHEEL_OPTIONS: { id: WheelStyle; label: string }[] = [
   { id: 'city_alloy', label: 'Urbana Liga' },
   { id: 'moto_sport', label: 'Moto Sport' },
   { id: 'moto_spoke', label: 'Moto Raiada' },
+  { id: 'bike_spoke', label: 'Bicicleta Raiada' },
+  { id: 'bike_aero', label: 'Bicicleta Aero' },
   { id: 'aircraft_gear', label: 'Trem Pouso' },
 ];
 
@@ -613,7 +615,7 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
               <button
                 type="button"
                 onClick={handleAnimateSystems}
-                title="Rodas, Hélices e Rotores"
+                title="Rodas, Pedais, Guidão, Hélices e Rotores"
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border whitespace-nowrap cursor-pointer ${
                   animateSystems
                     ? 'bg-zinc-800 border-zinc-600 text-zinc-100'

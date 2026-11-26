@@ -15,6 +15,7 @@ export function generateUnityCSharpForVehicle(v: VehicleConcept): string {
   const isBoat = v.unitySpec.controlType === 'BarcoControle';
   const isAir = v.unitySpec.controlType === 'AeronaveControle';
   const isMoto = v.unitySpec.controlType === 'MotoControle';
+  const isBike = v.geometry.archetype === 'bicycle' || v.category === 'Bicicletas';
   const isPlaneOrJet = v.geometry.archetype === 'airplane' || v.geometry.archetype === 'jet';
 
   return `using UnityEngine;
@@ -73,19 +74,25 @@ public class Gerador_${safeName} : MonoBehaviour
         // 1. Carroceria Principal (${length.toFixed(2)}m x ${width.toFixed(2)}m)
         float alturaBase = ${(height * (1 - v.geometry.cabinHeightRatio) * 0.85).toFixed(2)}f;
         float clear = ${v.geometry.groundClearance.toFixed(2)}f;
-        CriarPeca(PrimitiveType.Cube, "Carroceria_Base", raiz.transform,
+        CriarPeca(PrimitiveType.Cube, "${isBike ? 'Quadro_Principal' : 'Carroceria_Base'}", raiz.transform,
             new Vector3(0f, clear + alturaBase * 0.5f, 0f),
-            new Vector3(${isPlaneOrJet ? (width * 0.18).toFixed(2) : width.toFixed(2)}f, alturaBase, ${length.toFixed(2)}f), corPrimaria);
+            new Vector3(${isPlaneOrJet ? (width * 0.18).toFixed(2) : isBike ? '0.08' : width.toFixed(2)}f, ${isBike ? '0.18' : 'alturaBase'}, ${isBike ? (wheelbase * 0.72).toFixed(2) : length.toFixed(2)}f), corPrimaria);
 
-        // 2. Cabine Transparente & Interior (${v.palette.interior})
+        // 2. Cabine / Assento (${v.palette.interior})
         float alturaCabine = ${(height * v.geometry.cabinHeightRatio).toFixed(2)}f;
         float compCabine = ${(length * v.geometry.cabinLengthRatio).toFixed(2)}f;
-        CriarPeca(PrimitiveType.Cube, "Bancos_Interior", raiz.transform,
-            new Vector3(0f, clear + alturaBase + 0.16f, 0f),
-            new Vector3(${(width * (isPlaneOrJet ? 0.12 : 0.64)).toFixed(2)}f, 0.34f, ${(length * v.geometry.cabinLengthRatio * 0.65).toFixed(2)}f), corInterior);
-        CriarPeca(PrimitiveType.Cube, "Cabine_Vidro_Transparente", raiz.transform,
+        CriarPeca(PrimitiveType.Cube, "${isBike ? 'Selim_Bike' : 'Bancos_Interior'}", raiz.transform,
+            new Vector3(0f, clear + alturaBase + 0.16f, ${isBike ? '-0.18f' : '0f'}),
+            new Vector3(${(width * (isPlaneOrJet ? 0.12 : isBike ? 0.25 : 0.64)).toFixed(2)}f, ${isBike ? '0.06' : '0.34'}f, ${(isBike ? 0.25 : length * v.geometry.cabinLengthRatio * 0.65).toFixed(2)}f), corInterior);
+        ${
+          isBike
+            ? `CriarPeca(PrimitiveType.Cylinder, "Guidao_Bike", raiz.transform,
+            new Vector3(0f, clear + alturaBase + 0.34f, ${(wheelbase * 0.34).toFixed(2)}f),
+            new Vector3(0.03f, ${(width * 0.45).toFixed(2)}f, 0.03f), corSecundaria).localRotation = Quaternion.Euler(0f, 0f, 90f);`
+            : `CriarPeca(PrimitiveType.Cube, "Cabine_Vidro_Transparente", raiz.transform,
             new Vector3(0f, clear + alturaBase + alturaCabine * 0.45f, 0f),
-            new Vector3(${(width * (isPlaneOrJet ? 0.15 : 0.86)).toFixed(2)}f, alturaCabine, compCabine), corVidro);
+            new Vector3(${(width * (isPlaneOrJet ? 0.15 : 0.86)).toFixed(2)}f, alturaCabine, compCabine), corVidro);`
+        }
 ${
   isPlaneOrJet
     ? `
@@ -96,7 +103,13 @@ ${
         CriarPeca(PrimitiveType.Cube, "Deriva_Vertical", raiz.transform,
             new Vector3(0f, clear + alturaBase + 0.65f, -${(length * 0.40).toFixed(2)}f),
             new Vector3(0.10f, 1.25f, ${(length * 0.16).toFixed(2)}f), corDestaque);`
-    : `
+    : isBike
+      ? `
+        // 3. Pedivela, Coroa e Pedais
+        CriarPeca(PrimitiveType.Cylinder, "Coroa_Pedivela", raiz.transform,
+            new Vector3(0.04f, clear + 0.04f, -0.05f),
+            new Vector3(0.16f, 0.02f, 0.16f), corDestaque).localRotation = Quaternion.Euler(0f, 0f, 90f);`
+      : `
         // 3. Para-choques, Retrovisores e Escapamentos
         CriarPeca(PrimitiveType.Cube, "Parachoque_Dianteiro", raiz.transform,
             new Vector3(0f, clear + 0.12f, ${(length * 0.5 + 0.04).toFixed(2)}f),

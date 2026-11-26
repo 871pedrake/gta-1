@@ -26,7 +26,8 @@ export function createCraftedWheel(
   const wheel = new THREE.Group();
   const sign = isRightSide ? 1 : -1;
   const r = Math.max(0.14, radius);
-  const w = Math.max(0.09, width);
+  const isBikeWheel = style === 'bike_spoke' || style === 'bike_aero';
+  const w = isBikeWheel ? Math.max(0.025, width) : Math.max(0.09, width);
   const latheSegs = cityMode ? 18 : 36;
   const rimR =
     style === 'monster_tractor'
@@ -35,9 +36,13 @@ export function createCraftedWheel(
         ? r * 0.48
         : style === 'aircraft_gear'
           ? r * 0.5
-          : style === 'deep_dish_6' || style === 'sport_5spoke' || style === 'retro_turbofan'
-            ? r * 0.66
-            : r * 0.62;
+          : style === 'bike_aero'
+            ? r * 0.75
+            : style === 'bike_spoke'
+              ? r * (width <= 0.035 ? 0.92 : 0.87)
+              : style === 'deep_dish_6' || style === 'sport_5spoke' || style === 'retro_turbofan'
+                ? r * 0.66
+                : r * 0.62;
 
   const buildSingleTire = (xOffset: number, tireW: number) => {
     const hw = tireW / 2;
@@ -79,6 +84,16 @@ export function createCraftedWheel(
         lug.rotation.x = -a;
         wheel.add(lug);
       }
+    } else if (!cityMode && style === 'bike_spoke' && tireW >= 0.049) {
+      const lugCount = 28;
+      const lugGeo = new THREE.BoxGeometry(tireW * 0.78, 0.007, 0.016);
+      for (let i = 0; i < lugCount; i++) {
+        const a = (i / lugCount) * Math.PI * 2;
+        const lug = new THREE.Mesh(lugGeo, mats.rubber);
+        lug.position.set(xOffset, Math.cos(a) * r * 0.995, Math.sin(a) * r * 0.995);
+        lug.rotation.x = -a;
+        wheel.add(lug);
+      }
     }
   };
 
@@ -87,6 +102,100 @@ export function createCraftedWheel(
     buildSingleTire(sign * w * 0.42, w * 0.88);
   } else {
     buildSingleTire(0, w);
+  }
+
+  if (isBikeWheel) {
+    // Hollow bicycle rim hoop (double-wall alloy or deep-section aero carbon)
+    const rimDepth = style === 'bike_aero' ? r * 0.18 : 0.018;
+    const outerRimR = style === 'bike_aero' ? r * 0.92 : rimR;
+    const innerRimR = Math.max(0.08, outerRimR - rimDepth);
+    const hw = w * 0.45;
+    const rimPts = [
+      new THREE.Vector2(innerRimR, -hw * 0.45),
+      new THREE.Vector2(outerRimR * 0.995, -hw),
+      new THREE.Vector2(outerRimR * 0.995, hw),
+      new THREE.Vector2(innerRimR, hw * 0.45),
+      new THREE.Vector2(innerRimR, -hw * 0.45),
+    ];
+    const rimGeo = new THREE.LatheGeometry(rimPts, latheSegs);
+    rimGeo.rotateZ(Math.PI / 2);
+    const rimMesh = new THREE.Mesh(
+      rimGeo,
+      style === 'bike_aero' ? mats.body : mats.alloy,
+    );
+    wheel.add(rimMesh);
+
+    // Braking track lip ring
+    const lipGeo = new THREE.TorusGeometry(outerRimR * 0.985, 0.004, 8, latheSegs);
+    lipGeo.rotateY(Math.PI / 2);
+    [-1, 1].forEach((sideSign) => {
+      const lip = new THREE.Mesh(lipGeo, style === 'bike_aero' ? mats.secondary : mats.chrome);
+      lip.position.x = sideSign * (hw * 0.92);
+      wheel.add(lip);
+    });
+
+    // Crossed wire spokes (or bladed aero spokes) anchored to central hub flanges
+    const spokeCount = cityMode ? 12 : style === 'bike_aero' ? 12 : 24;
+    const hubFlangeX = 0.024;
+    const spokeRadius = style === 'bike_aero' ? 0.0042 : 0.0022;
+    const spokeMat = style === 'bike_aero' ? mats.alloy : mats.chrome;
+    for (let i = 0; i < spokeCount; i++) {
+      const rimAng = (i / spokeCount) * Math.PI * 2;
+      const flangeSign = i % 2 === 0 ? 1 : -1;
+      const hubAng = rimAng + (style === 'bike_aero' ? 0.12 : i % 4 < 2 ? 0.36 : -0.36);
+      const pHub = new THREE.Vector3(
+        flangeSign * hubFlangeX,
+        Math.cos(hubAng) * 0.02,
+        Math.sin(hubAng) * 0.02,
+      );
+      const pRim = new THREE.Vector3(
+        0,
+        Math.cos(rimAng) * innerRimR,
+        Math.sin(rimAng) * innerRimR,
+      );
+      wheel.add(makeStrutBetween(pHub, pRim, spokeRadius, spokeRadius, spokeMat, 5));
+    }
+
+    // Precision bike hub barrel, flanges & axle
+    const hubBarrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.015, 0.088, 12).rotateZ(Math.PI / 2),
+      mats.alloy,
+    );
+    wheel.add(hubBarrel);
+    [-1, 1].forEach((s) => {
+      const flange = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.024, 0.024, 0.006, 14).rotateZ(Math.PI / 2),
+        mats.chrome,
+      );
+      flange.position.x = s * hubFlangeX;
+      wheel.add(flange);
+    });
+    const axle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.006, 0.006, 0.118, 10).rotateZ(Math.PI / 2),
+      mats.chrome,
+    );
+    wheel.add(axle);
+
+    // Valve stem detail
+    const valve = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.003, 0.003, 0.028, 6),
+      mats.chrome,
+    );
+    valve.position.set(0, innerRimR - 0.014, 0);
+    wheel.add(valve);
+
+    // Slim bicycle disc brake rotor on left side (-X) for MTB/Trail
+    if (style === 'bike_spoke' && w >= 0.047) {
+      const rotor = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.082, 0.082, 0.004, 18).rotateZ(Math.PI / 2),
+        mats.brakeDisc,
+      );
+      rotor.position.x = -0.032;
+      wheel.add(rotor);
+    }
+
+    enableShadows(wheel, true, true);
+    return wheel;
   }
 
   // Rim barrel
@@ -302,6 +411,7 @@ export function buildVisibleInterior(
   tubDepth = 0.26,
   cityMode = false,
   interiorStyle: InteriorStyleOptions = {},
+  animated?: BuiltVehicle['animatedParts'],
 ): THREE.Group {
   const interior = new THREE.Group();
   const innerW = Math.max(0.85, width * 0.8);
@@ -424,6 +534,10 @@ export function buildVisibleInterior(
   col.rotation.x = 1.05;
   interior.add(col);
 
+  const steerMount = new THREE.Group();
+  steerMount.position.set(-innerW * 0.26, dashY + 0.11, dashZ - 0.24);
+  steerMount.rotation.x = 0.38;
+
   const steerGroup = new THREE.Group();
   const rim = new THREE.Mesh(
     new THREE.TorusGeometry(0.14, 0.021, cityMode ? 6 : 12, cityMode ? 16 : 28),
@@ -440,9 +554,9 @@ export function buildVisibleInterior(
     spoke.rotation.z = -a;
     steerGroup.add(spoke);
   }
-  steerGroup.position.set(-innerW * 0.26, dashY + 0.11, dashZ - 0.24);
-  steerGroup.rotation.x = 0.38;
-  interior.add(steerGroup);
+  steerMount.add(steerGroup);
+  interior.add(steerMount);
+  animated?.steeringWheels.push(steerGroup);
 
   // Passenger grab handle on dash for buggies & track roadsters
   if (!cityMode && (isBuggy || arch === 'roadster' || styleVariant === 2)) {
@@ -847,6 +961,7 @@ export function buildSculptedCabin(
   omitSideGlass = false,
   sideGlassMaxLocalZ?: number,
   interiorStyle: InteriorStyleOptions = {},
+  animated?: BuiltVehicle['animatedParts'],
 ): THREE.Group {
   const cabin = new THREE.Group();
   const hl = cabinLen / 2;
@@ -871,6 +986,7 @@ export function buildSculptedCabin(
     interiorDropY,
     cityMode,
     interiorStyle,
+    animated,
   );
   interior.position.y = -interiorDropY;
   cabin.add(interior);

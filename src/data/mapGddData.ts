@@ -108,6 +108,13 @@ export const GDD_EXPLICIT_RULES: GddExplicitRule[] = [
     rule: 'Helicópteros abandonam a esfera flutuante no nariz para adotar fuselagem vazada com para-brisa envolvente embutido em colunas A, montante central, janelas inferiores de queixo, interior visível (bancos, manche cíclico e tela MFD), turbinas gêmeas superiores com exaustores, rotor com swashplate/pitch-links, estabilizador horizontal com endplates e kits únicos: Apache (cabine tandem, radar Longbow, canhão 30mm, TADS e stub-wings recuadas com foguetes/Hellfire), Stealth (casco facetado + V-tail + Fenestron), VIP (Fenestron + degraus), Polícia (FLIR + holofote) e Resgate/Skycrane (guincho + gancho inferior). Aviões e jatos usam fuselagens esculpidas e asas afiladas distintas para Cessna, Hidroavião, Biplano radial, King Air T-Tail, Cargueiro com rampa, Lear VIP, F-22, F-16, Acrobático e Concorde.',
     unityRequirement: 'Sincronizar MontarHelicoptero e MontarAviaoOuJato em Fabrica50Veiculos.cs garantindo zero esfera protuberante fora do contorno da fuselagem e mantendo escotilhas/portas livres das asas no Apache.',
   },
+  {
+    code: 'REGRA-10',
+    title: 'Nova Categoria Bicicletas: Normal Trail, BMX, Speed & Track Aero',
+    scope: 'bicycleVehicles + wheelsAndInterior · VHC-101..103 & 105 (Categoria Bicicletas)',
+    rule: 'Nova categoria oficial de veículos leves para ciclovias, orla da Praia Oeste, Escola e Morro da Esperança com 4 variações fiéis ao mapa mental (sem faróis ou lanternas): Normal Trail/Urbana (VHC-101 com garfo de suspensão), BMX Freestyle (VHC-102 aro 20 com guidão em U + barra transversal e 4 pegs), Speed/Velocidade (VHC-103 road 700c com drop-bar e manetes STI) e Track Aero GP (VHC-105 aro profundo bike_aero). Todas exigem rodas raiadas finas (bike_spoke/bike_aero), corrente + cassete e 3 animações sincronizadas: pedivela rotativo com pedais contra-rotativos horizontais, giro contínuo das rodas e pivô de direção inclinado no ângulo do head-tube girando guidão, garfo e roda dianteira.',
+    unityRequirement: 'Classificar na Tier "Bicicletas Urbanas, BMX & Speed" e espelhar em Fabrica50Veiculos.MontarBicicleta com guiderPivo/pedivelaPivo/pedais animados em ControleVeiculo50.',
+  },
 ];
 
 export const GDD_ZONES: GddZoneSpec[] = [
@@ -471,6 +478,7 @@ export const GDD_UNITY_CHECKLIST = [
       'Verificar bancos padrão VHC-52 diferenciados nos conversíveis/roadsters/buggys, santantonio ancorado em rearY, retrovisor preso na moldura e buggy em cockpit tubular aberto',
       'Confirmar motos (5 arquétipos), trike, jetski e ATV Cyberquad com guidões conectados por risers/coluna de direção, retrovisores presos no manete e suspensão A-arm aparente',
       'Validar os 6 helicópteros pelo mapa mental (para-brisa embutido sem bolha flutuante, interior visível, swashplate, Fenestron/V-tail, Apache tandem/Longbow/stub-wings) e os 10 aviões/jatos com fuselagem e asas diferenciadas em MontarHelicoptero e MontarAviaoOuJato',
+      'Validar a categoria Bicicletas (VHC-101, 102, 103 e 105: Normal Trail, BMX com barra transversal e pegs, Speed drop-bar e Track Aero, sem luzes) com animação sincronizada de pedais horizontais, rodas raiadas finas e guidão esterçante',
     ],
   },
 ];

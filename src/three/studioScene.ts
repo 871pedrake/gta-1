@@ -40,6 +40,8 @@ export class VehicleStudioController {
   private doorsCurrent = 0;
   private autoRotate = true;
   private animateSystems = true;
+  private rotorSpeedFactor = 1;
+  private engineSpeedFactor = 1;
   private lightsOn = true;
   private wireframeMode = false;
 
@@ -163,7 +165,7 @@ export class VehicleStudioController {
     this.controls.enableDamping = !isSoftwareGl;
     this.controls.dampingFactor = 0.06;
     this.controls.maxPolarAngle = Math.PI * 0.485;
-    this.controls.minDistance = 2.4;
+    this.controls.minDistance = 1.4;
     this.controls.maxDistance = 32;
     this.controls.target.copy(this.camTargetLook);
     this.controls.addEventListener('start', () => {
@@ -185,9 +187,19 @@ export class VehicleStudioController {
   }
 
   private needsContinuousLoop(): boolean {
+    const hasSpinningRotors =
+      (this.currentBuilt?.animatedParts.rotors.length ?? 0) > 0 && this.rotorSpeedFactor > 0.002;
+    const hasSpinningPropsOrFlames =
+      ((this.currentBuilt?.animatedParts.propellers.length ?? 0) > 0 ||
+        (this.currentBuilt?.animatedParts.afterburners.length ?? 0) > 0 ||
+        (this.currentBuilt?.animatedParts.cranks.length ?? 0) > 0 ||
+        (this.currentBuilt?.animatedParts.steeringPivots.length ?? 0) > 0) &&
+      this.engineSpeedFactor > 0.002;
     return (
       this.autoRotate ||
       this.animateSystems ||
+      hasSpinningRotors ||
+      hasSpinningPropsOrFlames ||
       this.camTransitioning ||
       Math.abs(this.explodeCurrent - this.explodeTarget) > 0.002 ||
       Math.abs(this.doorsCurrent - this.doorsTarget) > 0.002
@@ -220,6 +232,8 @@ export class VehicleStudioController {
     });
     built.group.rotation.y = prevRotationY;
     this.currentBuilt = built;
+    this.rotorSpeedFactor = this.animateSystems ? 0.35 : 0;
+    this.engineSpeedFactor = this.animateSystems ? 0.35 : 0;
     this.scene.add(built.group);
 
     if (this.customPaintHex || this.customPaintFinish) {
@@ -307,7 +321,8 @@ export class VehicleStudioController {
     const wid = v ? v.dimensions.width : 1.9;
     const hgt = v ? v.dimensions.height : 1.6;
     const widFactor = wid > 4.5 ? 1.08 : 1.6;
-    const radius = Math.max(len * 0.92, wid * widFactor, hgt * 1.8, 3.6);
+    const minRadius = len < 2.2 ? 2.15 : 3.6;
+    const radius = Math.max(len * 0.92, wid * widFactor, hgt * 1.8, minRadius);
     const lookY = hgt * 0.45;
 
     this.camTargetLook.set(0, lookY, 0);
@@ -379,9 +394,14 @@ export class VehicleStudioController {
     const m = this.currentBuilt.materials;
     m.headlight.emissiveIntensity = this.lightsOn ? 1.65 : 0.05;
     m.taillight.emissiveIntensity = this.lightsOn ? 1.35 : 0.05;
+    m.signalLeft.emissiveIntensity = this.lightsOn ? 0.12 : 0.04;
+    m.signalRight.emissiveIntensity = this.lightsOn ? 0.12 : 0.04;
     m.sirenRed.emissiveIntensity = this.lightsOn ? 1.8 : 0.05;
     m.sirenBlue.emissiveIntensity = this.lightsOn ? 1.8 : 0.05;
     m.sirenAmber.emissiveIntensity = this.lightsOn ? 1.45 : 0.05;
+    for (let i = 0; i < this.currentBuilt.animatedParts.headlightBeams.length; i++) {
+      this.currentBuilt.animatedParts.headlightBeams[i].visible = this.lightsOn;
+    }
   }
 
   private applyWireframeState() {
@@ -567,17 +587,71 @@ export class VehicleStudioController {
         this.turntable.rotation.y += dt * 0.34;
       }
 
-      if (this.animateSystems) {
-        const anim = this.currentBuilt.animatedParts;
-        anim.wheels.forEach((w) => {
-          w.rotation.x += dt * 2.8;
-        });
+      const targetSpeed = this.animateSystems ? 1 : 0;
+      this.rotorSpeedFactor = THREE.MathUtils.damp(this.rotorSpeedFactor, targetSpeed, 3.8, dt);
+      this.engineSpeedFactor = THREE.MathUtils.damp(this.engineSpeedFactor, targetSpeed, 4.2, dt);
+
+      const anim = this.currentBuilt.animatedParts;
+      const tau = Math.PI * 2;
+
+      if (this.rotorSpeedFactor > 0.002 && anim.rotors.length > 0) {
         anim.rotors.forEach((r, idx) => {
-          if (idx === 0) r.rotation.y += dt * 14;
-          else r.rotation.x += dt * 18;
+          const axis = r.userData.rotorAxis ?? (idx === 0 ? 'y' : 'x');
+          if (axis === 'y') {
+            r.rotation.y = (r.rotation.y + dt * 14.5 * this.rotorSpeedFactor) % tau;
+          } else {
+            r.rotation.x = (r.rotation.x + dt * 20 * this.rotorSpeedFactor) % tau;
+          }
         });
+      }
+
+      if (this.engineSpeedFactor > 0.002 && anim.propellers.length > 0) {
         anim.propellers.forEach((p) => {
-          p.rotation.z += dt * 12;
+          const spinSpeed = (p.userData.spinSpeed as number | undefined) ?? 15;
+          p.rotation.z = (p.rotation.z + dt * spinSpeed * this.engineSpeedFactor) % tau;
+        });
+      }
+
+      if (anim.afterburners.length > 0) {
+        const showFlame = this.engineSpeedFactor > 0.02;
+        anim.afterburners.forEach((ab, idx) => {
+          ab.visible = showFlame;
+          if (!showFlame) return;
+          const flicker =
+            0.88 +
+            0.12 * Math.sin(this.elapsed * 38 + idx * 1.9) +
+            0.07 * Math.cos(this.elapsed * 63 + idx * 2.7);
+          const xyScale = (0.88 + 0.14 * flicker) * (0.45 + 0.55 * this.engineSpeedFactor);
+          const zScale = (0.78 + 0.32 * flicker) * this.engineSpeedFactor;
+          ab.scale.set(xyScale, xyScale, zScale);
+          ab.rotation.z = (ab.rotation.z + dt * 10) % tau;
+        });
+      }
+
+      if (this.engineSpeedFactor > 0.002 && anim.cranks.length > 0) {
+        anim.cranks.forEach((c) => {
+          c.rotation.x = (c.rotation.x + dt * 4.2 * this.engineSpeedFactor) % tau;
+        });
+        const crankAngle = anim.cranks[0]?.rotation.x ?? 0;
+        anim.pedals.forEach((p) => {
+          p.rotation.x = -crankAngle;
+        });
+      }
+
+      if (anim.steeringPivots.length > 0 || anim.steeringWheels.length > 0) {
+        const steerAngle = Math.sin(this.elapsed * 1.35) * 0.34 * this.engineSpeedFactor;
+        anim.steeringPivots.forEach((sp) => {
+          sp.rotation.y = steerAngle;
+        });
+        anim.steeringWheels.forEach((sw) => {
+          sw.rotation.z = -steerAngle * 3.0;
+        });
+      }
+
+      if (this.animateSystems) {
+        const wheelSpeed = anim.cranks.length > 0 ? 4.4 : 2.8;
+        anim.wheels.forEach((w) => {
+          w.rotation.x = (w.rotation.x + dt * wheelSpeed) % tau;
         });
         if (anim.mixerDrum) {
           anim.mixerDrum.rotation.z += dt * 1.4;
@@ -586,13 +660,18 @@ export class VehicleStudioController {
           b.rotation.y += dt * (i === 0 ? 5.5 : -5.5);
         });
 
-        // Police & amber strobe pulse
+        // Turn signals, emergency police/fire/ambulance strobes & amber beacons
         if (this.lightsOn) {
           const pulse = Math.sin(this.elapsed * 14);
           this.currentBuilt.materials.sirenRed.emissiveIntensity = pulse > 0 ? 2.8 : 0.25;
           this.currentBuilt.materials.sirenBlue.emissiveIntensity = pulse <= 0 ? 2.8 : 0.25;
           this.currentBuilt.materials.sirenAmber.emissiveIntensity =
-            0.9 + Math.max(0, Math.sin(this.elapsed * 7)) * 1.4;
+            0.25 + Math.pow(Math.max(0, Math.sin(this.elapsed * 8)), 2) * 2.4;
+
+          const blinkCycle = this.elapsed % 4.0;
+          const flash = Math.sin(this.elapsed * 9) > 0 ? 2.4 : 0.12;
+          this.currentBuilt.materials.signalLeft.emissiveIntensity = blinkCycle < 2.0 ? flash : 0.12;
+          this.currentBuilt.materials.signalRight.emissiveIntensity = blinkCycle >= 2.0 ? flash : 0.12;
         }
       }
     }
@@ -702,7 +781,8 @@ class OffscreenThumbnailRenderer {
     scene.add(built.group);
 
     const widFactor = v.dimensions.width > 4.5 ? 1.06 : 1.55;
-    const span = Math.max(v.dimensions.length * 0.92, v.dimensions.width * widFactor, v.dimensions.height * 1.75, 3.4);
+    const minSpan = v.dimensions.length < 2.2 ? 2.05 : 3.4;
+    const span = Math.max(v.dimensions.length * 0.92, v.dimensions.width * widFactor, v.dimensions.height * 1.75, minSpan);
     const lookY = v.dimensions.height * 0.45;
     camera.position.set(span * 0.96, lookY + span * 0.42, span * 1.04);
     camera.lookAt(0, lookY, 0);
@@ -731,7 +811,8 @@ class OffscreenThumbnailRenderer {
     scene.add(built.group);
 
     const widFactor = v.dimensions.width > 4.5 ? 1.08 : 1.6;
-    const span = Math.max(v.dimensions.length * 0.94, v.dimensions.width * widFactor, v.dimensions.height * 1.8, 3.4);
+    const minSpan = v.dimensions.length < 2.2 ? 2.05 : 3.4;
+    const span = Math.max(v.dimensions.length * 0.94, v.dimensions.width * widFactor, v.dimensions.height * 1.8, minSpan);
     const lookY = v.dimensions.height * 0.45;
 
     const snap = (x: number, y: number, z: number) => {

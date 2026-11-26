@@ -4,6 +4,7 @@ import { VehicleMaterialSet } from '../materials';
 import {
   BuiltVehicle,
   createExtrudedProfile,
+  createHeadlightBeamMesh,
   createRoundedBoxGeo,
   enableShadows,
   makeStrutBetween,
@@ -255,6 +256,122 @@ function buildBladeRotorAssembly(
   }
 
   return rotor;
+}
+
+function buildTurbineFan(
+  radius: number,
+  bladeCount: number,
+  mats: VehicleMaterialSet,
+  withSpinner = true,
+): THREE.Group {
+  const fan = new THREE.Group();
+
+  const hub = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.28, radius * 0.30, 0.08, 12),
+    mats.trim,
+  );
+  hub.rotation.x = Math.PI / 2;
+  fan.add(hub);
+
+  if (withSpinner) {
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry(radius * 0.28, radius * 0.65, 14),
+      mats.chrome,
+    );
+    cone.rotation.x = Math.PI / 2;
+    cone.position.z = radius * 0.30;
+    fan.add(cone);
+
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 0.08, radius * 0.38, radius * 0.04),
+      mats.accent,
+    );
+    stripe.position.set(0, radius * 0.08, radius * 0.34);
+    fan.add(stripe);
+  }
+
+  for (let b = 0; b < bladeCount; b++) {
+    const arm = new THREE.Group();
+    arm.rotation.z = (b / bladeCount) * Math.PI * 2;
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 0.16, radius * 0.72, 0.022),
+      b % 2 === 0 ? mats.alloy : mats.chrome,
+    );
+    blade.position.y = radius * 0.56;
+    blade.rotation.y = 0.48;
+    arm.add(blade);
+    fan.add(arm);
+  }
+
+  return fan;
+}
+
+function buildAfterburnerFlame(radius: number, length: number): THREE.Group {
+  const flameGroup = new THREE.Group();
+
+  const makeCone = (r: number, len: number) => {
+    const geo = new THREE.ConeGeometry(r, len, 18, 1, true);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(0, 0, -len * 0.5);
+    return geo;
+  };
+
+  const matCore = new THREE.MeshBasicMaterial({
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.92,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  const matMid = new THREE.MeshBasicMaterial({
+    color: 0xff7b00,
+    transparent: true,
+    opacity: 0.78,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  const matOuter = new THREE.MeshBasicMaterial({
+    color: 0xff2a00,
+    transparent: true,
+    opacity: 0.42,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  const matShock = new THREE.MeshBasicMaterial({
+    color: 0xfef08a,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
+
+  const core = new THREE.Mesh(makeCone(radius * 0.58, length * 0.55), matCore);
+  const mid = new THREE.Mesh(makeCone(radius * 0.92, length), matMid);
+  const outer = new THREE.Mesh(makeCone(radius * 1.18, length * 1.28), matOuter);
+
+  const diamond1 = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.34, 12, 10), matShock);
+  diamond1.scale.set(0.85, 0.85, 1.85);
+  diamond1.position.z = -length * 0.24;
+
+  const diamond2 = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.24, 12, 10), matShock);
+  diamond2.scale.set(0.8, 0.8, 1.7);
+  diamond2.position.z = -length * 0.50;
+
+  [core, mid, outer, diamond1, diamond2].forEach((m) => {
+    m.userData.noShadow = true;
+    m.renderOrder = 4;
+  });
+
+  flameGroup.userData.extraMaterials = [matCore, matMid, matOuter, matShock];
+  flameGroup.add(outer, mid, core, diamond1, diamond2);
+  return flameGroup;
 }
 
 // =========================================================================
@@ -737,8 +854,8 @@ export function buildHelicopterVehicle(
     tailRotor.position.set(0.10, boomY + height * 0.30, boomEndZ + 0.02);
     tagPart(tailRotor, 'Rotor Antipar de Cauda', 0.4, 0.35, -0.75);
   }
+  tailRotor.userData.rotorAxis = 'x';
   group.add(tailRotor);
-  animated.rotors.push(tailRotor);
 
   // 7. Landing Gear (Taildragger wheels on Apache, Tall Crane wheels on Skycrane, Rescue wheels/sponsons, or Aerodynamic Skids)
   if (isApache) {
@@ -896,9 +1013,10 @@ export function buildHelicopterVehicle(
     cityMode,
   );
   mainRotor.position.set(0, turbDeckY + 0.26, cabCenterZ - fuseLen * 0.06);
+  mainRotor.userData.rotorAxis = 'y';
   tagPart(mainRotor, isApache ? 'Rotor Tático com Radar Longbow' : 'Rotor Principal Articulado', 0, 0.9, 0);
   group.add(mainRotor);
-  animated.rotors.push(mainRotor);
+  animated.rotors.push(mainRotor, tailRotor);
 
   // 9. Role-Specific Helicopter Details (Apache Gunship Armament, Police Searchlight/FLIR, Rescue Hoist, Skycrane Winch)
   if (isApache) {
@@ -973,8 +1091,26 @@ export function buildHelicopterVehicle(
     });
   }
 
+  // Twin nose/chin landing spotlights + beams & port/starboard directional blinkers on ALL helicopters
+  [-1, 1].forEach((side) => {
+    const landLamp = new THREE.Mesh(
+      createRoundedBoxGeo(0.11, 0.075, 0.07, 0.02, 2, 6),
+      mats.headlight,
+    );
+    landLamp.position.set(side * (fuseW * 0.24), cabBaseY + 0.10, cabCenterZ + noseTip - 0.12);
+    const landBeam = createHeadlightBeamMesh(5.8, 1.15, 0.28);
+    landBeam.position.set(side * (fuseW * 0.24), cabBaseY + 0.10, cabCenterZ + noseTip - 0.08);
+    const sideBlink = new THREE.Mesh(
+      createRoundedBoxGeo(0.06, 0.05, 0.14, 0.015, 2, 6),
+      side < 0 ? mats.signalLeft : mats.signalRight,
+    );
+    sideBlink.position.set(side * (fuseW * 0.48), cabBaseY + cowlRelY * 0.65, cabCenterZ + 0.15);
+    group.add(landLamp, landBeam, sideBlink);
+    animated.headlightBeams.push(landBeam);
+  });
+
   if (isPolice) {
-    // Chin gyro-FLIR camera sphere + nose Nightsun searchlight + police strobe bar
+    // Chin gyro-FLIR camera sphere + nose Nightsun searchlight + split red/blue police strobe bar
     const flir = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), mats.trim);
     flir.position.set(0, cabBaseY + 0.02, cabCenterZ + noseTip - 0.12);
     const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 12), mats.sirenBlue);
@@ -986,9 +1122,44 @@ export function buildHelicopterVehicle(
     const searchLens = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.04, 12), mats.headlight);
     searchLens.rotation.x = Math.PI / 2;
     searchLens.position.set(-fuseW * 0.44, cabBaseY + 0.14, cabFrontZ - 0.05);
-    const pBar = new THREE.Mesh(createRoundedBoxGeo(fuseW * 0.56, 0.08, 0.16, 0.02, 2, 6), mats.sirenRed);
-    pBar.position.set(0, turbDeckY + 0.26, turbZ + turbLen * 0.38);
-    group.add(flir, lens, search, searchLens, pBar);
+    const searchBeam = createHeadlightBeamMesh(7.2, 1.45, 0.34);
+    searchBeam.position.set(-fuseW * 0.44, cabBaseY + 0.14, cabFrontZ - 0.03);
+    animated.headlightBeams.push(searchBeam);
+
+    const podW = fuseW * 0.28;
+    const pBarRed = new THREE.Mesh(createRoundedBoxGeo(podW, 0.08, 0.16, 0.02, 2, 6), mats.sirenRed);
+    pBarRed.position.set(-podW * 0.52, turbDeckY + 0.26, turbZ + turbLen * 0.38);
+    const pBarBlue = new THREE.Mesh(createRoundedBoxGeo(podW, 0.08, 0.16, 0.02, 2, 6), mats.sirenBlue);
+    pBarBlue.position.set(podW * 0.52, turbDeckY + 0.26, turbZ + turbLen * 0.38);
+    const bellyPod = new THREE.Mesh(createRoundedBoxGeo(0.22, 0.07, 0.14, 0.02, 2, 6), mats.sirenRed);
+    bellyPod.position.set(0, cabBaseY - 0.03, cabCenterZ);
+    group.add(flir, lens, search, searchLens, searchBeam, pBarRed, pBarBlue, bellyPod);
+  }
+
+  if (isRescue) {
+    // Hospital & Bombeiros rescue helicopter strobes (roof tri-color bar + chin pods + tail fin strobe)
+    const rPodW = fuseW * 0.20;
+    const rBarL = new THREE.Mesh(createRoundedBoxGeo(rPodW, 0.085, 0.16, 0.02, 2, 6), mats.sirenRed);
+    rBarL.position.set(-rPodW * 1.04, turbDeckY + 0.26, turbZ + turbLen * 0.38);
+    const rBarC = new THREE.Mesh(createRoundedBoxGeo(rPodW, 0.085, 0.16, 0.02, 2, 6), mats.sirenAmber);
+    rBarC.position.set(0, turbDeckY + 0.26, turbZ + turbLen * 0.38);
+    const rBarR = new THREE.Mesh(createRoundedBoxGeo(rPodW, 0.085, 0.16, 0.02, 2, 6), mats.sirenBlue);
+    rBarR.position.set(rPodW * 1.04, turbDeckY + 0.26, turbZ + turbLen * 0.38);
+    group.add(rBarL, rBarC, rBarR);
+    [-1, 1].forEach((side) => {
+      const chinPod = new THREE.Mesh(
+        createRoundedBoxGeo(0.09, 0.055, 0.07, 0.015, 2, 6),
+        side < 0 ? mats.sirenRed : mats.sirenBlue,
+      );
+      chinPod.position.set(side * (fuseW * 0.34), cabBaseY + 0.18, cabFrontZ - 0.12);
+      group.add(chinPod);
+    });
+    const tailStrobe = new THREE.Mesh(
+      createRoundedBoxGeo(0.08, 0.09, 0.12, 0.02, 2, 6),
+      mats.sirenRed,
+    );
+    tailStrobe.position.set(0, boomY + height * 0.42, boomEndZ - 0.12);
+    group.add(tailStrobe);
   }
 
   if (isRescue || g.attachments.includes('heli_winch')) {
@@ -1009,13 +1180,18 @@ export function buildHelicopterVehicle(
     group.add(winchBoom, winchDrum);
 
     if (isSkycrane) {
-      // Heavy-duty under-spine hoist sling hook + amber work strobe
-      const craneBeacon = new THREE.Mesh(
-        createRoundedBoxGeo(fuseW * 0.42, 0.09, 0.18, 0.02, 2, 6),
+      // Heavy-duty under-spine hoist sling hook + red/amber work strobes
+      const craneBeaconL = new THREE.Mesh(
+        createRoundedBoxGeo(fuseW * 0.20, 0.09, 0.18, 0.02, 2, 6),
+        mats.sirenRed,
+      );
+      craneBeaconL.position.set(-fuseW * 0.11, turbDeckY + 0.27, turbZ + turbLen * 0.36);
+      const craneBeaconR = new THREE.Mesh(
+        createRoundedBoxGeo(fuseW * 0.20, 0.09, 0.18, 0.02, 2, 6),
         mats.sirenAmber,
       );
-      craneBeacon.position.set(0, turbDeckY + 0.27, turbZ + turbLen * 0.36);
-      group.add(craneBeacon);
+      craneBeaconR.position.set(fuseW * 0.11, turbDeckY + 0.27, turbZ + turbLen * 0.36);
+      group.add(craneBeaconL, craneBeaconR);
 
       const slingMount = new THREE.Mesh(
         createRoundedBoxGeo(0.46, 0.16, 0.65, 0.04, 2, 8),
@@ -1550,6 +1726,16 @@ export function buildAirplaneOrJetVehicle(
     spinner.position.z = 0.14;
     pGrp.add(spinner);
 
+    // Contrasting spinner band so high-RPM rotation reads crisply
+    const spinnerBand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.10), mats.accent);
+    spinnerBand.position.set(0, 0.03, 0.11);
+    pGrp.add(spinnerBand);
+
+    // Inner turbine cooling fan behind spinner
+    const innerFan = buildTurbineFan(0.16, 8, mats, false);
+    innerFan.position.z = -0.05;
+    pGrp.add(innerFan);
+
     for (let b = 0; b < blades; b++) {
       const blade = new THREE.Mesh(
         createRoundedBoxGeo(0.085, propRadius * 1.85, 0.022, 0.008, 2, 6),
@@ -1560,13 +1746,14 @@ export function buildAirplaneOrJetVehicle(
       pGrp.add(blade);
     }
     pGrp.position.set(px, py, pz);
+    pGrp.userData.spinSpeed = 16;
     tagPart(pGrp, 'Hélice Aeronáutica Giratória', 0, 0, 0.6);
     group.add(pGrp);
     animated.propellers.push(pGrp);
   };
 
   if (isLearJet) {
-    // Aft-fuselage mounted twin turbofan nacelles with intake rings & exhaust cones!
+    // Aft-fuselage mounted twin turbofan nacelles with spinning intake fans, rear turbine stages & exhaust flames!
     [-1, 1].forEach((side) => {
       const nacX = side * (fuseW * 0.78);
       const nacY = fuseY + fuseH * 0.26;
@@ -1581,40 +1768,81 @@ export function buildAirplaneOrJetVehicle(
           8,
         ),
       );
+      const nacGrp = new THREE.Group();
+      nacGrp.position.set(nacX, nacY, nacZ);
+
       const nac = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 1.55, 18), mats.secondary);
       nac.rotation.x = Math.PI / 2;
-      nac.position.set(nacX, nacY, nacZ);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 10, 18), mats.chrome);
-      ring.position.set(nacX, nacY, nacZ + 0.77);
-      const fanFace = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.20, 0.05, 14), mats.grille);
-      fanFace.rotation.x = Math.PI / 2;
-      fanFace.position.set(nacX, nacY, nacZ + 0.72);
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.36, 14), mats.trim);
-      cone.rotation.x = -Math.PI / 2;
-      cone.position.set(nacX, nacY, nacZ - 0.84);
-      tagPart(nac, 'Turbina Turbofan Traseira', side * 0.35, 0.15, -0.35);
-      group.add(nac, ring, fanFace, cone);
+      ring.position.z = 0.77;
+
+      const intakeFan = buildTurbineFan(0.20, 10, mats, true);
+      intakeFan.position.z = 0.78;
+      intakeFan.userData.spinSpeed = 22;
+      animated.propellers.push(intakeFan);
+
+      const rearNozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.21, 0.24, 16), mats.trim);
+      rearNozzle.rotation.x = Math.PI / 2;
+      rearNozzle.position.z = -0.74;
+
+      const rearTurbine = buildTurbineFan(0.16, 10, mats, false);
+      rearTurbine.position.z = -0.84;
+      rearTurbine.userData.spinSpeed = 24;
+      animated.propellers.push(rearTurbine);
+
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.14, 14), mats.sirenAmber);
+      glow.rotation.x = Math.PI / 2;
+      glow.position.z = -0.79;
+
+      const flame = buildAfterburnerFlame(0.17, 1.45);
+      flame.position.z = -0.85;
+      animated.afterburners.push(flame);
+
+      nacGrp.add(nac, ring, intakeFan, rearNozzle, rearTurbine, glow, flame);
+      tagPart(nacGrp, 'Turbina Turbofan Traseira com Chama', side * 0.35, 0.15, -0.35);
+      group.add(nacGrp);
     });
   } else if (isConcorde) {
-    // Twin underwing rectangular twin-engine Olympus boxes
+    // Twin underwing rectangular twin-engine Olympus boxes with 4 spinning compressor/exhaust turbines & 4 afterburner flames!
     [-1, 1].forEach((side) => {
+      const boxGrp = new THREE.Group();
+      boxGrp.position.set(side * (width * 0.20), wingY - 0.20, wingZ - 0.45);
+
       const box = new THREE.Mesh(
         createRoundedBoxGeo(0.76, 0.36, 2.25, 0.05, 2, 8),
         mats.secondary,
       );
-      box.position.set(side * (width * 0.20), wingY - 0.20, wingZ - 0.45);
       const intake = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.26, 0.08), mats.grille);
-      intake.position.set(side * (width * 0.20), wingY - 0.20, wingZ + 0.68);
-      group.add(box, intake);
+      intake.position.z = 1.13;
+      boxGrp.add(box, intake);
+
       [-0.18, 0.18].forEach((nx) => {
+        const frontFan = buildTurbineFan(0.12, 10, mats, true);
+        frontFan.position.set(nx, 0, 1.18);
+        frontFan.userData.spinSpeed = 22;
+        animated.propellers.push(frontFan);
+
         const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.42, 14), mats.trim);
         noz.rotation.x = Math.PI / 2;
-        noz.position.set(side * (width * 0.20) + nx, wingY - 0.20, wingZ - 1.65);
-        const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.44, 12), mats.sirenAmber);
+        noz.position.set(nx, 0, -1.20);
+        const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.36, 12), mats.sirenAmber);
         glow.rotation.x = Math.PI / 2;
-        glow.position.copy(noz.position);
-        group.add(noz, glow);
+        glow.position.set(nx, 0, -1.18);
+
+        const rearFan = buildTurbineFan(0.11, 10, mats, false);
+        rearFan.position.set(nx, 0, -1.40);
+        rearFan.userData.spinSpeed = 24;
+        animated.propellers.push(rearFan);
+
+        const flame = buildAfterburnerFlame(0.135, 1.65);
+        flame.position.set(nx, 0, -1.39);
+        animated.afterburners.push(flame);
+
+        boxGrp.add(frontFan, noz, glow, rearFan, flame);
       });
+
+      tagPart(boxGrp, 'Turbinas Olympus com Pós-Combustão', side * 0.35, -0.15, -0.35);
+      group.add(boxGrp);
     });
   } else if (isFighter) {
     const nozzleCount = isF22 || isAcroJet ? 2 : 1;
@@ -1629,9 +1857,23 @@ export function buildAirplaneOrJetVehicle(
       );
       if (!isF22) shroud.rotation.x = Math.PI / 2;
       nozzleGrp.add(shroud);
-      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.65, 14), mats.sirenAmber);
+
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.48, 14), mats.sirenAmber);
       glow.rotation.x = Math.PI / 2;
+      glow.position.z = 0.04;
       nozzleGrp.add(glow);
+
+      const rearTurbine = buildTurbineFan(isF22 ? 0.145 : 0.20, 10, mats, false);
+      rearTurbine.position.z = -0.27;
+      rearTurbine.userData.spinSpeed = 24;
+      nozzleGrp.add(rearTurbine);
+      animated.propellers.push(rearTurbine);
+
+      const flame = buildAfterburnerFlame(isF22 ? 0.18 : 0.24, isF22 || isF16 ? 2.2 : 1.75);
+      flame.position.z = -0.30;
+      nozzleGrp.add(flame);
+      animated.afterburners.push(flame);
+
       nozzleGrp.position.set(nx, fuseY, -halfL + 0.22);
       tagPart(nozzleGrp, 'Turbina Jato Pós-Combustor', nx * 0.3, 0, -0.65);
       group.add(nozzleGrp);
@@ -1643,11 +1885,21 @@ export function buildAirplaneOrJetVehicle(
           mats.grille,
         );
         intake.position.set(side * (fuseW * 0.48), fuseY - 0.02, length * 0.08);
-        group.add(intake);
+        const intakeFan = buildTurbineFan(0.115, 10, mats, true);
+        intakeFan.position.set(side * (fuseW * 0.48), fuseY - 0.02, length * 0.08 + 0.485);
+        intakeFan.userData.spinSpeed = 22;
+        animated.propellers.push(intakeFan);
+        group.add(intake, intakeFan);
       });
+    } else {
+      const chinFan = buildTurbineFan(0.105, 10, mats, true);
+      chinFan.position.set(0, fuseY - fuseH * 0.48, length * 0.26 + 0.05);
+      chinFan.userData.spinSpeed = 22;
+      animated.propellers.push(chinFan);
+      group.add(chinFan);
     }
   } else if (isTwinProp) {
-    // Detailed PT6 / C-130 turboprop nacelles with lower chin intake scoop + twin chrome exhaust stubs + 4-blade props!
+    // Detailed PT6 / C-130 turboprop nacelles with lower chin intake scoop + spinning turbine fan + twin chrome exhaust stubs + 4-blade props!
     [-1, 1].forEach((side) => {
       const nacX = side * (width * 0.22);
       const nacY = wingY - 0.05;
@@ -1662,11 +1914,16 @@ export function buildAirplaneOrJetVehicle(
         mats.grille,
       );
       chin.position.set(nacX, nacY - 0.22, nacZ + 0.44);
+      const chinFan = buildTurbineFan(0.065, 8, mats, true);
+      chinFan.position.set(nacX, nacY - 0.22, nacZ + 0.71);
+      chinFan.userData.spinSpeed = 22;
+      animated.propellers.push(chinFan);
+
       const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.24, 10), mats.chrome);
       exhaust.rotation.z = side * 0.45;
       exhaust.position.set(nacX + side * 0.24, nacY - 0.04, nacZ + 0.30);
       tagPart(nac, 'Nacele Turboélice com Escapamento', side * 0.35, 0, 0.2);
-      group.add(nac, chin, exhaust);
+      group.add(nac, chin, chinFan, exhaust);
       makeSpinnerProp(nacX, nacY + 0.04, nacZ + 0.86, isCargoProp ? 1.05 : 0.84, 4);
     });
   } else {
@@ -1762,21 +2019,32 @@ export function buildAirplaneOrJetVehicle(
       animated.wheels.push(tw);
     } else {
       const noseZ = length * (isConcorde ? 0.24 : 0.30);
+      const noseSteerPivot = new THREE.Group();
+      noseSteerPivot.position.set(0, 0, noseZ);
       const noseGear = createCraftedWheel(wr * 0.80, wr * 0.52, wheelStyle, mats, true, false, cityMode);
-      noseGear.position.set(0, wr * 0.80, noseZ);
-      group.add(noseGear);
+      noseGear.position.set(0, wr * 0.80, 0);
+      noseSteerPivot.add(noseGear);
       animated.wheels.push(noseGear);
-      addGearPant(0, wr * 0.80, noseZ, wr * 0.80);
-      group.add(
+      animated.steeringPivots.push(noseSteerPivot);
+      if (isCessna || isBiplane) {
+        const pant = new THREE.Mesh(
+          createRoundedBoxGeo(wr * 0.80 * 0.72, wr * 0.80 * 1.25, wr * 0.80 * 2.4, 0.08, 3, 10),
+          mats.body,
+        );
+        pant.position.set(0, wr * 0.80 * 1.16, 0);
+        noseSteerPivot.add(pant);
+      }
+      noseSteerPivot.add(
         makeStrutBetween(
-          new THREE.Vector3(0, wr * 0.80, noseZ),
-          new THREE.Vector3(0, fuseY - fuseH * 0.32, noseZ - 0.08),
+          new THREE.Vector3(0, wr * 0.80, 0),
+          new THREE.Vector3(0, fuseY - fuseH * 0.32, -0.08),
           0.036,
           0.042,
           mats.chrome,
           8,
         ),
       );
+      group.add(noseSteerPivot);
 
       // Cargo plane side gear sponsons + tandem main wheels
       if (isCargoProp) {
@@ -1812,6 +2080,24 @@ export function buildAirplaneOrJetVehicle(
       });
     }
   }
+
+  // Nose landing lights + beams & port/starboard directional blinkers on all airplanes & jets
+  [-1, 1].forEach((side) => {
+    const landLamp = new THREE.Mesh(
+      createRoundedBoxGeo(0.11, 0.07, 0.08, 0.02, 2, 6),
+      mats.headlight,
+    );
+    landLamp.position.set(side * (fuseW * 0.22), fuseY - fuseH * 0.22, halfL * 0.56);
+    const beam = createHeadlightBeamMesh(5.5, 1.05, 0.14);
+    beam.position.set(side * (fuseW * 0.22), fuseY - fuseH * 0.22, halfL * 0.60);
+    const wingBlink = new THREE.Mesh(
+      createRoundedBoxGeo(0.09, 0.055, 0.16, 0.015, 2, 6),
+      side < 0 ? mats.signalLeft : mats.signalRight,
+    );
+    wingBlink.position.set(side * (fuseW * 0.46), fuseY + 0.02, wingZ + 0.18);
+    group.add(landLamp, beam, wingBlink);
+    animated.headlightBeams.push(beam);
+  });
 
   enableShadows(group);
   return group;

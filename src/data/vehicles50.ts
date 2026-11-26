@@ -9,6 +9,7 @@ export const VEHICLE_CATEGORIES: VehicleCategory[] = [
   'Emergência & Polícia',
   'Carga & Transporte',
   'Motos & ATV',
+  'Bicicletas',
   'Aquáticos',
   'Aéreos & Especiais',
 ];

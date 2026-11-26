@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CityCameraPreset, CityHotspot, CityTimeOfDay } from '../types/vehicle';
+import { CityCameraPreset, CityHotspot, CityTimeOfDay, VehicleConcept } from '../types/vehicle';
 import { VEHICLES_50 } from '../data/vehicles50';
 import { buildCraftedVehicle, BuiltVehicle } from './vehicleBuilder';
 import { isSoftwareGl } from './materials';
@@ -117,12 +117,12 @@ export const CITY_HOTSPOTS: Record<CityCameraPreset, CityHotspot> = {
   },
   traffic: {
     id: 'traffic',
-    title: 'Semáforos, Pórticos & Placas de Trânsito',
-    subtitle: 'Frota em Ladeira & Sinalização Viária Completa',
+    title: 'Frota Completa (104 Veículos) & Trânsito',
+    subtitle: '73 Terrestres · 4 Bicicletas · 11 Aquáticos · 16 Aéreos',
     highlights: [
-      '3 pórticos metálicos aéreos, placas azuis de esquina, advertência de ladeira (11%), faixa de pedestre, PARE e 60 km/h',
-      'Veículos aplicam pitch real ao subir/descer as ladeiras entre a Baixada (0m) e a Cidade Alta (+9,0m)',
-      'Pontos de ônibus modernizados com teto iluminado, painel MUPI de rotas e placa Linha 50 fora da pista',
+      'Todos os 104 veículos do catálogo em operação simultânea: carros, superesportivos, ônibus BRT, caminhões, motos, bicicletas, barcos, helicópteros, aviões e jatos',
+      'Trânsito com espaçamento proporcional ao comprimento de cada veículo, parada exata pelo para-choque nos semáforos e pitch real nas ladeiras',
+      'Ciclovia no Calçadão/Orla com pedais e guidões animados, barcos no rio e baía oeste, e tráfego aéreo em camadas de altitude com turbinas e pós-combustão',
     ],
   },
   school: {
@@ -167,6 +167,27 @@ export const CITY_HOTSPOTS: Record<CityCameraPreset, CityHotspot> = {
   },
 };
 
+const _drvCamPos = new THREE.Vector3();
+const _drvCamLook = new THREE.Vector3();
+const _drvLocalOffset = new THREE.Vector3();
+const _drvLocalLook = new THREE.Vector3();
+
+export type PlayerCameraMode = 'chase' | 'cockpit';
+export type PlayerBlinkerMode = 'off' | 'left' | 'right' | 'hazard';
+
+export interface PlayerDriveState {
+  active: boolean;
+  vehicleId: number;
+  vehicleName: string;
+  kind: 'land' | 'water' | 'helicopter';
+  cameraMode: PlayerCameraMode;
+  lightsOn: boolean;
+  blinker: PlayerBlinkerMode;
+  sirenOn: boolean;
+  hasSiren: boolean;
+  speedKmh: number;
+}
+
 interface TrafficActor {
   built: BuiltVehicle;
   axis: 'x' | 'z';
@@ -177,19 +198,64 @@ interface TrafficActor {
   maxC: number;
   maxSpeed: number;
   speed: number;
+  halfLen: number;
+  wheelRadius: number;
+  customY?: number;
+  ignoreSignals?: boolean;
+  lanePeers: TrafficActor[];
 }
 
 interface BoatActor {
   built: BuiltVehicle;
+  axis: 'x' | 'z';
   dir: 1 | -1;
   x: number;
   z: number;
+  minC: number;
+  maxC: number;
   speed: number;
+}
+
+interface AirActor {
+  built: BuiltVehicle;
+  kind: 'helicopter' | 'airplane' | 'jet';
+  cx: number;
+  cz: number;
+  rx: number;
+  rz: number;
+  alt: number;
+  speed: number;
+}
+
+interface EmergencyActor {
+  built: BuiltVehicle;
+  mode: 'police_fire' | 'amber';
+  phase: number;
+}
+
+interface PlayerActor {
+  concept: VehicleConcept;
+  built: BuiltVehicle;
+  kind: 'land' | 'water' | 'helicopter';
+  hasSiren: boolean;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  speed: number;
+  maxSpeed: number;
+  steer: number;
+  wheelRadius: number;
+  cameraMode: PlayerCameraMode;
+  lightsOn: boolean;
+  blinker: PlayerBlinkerMode;
+  sirenOn: boolean;
 }
 
 export interface CityCallbacks {
   onTrafficPhase?: (phaseLabel: string) => void;
   onHotspotSelect?: (preset: CityCameraPreset) => void;
+  onDriveStateChange?: (state: PlayerDriveState | null) => void;
 }
 
 export class CityConceptController {
@@ -212,8 +278,15 @@ export class CityConceptController {
   private trafficLights: TrafficLightRig[] = [];
   private trafficActors: TrafficActor[] = [];
   private boatActors: BoatActor[] = [];
-  private heliActors: { built: BuiltVehicle; cx: number; cz: number; rx: number; rz: number; alt: number; speed: number }[] = [];
+  private airActors: AirActor[] = [];
+  private emergencyActors: EmergencyActor[] = [];
+  private allCityVehicles: BuiltVehicle[] = [];
   private npcs: ArticulatedNpc[] = [];
+  private playerActor: PlayerActor | null = null;
+  private keysDown = new Set<string>();
+  private lastDriveUiSyncMs = 0;
+  private currentTimeOfDay: CityTimeOfDay = 'sunset';
+  private currentHeadlightsOn = true;
 
   private sunLight!: THREE.DirectionalLight;
   private hemiLight!: THREE.HemisphereLight;
@@ -234,6 +307,7 @@ export class CityConceptController {
   private clock = new THREE.Clock();
   private elapsed = 0;
   private frameId = 0;
+  private frameCount = 0;
   private disposed = false;
 
   private raycaster = new THREE.Raycaster();
@@ -252,8 +326,10 @@ export class CityConceptController {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
-    this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.25));
     this.renderer.shadowMap.enabled = !isSoftwareGl;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = !isSoftwareGl;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setSize(container.clientWidth || 1000, container.clientHeight || 680);
     this.renderer.domElement.style.display = 'block';
@@ -292,8 +368,11 @@ export class CityConceptController {
     this.setupLighting();
     this.buildCityWorld(maxAniso);
     this.applyTimeOfDay('sunset');
+    this.freezeStaticMatrices();
 
     window.addEventListener('resize', this.handleResize);
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
 
@@ -1445,8 +1524,40 @@ export class CityConceptController {
     });
   }
 
+  private getEmergencyMode(concept: VehicleConcept): 'police_fire' | 'amber' | null {
+    const arch = concept.geometry.archetype;
+    if (
+      concept.geometry.attachments.includes('lightbar_police') ||
+      arch === 'ambulance' ||
+      arch === 'firetruck' ||
+      arch === 'rib_boat' ||
+      concept.id === 49 ||
+      concept.id === 100
+    ) {
+      return 'police_fire';
+    }
+    if (concept.geometry.attachments.includes('lightbar_amber')) {
+      return 'amber';
+    }
+    return null;
+  }
+
+  private registerCityVehicle(built: BuiltVehicle, concept: VehicleConcept, phaseIndex: number) {
+    this.allCityVehicles.push(built);
+    const emergencyMode = this.getEmergencyMode(concept);
+    if (emergencyMode) {
+      this.emergencyActors.push({
+        built,
+        mode: emergencyMode,
+        phase: phaseIndex * 0.85,
+      });
+    }
+  }
+
   private spawnVehiclesAndBoats(maxAniso: number) {
-    const laneConfigs: {
+    const placedIds = new Set<number>();
+
+    type LaneCfg = {
       vid: number;
       axis: 'x' | 'z';
       dir: 1 | -1;
@@ -1455,58 +1566,138 @@ export class CityConceptController {
       minC: number;
       maxC: number;
       speed: number;
-    }[] = [
-      // Av. Central & Ponte Estaiada (X = 0) — sobe e desce as ladeiras!
-      { vid: 9, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: -76, minC: -124, maxC: 38, speed: 13.0 },
-      { vid: 23, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: -22, minC: -124, maxC: 38, speed: 10.5 },
-      { vid: 2, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: 14, minC: -124, maxC: 38, speed: 12.0 },
-      { vid: 20, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: 26, minC: -124, maxC: 38, speed: 13.5 },
-      { vid: 31, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: -18, minC: -124, maxC: 38, speed: 14.5 },
-      { vid: 5, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: -86, minC: -124, maxC: 38, speed: 12.2 },
-      // Av. Oeste & Ponte em Arco (X = -34)
-      { vid: 1, axis: 'z', dir: 1, laneCoord: -34 + 2.6, posCoord: -54, minC: -124, maxC: 38, speed: 11.8 },
-      { vid: 14, axis: 'z', dir: 1, laneCoord: -34 + 2.6, posCoord: 12, minC: -124, maxC: 38, speed: 12.6 },
-      { vid: 17, axis: 'z', dir: -1, laneCoord: -34 - 2.6, posCoord: 22, minC: -124, maxC: 38, speed: 12.4 },
-      { vid: 27, axis: 'z', dir: -1, laneCoord: -34 - 2.6, posCoord: -72, minC: -124, maxC: 38, speed: 10.8 },
-      // Av. Leste & Ponte Concreto (X = +34)
-      { vid: 12, axis: 'z', dir: 1, laneCoord: 34 + 2.6, posCoord: -44, minC: -124, maxC: 38, speed: 11.5 },
-      { vid: 24, axis: 'z', dir: -1, laneCoord: 34 - 2.6, posCoord: 18, minC: -124, maxC: 38, speed: 10.2 },
-      // Pontes Estaiadas Oeste & Leste (X = -68 & X = +68)
-      { vid: 11, axis: 'z', dir: 1, laneCoord: -68 + 2.6, posCoord: -12, minC: -56, maxC: 38, speed: 13.8 },
-      { vid: 19, axis: 'z', dir: -1, laneCoord: 68 - 2.6, posCoord: 18, minC: -56, maxC: 38, speed: 12.5 },
-      // Av. Beira-Centro (Z = 0, Y = 0.0m — estendida para X = ±148)
-      { vid: 10, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -124, minC: -148, maxC: 148, speed: 13.5 },
-      { vid: 3, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -14, minC: -148, maxC: 148, speed: 12.0 },
-      { vid: 15, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: 52, minC: -148, maxC: 148, speed: 12.8 },
-      { vid: 33, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: 120, minC: -148, maxC: 148, speed: 14.0 },
-      { vid: 6, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: 12, minC: -148, maxC: 148, speed: 11.4 },
-      // Rua das Lojas (Z = -34, Y = 0.0m — estendida para X = ±148)
-      { vid: 8, axis: 'x', dir: 1, laneCoord: -34 - 2.6, posCoord: -112, minC: -148, maxC: 148, speed: 11.5 },
-      { vid: 25, axis: 'x', dir: -1, laneCoord: -34 + 2.6, posCoord: 118, minC: -148, maxC: 148, speed: 10.2 },
-      // Av. Marginal Norte (Z = 34, Y = 0.0m)
-      { vid: 4, axis: 'x', dir: 1, laneCoord: 34 - 2.6, posCoord: -54, minC: -100, maxC: 100, speed: 12.2 },
-      { vid: 35, axis: 'x', dir: -1, laneCoord: 34 + 2.6, posCoord: 48, minC: -100, maxC: 100, speed: 13.2 },
-      // Av. Cidade Alta / Residencial (Z = -68, Y = +4.5m & Z = -102, Y = +9.0m)
-      { vid: 7, axis: 'x', dir: 1, laneCoord: -68 - 2.6, posCoord: -110, minC: -146, maxC: 146, speed: 11.0 },
-      { vid: 16, axis: 'x', dir: -1, laneCoord: -102 + 2.6, posCoord: 114, minC: -146, maxC: 146, speed: 11.8 },
-      // Avenidas Periféricas Oeste & Leste (X = -148 e X = +148)
-      { vid: 18, axis: 'z', dir: 1, laneCoord: -148 + 2.6, posCoord: -84, minC: -104, maxC: 2, speed: 12.6 },
-      { vid: 22, axis: 'z', dir: -1, laneCoord: -148 - 2.6, posCoord: -12, minC: -104, maxC: 2, speed: 12.0 },
-      { vid: 29, axis: 'z', dir: 1, laneCoord: 148 + 2.6, posCoord: -74, minC: -104, maxC: 2, speed: 13.0 },
-      { vid: 30, axis: 'z', dir: -1, laneCoord: 148 - 2.6, posCoord: -18, minC: -104, maxC: 2, speed: 11.8 },
+      customY?: number;
+      ignoreSignals?: boolean;
+    };
+
+    const laneConfigs: LaneCfg[] = [
+      // 1. Av. Central & Ponte Estaiada (X = 0) — sobe e desce as ladeiras!
+      { vid: 9, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: -96, minC: -124, maxC: 38, speed: 13.5 },
+      { vid: 23, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: -42, minC: -124, maxC: 38, speed: 11.2 },
+      { vid: 2, axis: 'z', dir: 1, laneCoord: 2.6, posCoord: 12, minC: -124, maxC: 38, speed: 12.0 },
+      { vid: 20, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: 28, minC: -124, maxC: 38, speed: 13.2 },
+      { vid: 31, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: -26, minC: -124, maxC: 38, speed: 10.6 },
+      { vid: 5, axis: 'z', dir: -1, laneCoord: -2.6, posCoord: -86, minC: -124, maxC: 38, speed: 11.8 },
+
+      // 2. Av. Oeste & Ponte em Arco (X = -34)
+      { vid: 1, axis: 'z', dir: 1, laneCoord: -34 + 2.6, posCoord: -102, minC: -124, maxC: 38, speed: 11.8 },
+      { vid: 14, axis: 'z', dir: 1, laneCoord: -34 + 2.6, posCoord: -48, minC: -124, maxC: 38, speed: 12.8 },
+      { vid: 51, axis: 'z', dir: 1, laneCoord: -34 + 2.6, posCoord: 8, minC: -124, maxC: 38, speed: 13.4 },
+      { vid: 17, axis: 'z', dir: -1, laneCoord: -34 - 2.6, posCoord: 24, minC: -124, maxC: 38, speed: 12.2 },
+      { vid: 27, axis: 'z', dir: -1, laneCoord: -34 - 2.6, posCoord: -30, minC: -124, maxC: 38, speed: 13.0 },
+      { vid: 38, axis: 'z', dir: -1, laneCoord: -34 - 2.6, posCoord: -84, minC: -124, maxC: 38, speed: 11.6 },
+
+      // 3. Av. Leste & Ponte Concreto (X = +34)
+      { vid: 12, axis: 'z', dir: 1, laneCoord: 34 + 2.6, posCoord: -98, minC: -124, maxC: 38, speed: 12.6 },
+      { vid: 59, axis: 'z', dir: 1, laneCoord: 34 + 2.6, posCoord: -44, minC: -124, maxC: 38, speed: 11.8 },
+      { vid: 72, axis: 'z', dir: 1, laneCoord: 34 + 2.6, posCoord: 12, minC: -124, maxC: 38, speed: 14.4 },
+      { vid: 24, axis: 'z', dir: -1, laneCoord: 34 - 2.6, posCoord: 22, minC: -124, maxC: 38, speed: 12.8 },
+      { vid: 36, axis: 'z', dir: -1, laneCoord: 34 - 2.6, posCoord: -32, minC: -124, maxC: 38, speed: 9.8 },
+      { vid: 64, axis: 'z', dir: -1, laneCoord: 34 - 2.6, posCoord: -86, minC: -124, maxC: 38, speed: 12.4 },
+
+      // 4. Pontes Estaiadas Oeste & Leste (X = -68 & X = +68, antes das rotatórias em Z = -68)
+      { vid: 11, axis: 'z', dir: 1, laneCoord: -68 + 2.6, posCoord: -42, minC: -56, maxC: 38, speed: 14.5 },
+      { vid: 39, axis: 'z', dir: 1, laneCoord: -68 + 2.6, posCoord: 4, minC: -56, maxC: 38, speed: 15.0 },
+      { vid: 25, axis: 'z', dir: -1, laneCoord: -68 - 2.6, posCoord: 26, minC: -56, maxC: 38, speed: 14.2 },
+      { vid: 68, axis: 'z', dir: -1, laneCoord: -68 - 2.6, posCoord: -22, minC: -56, maxC: 38, speed: 12.5 },
+
+      { vid: 19, axis: 'z', dir: 1, laneCoord: 68 + 2.6, posCoord: -40, minC: -56, maxC: 38, speed: 12.0 },
+      { vid: 71, axis: 'z', dir: 1, laneCoord: 68 + 2.6, posCoord: 6, minC: -56, maxC: 38, speed: 13.8 },
+      { vid: 28, axis: 'z', dir: -1, laneCoord: 68 - 2.6, posCoord: 24, minC: -56, maxC: 38, speed: 11.4 },
+      { vid: 54, axis: 'z', dir: -1, laneCoord: 68 - 2.6, posCoord: -24, minC: -56, maxC: 38, speed: 13.6 },
+
+      // 5. Avenidas Médias Oeste & Leste (X = -102 & X = +102, trecho sul até Z = +0)
+      { vid: 52, axis: 'z', dir: 1, laneCoord: -102 + 2.6, posCoord: -96, minC: -124, maxC: 2, speed: 12.6, ignoreSignals: true },
+      { vid: 74, axis: 'z', dir: 1, laneCoord: -102 + 2.6, posCoord: -32, minC: -124, maxC: 2, speed: 13.4, ignoreSignals: true },
+      { vid: 26, axis: 'z', dir: -1, laneCoord: -102 - 2.6, posCoord: -14, minC: -124, maxC: 2, speed: 10.6, ignoreSignals: true },
+      { vid: 61, axis: 'z', dir: -1, laneCoord: -102 - 2.6, posCoord: -78, minC: -124, maxC: 2, speed: 13.2, ignoreSignals: true },
+
+      { vid: 56, axis: 'z', dir: 1, laneCoord: 102 + 2.6, posCoord: -92, minC: -124, maxC: 2, speed: 13.0, ignoreSignals: true },
+      { vid: 75, axis: 'z', dir: 1, laneCoord: 102 + 2.6, posCoord: -28, minC: -124, maxC: 2, speed: 13.8, ignoreSignals: true },
+      { vid: 34, axis: 'z', dir: -1, laneCoord: 102 - 2.6, posCoord: -16, minC: -124, maxC: 2, speed: 10.2, ignoreSignals: true },
+      { vid: 62, axis: 'z', dir: -1, laneCoord: 102 - 2.6, posCoord: -80, minC: -124, maxC: 2, speed: 12.2, ignoreSignals: true },
+
+      // 6. Avenidas Periféricas Oeste & Leste (X = -148 e X = +148)
+      { vid: 18, axis: 'z', dir: 1, laneCoord: -148 + 2.6, posCoord: -88, minC: -104, maxC: 2, speed: 12.4 },
+      { vid: 41, axis: 'z', dir: 1, laneCoord: -148 + 2.6, posCoord: -34, minC: -104, maxC: 2, speed: 13.8 },
+      { vid: 22, axis: 'z', dir: -1, laneCoord: -148 - 2.6, posCoord: -14, minC: -104, maxC: 2, speed: 12.2 },
+      { vid: 57, axis: 'z', dir: -1, laneCoord: -148 - 2.6, posCoord: -70, minC: -104, maxC: 2, speed: 13.5 },
+
+      { vid: 29, axis: 'z', dir: 1, laneCoord: 148 + 2.6, posCoord: -86, minC: -104, maxC: 2, speed: 8.6 },
+      { vid: 63, axis: 'z', dir: 1, laneCoord: 148 + 2.6, posCoord: -30, minC: -104, maxC: 2, speed: 13.2 },
+      { vid: 30, axis: 'z', dir: -1, laneCoord: 148 - 2.6, posCoord: -12, minC: -104, maxC: 2, speed: 11.4 },
+      { vid: 58, axis: 'z', dir: -1, laneCoord: 148 - 2.6, posCoord: -68, minC: -104, maxC: 2, speed: 13.6 },
+
+      // 7. Av. Beira-Mar Oeste (X = -162) + Bikes Speed na ciclovia viária
+      { vid: 43, axis: 'z', dir: 1, laneCoord: -162 + 2.6, posCoord: -90, minC: -102, maxC: 2, speed: 11.2 },
+      { vid: 67, axis: 'z', dir: 1, laneCoord: -162 + 2.6, posCoord: -54, minC: -102, maxC: 2, speed: 12.0 },
+      { vid: 103, axis: 'z', dir: 1, laneCoord: -162 + 2.6, posCoord: -18, minC: -102, maxC: 2, speed: 8.4 },
+      { vid: 80, axis: 'z', dir: -1, laneCoord: -162 - 2.6, posCoord: -10, minC: -102, maxC: 2, speed: 11.6 },
+      { vid: 60, axis: 'z', dir: -1, laneCoord: -162 - 2.6, posCoord: -46, minC: -102, maxC: 2, speed: 11.0 },
+      { vid: 105, axis: 'z', dir: -1, laneCoord: -162 - 2.6, posCoord: -82, minC: -102, maxC: 2, speed: 8.8 },
+
+      // 8. Grand Calçadão da Praia & Orla Fluvial — Bicicletas em movimento contínuo!
+      { vid: 101, axis: 'z', dir: 1, laneCoord: -169.0, posCoord: -78, minC: -104, maxC: 2, speed: 5.2, customY: 0.30, ignoreSignals: true },
+      { vid: 102, axis: 'z', dir: -1, laneCoord: -170.8, posCoord: -22, minC: -104, maxC: 2, speed: 4.8, customY: 0.30, ignoreSignals: true },
+      { vid: 101, axis: 'x', dir: 1, laneCoord: 5.3, posCoord: -46, minC: -146, maxC: 102, speed: 4.4, customY: 0.24, ignoreSignals: true },
+
+      // 9. Av. Beira-Centro (Z = 0, Y = 0.0m, 292m de extensão)
+      { vid: 10, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -130, minC: -146, maxC: 146, speed: 13.6 },
+      { vid: 3, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -70, minC: -146, maxC: 146, speed: 12.4 },
+      { vid: 15, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: -12, minC: -146, maxC: 146, speed: 13.8 },
+      { vid: 32, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: 50, minC: -146, maxC: 146, speed: 10.2 },
+      { vid: 76, axis: 'x', dir: 1, laneCoord: -2.6, posCoord: 112, minC: -146, maxC: 146, speed: 14.6 },
+      { vid: 53, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: 124, minC: -146, maxC: 146, speed: 15.2 },
+      { vid: 65, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: 56, minC: -146, maxC: 146, speed: 14.0 },
+      { vid: 78, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: -12, minC: -146, maxC: 146, speed: 13.4 },
+      { vid: 6, axis: 'x', dir: -1, laneCoord: 2.6, posCoord: -78, minC: -146, maxC: 146, speed: 11.2 },
+
+      // 10. Rua das Lojas (Z = -34, Y = 0.0m, 292m de extensão)
+      { vid: 8, axis: 'x', dir: 1, laneCoord: -34 - 2.6, posCoord: -122, minC: -146, maxC: 146, speed: 11.6 },
+      { vid: 40, axis: 'x', dir: 1, laneCoord: -34 - 2.6, posCoord: -50, minC: -146, maxC: 146, speed: 12.6 },
+      { vid: 66, axis: 'x', dir: 1, laneCoord: -34 - 2.6, posCoord: 22, minC: -146, maxC: 146, speed: 14.4 },
+      { vid: 77, axis: 'x', dir: 1, laneCoord: -34 - 2.6, posCoord: 94, minC: -146, maxC: 146, speed: 12.8 },
+      { vid: 21, axis: 'x', dir: -1, laneCoord: -34 + 2.6, posCoord: 126, minC: -146, maxC: 146, speed: 10.8 },
+      { vid: 55, axis: 'x', dir: -1, laneCoord: -34 + 2.6, posCoord: 52, minC: -146, maxC: 146, speed: 13.6 },
+      { vid: 69, axis: 'x', dir: -1, laneCoord: -34 + 2.6, posCoord: -20, minC: -146, maxC: 146, speed: 14.8 },
+      { vid: 42, axis: 'x', dir: -1, laneCoord: -34 + 2.6, posCoord: -92, minC: -146, maxC: 146, speed: 13.2 },
+
+      // 11. Av. Marginal Norte (Z = +34, Y = 0.0m)
+      { vid: 4, axis: 'x', dir: 1, laneCoord: 34 - 2.6, posCoord: -68, minC: -100, maxC: 100, speed: 12.0 },
+      { vid: 70, axis: 'x', dir: 1, laneCoord: 34 - 2.6, posCoord: 22, minC: -100, maxC: 100, speed: 15.6 },
+      { vid: 35, axis: 'x', dir: -1, laneCoord: 34 + 2.6, posCoord: 68, minC: -100, maxC: 100, speed: 10.4 },
+      { vid: 79, axis: 'x', dir: -1, laneCoord: 34 + 2.6, posCoord: -24, minC: -100, maxC: 100, speed: 13.2 },
+
+      // 12. Av. Panorâmica / Cidade Alta (Z = -68, Y = +4.5m — entre as rotatórias X ∈ [-54, +54])
+      { vid: 7, axis: 'x', dir: 1, laneCoord: -68 - 2.6, posCoord: -38, minC: -54, maxC: 54, speed: 11.4, ignoreSignals: true },
+      { vid: 33, axis: 'x', dir: 1, laneCoord: -68 - 2.6, posCoord: 12, minC: -54, maxC: 54, speed: 10.2, ignoreSignals: true },
+      { vid: 13, axis: 'x', dir: -1, laneCoord: -68 + 2.6, posCoord: 36, minC: -54, maxC: 54, speed: 14.2, ignoreSignals: true },
+      { vid: 73, axis: 'x', dir: -1, laneCoord: -68 + 2.6, posCoord: -14, minC: -54, maxC: 54, speed: 12.8, ignoreSignals: true },
+
+      // 13. Av. Residencial Alta (Z = -102, Y = +9.0m, 288m contínuos sem rotatória!)
+      { vid: 16, axis: 'x', dir: 1, laneCoord: -102 - 2.6, posCoord: -104, minC: -144, maxC: 144, speed: 11.8, ignoreSignals: true },
+      { vid: 37, axis: 'x', dir: 1, laneCoord: -102 - 2.6, posCoord: 18, minC: -144, maxC: 144, speed: 10.4, ignoreSignals: true },
     ];
 
-    laneConfigs.forEach((cfg) => {
-      const concept = VEHICLES_50.find((v) => v.id === cfg.vid) ?? VEHICLES_50[0];
+    const addTrafficActor = (cfg: LaneCfg) => {
+      const concept = VEHICLES_50.find((v) => v.id === cfg.vid);
+      if (!concept) return;
+      placedIds.add(concept.id);
       const built = buildCraftedVehicle(concept, maxAniso, { cityMode: true });
       this.disposableBuilt.push(built);
+      this.registerCityVehicle(built, concept, this.allCityVehicles.length);
+      built.group.rotation.order = 'YXZ';
       const vx = cfg.axis === 'x' ? cfg.posCoord : cfg.laneCoord;
       const vz = cfg.axis === 'z' ? cfg.posCoord : cfg.laneCoord;
-      built.group.position.set(vx, cityRoadY(vz) + 0.04, vz);
+      const baseY = cfg.customY !== undefined ? cfg.customY : cityRoadY(vz) + 0.04;
+      built.group.position.set(vx, baseY, vz);
       built.group.rotation.y =
         cfg.axis === 'z'
           ? (cfg.dir > 0 ? 0 : Math.PI)
           : (cfg.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+      if (cfg.axis === 'z' && cfg.customY === undefined) {
+        built.group.rotation.x = -cfg.dir * Math.atan(cityRoadSlopeDZ(vz));
+      }
       this.scene.add(built.group);
       this.trafficActors.push({
         built,
@@ -1518,53 +1709,165 @@ export class CityConceptController {
         maxC: cfg.maxC,
         maxSpeed: cfg.speed,
         speed: cfg.speed,
+        halfLen: Math.max(0.7, concept.dimensions.length * 0.5),
+        wheelRadius: Math.max(0.18, concept.geometry.wheelRadius || 0.34),
+        customY: cfg.customY,
+        ignoreSignals: cfg.ignoreSignals,
+        lanePeers: [],
       });
-    });
+    };
 
-    // Real Aquatic Boats from VEHICLES_50 (4 navigating + moored piers at Cais Baixo & Arquipélago do Sol!)
-    [
-      { vid: 44, dir: 1 as const, x: -78, z: 14.2, speed: 6.4 },     // Lancha Esportiva Ipanema
-      { vid: 45, dir: 1 as const, x: 16, z: 17.4, speed: 8.2 },      // Jet Ski Turbinado
-      { vid: 46, dir: -1 as const, x: 64, z: 20.6, speed: 5.8 },     // Bote Salva-Vidas Inflável
-      { vid: 47, dir: -1 as const, x: -24, z: 19.4, speed: 4.1 },    // Rebocador / Barca Fluvial
-      { vid: 50, dir: 1 as const, x: -18, z: 13.0, speed: 0.0 },     // Anfíbio/Lancha atracada no Píer do Cais Baixo
-      { vid: 44, dir: 1 as const, x: -220.0, z: -1.4, speed: 0.0 },  // Lancha atracada no Píer da Ponte da Ilha do Sol
-      { vid: 46, dir: 1 as const, x: -236.5, z: -64.0, speed: 0.0 }, // Bote atracado no Píer da Ilha da Restinga
-      { vid: 50, dir: -1 as const, x: -277.0, z: 32.0, speed: 0.0 }, // Embarcação atracada no Píer da Ilha do Farol
-      { vid: 45, dir: -1 as const, x: -226.0, z: -84.0, speed: 0.0 }, // Jet Ski na enseada Sul
-    ].forEach((bc) => {
-      const concept = VEHICLES_50.find((v) => v.id === bc.vid) ?? VEHICLES_50[43];
+    laneConfigs.forEach(addTrafficActor);
+
+    // Real Aquatic & Amphibious Fleet (ALL 11 navigating smoothly on River & West Ocean Bay!)
+    const boatConfigs: {
+      vid: number;
+      axis: 'x' | 'z';
+      dir: 1 | -1;
+      x: number;
+      z: number;
+      minC: number;
+      maxC: number;
+      speed: number;
+    }[] = [
+      // Rio Central (Z ∈ [11.4, 22.2], X ∈ [-162, +110] — sob as 5 pontes!)
+      { vid: 50, axis: 'x', dir: 1, x: -136, z: 11.4, minC: -162, maxC: 110, speed: 7.4 }, // Hovercraft
+      { vid: 44, axis: 'x', dir: 1, x: -72, z: 13.8, minC: -162, maxC: 110, speed: 6.8 },  // Lancha Ipanema
+      { vid: 45, axis: 'x', dir: 1, x: 22, z: 16.4, minC: -162, maxC: 110, speed: 8.8 },   // Jet Ski Turbinado
+      { vid: 46, axis: 'x', dir: -1, x: 64, z: 19.6, minC: -162, maxC: 110, speed: 6.0 },  // Bote Salva-Vidas
+      { vid: 47, axis: 'x', dir: -1, x: -24, z: 22.0, minC: -162, maxC: 110, speed: 4.2 }, // Rebocador Fluvial
+
+      // Enseada Oeste & Arquipélago do Sol (livres de ilhas e da ponte Z = -12)
+      { vid: 81, axis: 'z', dir: 1, x: -222, z: -84, minC: -100, maxC: -22, speed: 8.6 },  // Jet Ski Freestyle
+      { vid: 83, axis: 'z', dir: -1, x: -228, z: -32, minC: -100, maxC: -22, speed: 8.0 }, // Jet Ski Guarda Costeira
+      { vid: 82, axis: 'z', dir: 1, x: -234, z: -60, minC: -100, maxC: -22, speed: 9.6 },  // Jet Ski Carbon GP
+      { vid: 84, axis: 'z', dir: -1, x: -254, z: 42, minC: 8, maxC: 54, speed: 7.4 },      // Jet Ski 3-Lugares
+      { vid: 85, axis: 'z', dir: 1, x: -264, z: 14, minC: 8, maxC: 58, speed: 8.4 },       // Lancha Offshore V12
+      { vid: 86, axis: 'z', dir: -1, x: -346, z: 10, minC: -105, maxC: 45, speed: 5.2 },   // Iate Costa Verde
+    ];
+
+    boatConfigs.forEach((bc) => {
+      const concept = VEHICLES_50.find((v) => v.id === bc.vid);
+      if (!concept) return;
+      placedIds.add(concept.id);
       const built = buildCraftedVehicle(concept, maxAniso, { cityMode: true });
       this.disposableBuilt.push(built);
+      this.registerCityVehicle(built, concept, this.allCityVehicles.length);
+      built.group.rotation.order = 'YXZ';
       built.group.position.set(bc.x, -1.22, bc.z);
-      built.group.rotation.y = bc.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      built.group.rotation.y =
+        bc.axis === 'x'
+          ? (bc.dir > 0 ? Math.PI / 2 : -Math.PI / 2)
+          : (bc.dir > 0 ? 0 : Math.PI);
       this.scene.add(built.group);
-      this.boatActors.push({ built, dir: bc.dir, x: bc.x, z: bc.z, speed: bc.speed });
+      this.boatActors.push({ built, ...bc });
     });
 
-    const heliConfigs = [
-      { vid: 48, cx: -12, cz: -14, rx: 60, rz: 48, alt: 58, speed: 0.24 },
-      { vid: 49, cx: 18, cz: 36, rx: 64, rz: 42, alt: 64, speed: -0.19 },
+    // Complete Airspace Fleet (ALL 16 Aircraft: 6 Helicopters + 5 Airplanes + 5 Jets in layered altitudes!)
+    const airConfigs: {
+      vid: number;
+      kind: AirActor['kind'];
+      cx: number;
+      cz: number;
+      rx: number;
+      rz: number;
+      alt: number;
+      speed: number;
+    }[] = [
+      // 6 Helicopters (44m .. 80m)
+      { vid: 97, kind: 'helicopter', cx: -115, cz: -48, rx: 46, rz: 44, alt: 44, speed: 0.22 },
+      { vid: 48, kind: 'helicopter', cx: -20, cz: -20, rx: 58, rz: 46, alt: 50, speed: 0.24 },
+      { vid: 49, kind: 'helicopter', cx: 22, cz: 26, rx: 64, rz: 42, alt: 58, speed: -0.19 },
+      { vid: 98, kind: 'helicopter', cx: 110, cz: -45, rx: 48, rz: 46, alt: 64, speed: -0.25 },
+      { vid: 99, kind: 'helicopter', cx: -15, cz: -75, rx: 72, rz: 40, alt: 72, speed: 0.21 },
+      { vid: 100, kind: 'helicopter', cx: 35, cz: 62, rx: 54, rz: 36, alt: 80, speed: -0.16 },
+      // 5 Airplanes (24m .. 110m)
+      { vid: 88, kind: 'airplane', cx: -242, cz: -38, rx: 46, rz: 66, alt: 24, speed: 0.28 },
+      { vid: 89, kind: 'airplane', cx: -175, cz: -45, rx: 68, rz: 58, alt: 46, speed: -0.30 },
+      { vid: 87, kind: 'airplane', cx: 0, cz: -20, rx: 112, rz: 82, alt: 88, speed: 0.22 },
+      { vid: 90, kind: 'airplane', cx: -15, cz: -25, rx: 132, rz: 96, alt: 98, speed: -0.24 },
+      { vid: 91, kind: 'airplane', cx: 15, cz: -15, rx: 150, rz: 108, alt: 110, speed: 0.19 },
+      // 5 Jets with spinning turbines & rear afterburner flames (122m .. 172m)
+      { vid: 95, kind: 'jet', cx: -40, cz: -30, rx: 165, rz: 112, alt: 122, speed: 0.34 },
+      { vid: 94, kind: 'jet', cx: 10, cz: -20, rx: 185, rz: 125, alt: 134, speed: -0.36 },
+      { vid: 93, kind: 'jet', cx: -20, cz: -10, rx: 205, rz: 135, alt: 146, speed: 0.38 },
+      { vid: 92, kind: 'jet', cx: 0, cz: -25, rx: 175, rz: 120, alt: 158, speed: -0.28 },
+      { vid: 96, kind: 'jet', cx: -30, cz: -20, rx: 225, rz: 148, alt: 172, speed: 0.32 },
     ];
-    heliConfigs.forEach((hc) => {
-      const heliConcept =
-        VEHICLES_50.find((v) => v.id === hc.vid) ??
-        VEHICLES_50.find((v) => v.geometry.archetype === 'helicopter') ??
-        VEHICLES_50[47];
-      const built = buildCraftedVehicle(heliConcept, maxAniso, { cityMode: true });
+
+    airConfigs.forEach((ac) => {
+      const concept = VEHICLES_50.find((v) => v.id === ac.vid);
+      if (!concept) return;
+      placedIds.add(concept.id);
+      const built = buildCraftedVehicle(concept, maxAniso, { cityMode: true });
       this.disposableBuilt.push(built);
-      built.group.position.set(hc.cx + hc.rx, hc.alt, hc.cz);
+      this.registerCityVehicle(built, concept, this.allCityVehicles.length);
+      built.group.rotation.order = 'YXZ';
+      built.group.position.set(ac.cx + ac.rx, ac.alt, ac.cz);
       this.scene.add(built.group);
-      this.heliActors.push({ built, ...hc });
+      this.airActors.push({ built, ...ac });
     });
 
-    // Parked Yellow School Micro-bus (Escolar Amarelinho VHC-33) outside E.M. Cidade Nova curb
-    const schoolBusConcept = VEHICLES_50.find((v) => v.id === 33) ?? VEHICLES_50[32];
-    const schoolBus = buildCraftedVehicle(schoolBusConcept, maxAniso, { cityMode: true });
-    this.disposableBuilt.push(schoolBus);
-    schoolBus.group.position.set(-10.2, cityRoadY(-71.8) + 0.04, -71.8);
-    schoolBus.group.rotation.y = -Math.PI / 2;
-    this.scene.add(schoolBus.group);
+    // Defensive fallback: ensure 100% of VEHICLES_50 are spawned even if catalog grows
+    let fallbackIdx = 0;
+    VEHICLES_50.forEach((v) => {
+      if (placedIds.has(v.id)) return;
+      const pos = -110 + ((fallbackIdx * 36) % 220);
+      addTrafficActor({
+        vid: v.id,
+        axis: 'x',
+        dir: fallbackIdx % 2 === 0 ? 1 : -1,
+        laneCoord: -102 + (fallbackIdx % 2 === 0 ? -2.6 : 2.6),
+        posCoord: pos,
+        minC: -144,
+        maxC: 144,
+        speed: 11.5,
+        ignoreSignals: true,
+      });
+      fallbackIdx++;
+    });
+
+    // Pre-bucket vehicles per lane so tick() checks only 1-5 lane peers instead of all 78 actors
+    const laneBuckets = new Map<string, TrafficActor[]>();
+    for (let i = 0; i < this.trafficActors.length; i++) {
+      const a = this.trafficActors[i];
+      const key = `${a.axis}_${a.dir}_${Math.round(a.laneCoord * 10)}`;
+      let bucket = laneBuckets.get(key);
+      if (!bucket) {
+        bucket = [];
+        laneBuckets.set(key, bucket);
+      }
+      bucket.push(a);
+    }
+    laneBuckets.forEach((bucket) => {
+      for (let i = 0; i < bucket.length; i++) {
+        bucket[i].lanePeers = bucket;
+      }
+    });
+  }
+
+  private freezeStaticMatrices() {
+    const dynamicRoots = new Set<THREE.Object3D>();
+    dynamicRoots.add(this.sunLight);
+    if (this.flagRig?.group) dynamicRoots.add(this.flagRig.group);
+    if (this.shopAnimated.showroomCar) dynamicRoots.add(this.shopAnimated.showroomCar);
+    if (this.shopAnimated.barberPole) dynamicRoots.add(this.shopAnimated.barberPole);
+    if (this.beachResult?.group) dynamicRoots.add(this.beachResult.group);
+    for (let i = 0; i < this.trafficActors.length; i++) dynamicRoots.add(this.trafficActors[i].built.group);
+    for (let i = 0; i < this.boatActors.length; i++) dynamicRoots.add(this.boatActors[i].built.group);
+    for (let i = 0; i < this.airActors.length; i++) dynamicRoots.add(this.airActors[i].built.group);
+    for (let i = 0; i < this.npcs.length; i++) dynamicRoots.add(this.npcs[i].group);
+
+    this.scene.updateMatrixWorld(true);
+
+    const freezeNode = (obj: THREE.Object3D) => {
+      if (dynamicRoots.has(obj)) return;
+      obj.matrixAutoUpdate = false;
+      for (let i = 0; i < obj.children.length; i++) {
+        freezeNode(obj.children[i]);
+      }
+    };
+    freezeNode(this.scene);
   }
 
   private spawnArticulatedNpcs() {
@@ -1725,6 +2028,7 @@ export class CityConceptController {
   }
 
   public applyTimeOfDay(mode: CityTimeOfDay) {
+    this.currentTimeOfDay = mode;
     if (mode === 'sunset') {
       const bg = new THREE.Color(0x281e32);
       this.scene.background = bg;
@@ -1768,6 +2072,342 @@ export class CityConceptController {
       this.skylineGlowMats.forEach((m) => (m.emissiveIntensity = 1.65));
       this.flagRig.spotlights.forEach((s) => (s.intensity = 95));
     }
+    this.currentHeadlightsOn = mode !== 'day';
+    this.applyVehicleHeadlights(this.currentHeadlightsOn);
+    if (this.renderer.shadowMap.enabled) {
+      this.renderer.shadowMap.needsUpdate = true;
+    }
+  }
+
+  private applyVehicleHeadlights(lightsOn: boolean) {
+    for (let i = 0; i < this.allCityVehicles.length; i++) {
+      const b = this.allCityVehicles[i];
+      b.materials.headlight.emissiveIntensity = lightsOn ? 1.65 : 0.08;
+      b.materials.taillight.emissiveIntensity = lightsOn ? 1.35 : 0.08;
+      const beams = b.animatedParts.headlightBeams;
+      for (let bi = 0; bi < beams.length; bi++) {
+        beams[bi].visible = lightsOn;
+      }
+    }
+  }
+
+  private applySingleVehicleLights(built: BuiltVehicle, lightsOn: boolean) {
+    built.materials.headlight.emissiveIntensity = lightsOn ? 1.85 : 0.08;
+    built.materials.taillight.emissiveIntensity = lightsOn ? 1.45 : 0.08;
+    const beams = built.animatedParts.headlightBeams;
+    for (let bi = 0; bi < beams.length; bi++) {
+      beams[bi].visible = lightsOn;
+    }
+  }
+
+  public startDriving(vehicleId: number) {
+    const concept = VEHICLES_50.find((v) => v.id === vehicleId);
+    if (!concept) return;
+
+    const prevCamMode: PlayerCameraMode = this.playerActor?.cameraMode ?? 'chase';
+    this.cleanupPlayerActor();
+
+    const arch = concept.geometry.archetype;
+    const kind: PlayerActor['kind'] =
+      arch === 'helicopter'
+        ? 'helicopter'
+        : arch === 'speedboat' || arch === 'jetski' || arch === 'rib_boat' || arch === 'tugboat' || arch === 'yacht'
+          ? 'water'
+          : 'land';
+
+    const maxAniso = Math.min(this.renderer.capabilities.getMaxAnisotropy(), 4);
+    const built = buildCraftedVehicle(concept, maxAniso, { cityMode: true });
+    built.group.rotation.order = 'YXZ';
+
+    const x = kind === 'water' ? -194 : kind === 'helicopter' ? -17 : 2.6;
+    const z = kind === 'water' ? -45 : kind === 'helicopter' ? -24 : -18;
+    const y = kind === 'water' ? -1.22 : kind === 'helicopter' ? 16 : cityRoadY(z) + 0.04;
+    const heading = kind === 'helicopter' ? 0.35 : 0;
+
+    built.group.position.set(x, y, z);
+    built.group.rotation.y = heading;
+    this.scene.add(built.group);
+
+    const hasSiren = this.getEmergencyMode(concept) !== null;
+    const lightsOn = this.currentTimeOfDay !== 'day' || true;
+    this.applySingleVehicleLights(built, lightsOn);
+
+    const maxMs = Math.max(8, Math.min(48, (concept.unitySpec.maxSpeedKmh || 120) / 3.8));
+    this.playerActor = {
+      concept,
+      built,
+      kind,
+      hasSiren,
+      x,
+      y,
+      z,
+      heading,
+      speed: 0,
+      maxSpeed: maxMs,
+      steer: 0,
+      wheelRadius: Math.max(0.18, concept.geometry.wheelRadius || 0.34),
+      cameraMode: prevCamMode,
+      lightsOn,
+      blinker: 'off',
+      sirenOn: hasSiren,
+    };
+
+    this.camTransitioning = false;
+    this.controls.enabled = false;
+    this.emitDriveState(true);
+  }
+
+  public stopDriving() {
+    if (!this.playerActor) return;
+    this.cleanupPlayerActor();
+    this.controls.enabled = true;
+    this.setCameraPreset('overview', false);
+    this.callbacks.onDriveStateChange?.(null);
+  }
+
+  private cleanupPlayerActor() {
+    if (!this.playerActor) return;
+    this.scene.remove(this.playerActor.built.group);
+    this.playerActor.built.dispose();
+    this.playerActor = null;
+  }
+
+  public setPlayerCameraMode(mode: PlayerCameraMode) {
+    if (!this.playerActor) return;
+    this.playerActor.cameraMode = mode;
+    this.emitDriveState(true);
+  }
+
+  public setPlayerLights(on: boolean) {
+    if (!this.playerActor) return;
+    this.playerActor.lightsOn = on;
+    this.applySingleVehicleLights(this.playerActor.built, on);
+    this.emitDriveState(true);
+  }
+
+  public setPlayerBlinker(mode: PlayerBlinkerMode) {
+    if (!this.playerActor) return;
+    this.playerActor.blinker = mode;
+    this.emitDriveState(true);
+  }
+
+  public setPlayerSiren(on: boolean) {
+    if (!this.playerActor || !this.playerActor.hasSiren) return;
+    this.playerActor.sirenOn = on;
+    if (!on) {
+      this.playerActor.built.materials.sirenRed.emissiveIntensity = 0.08;
+      this.playerActor.built.materials.sirenBlue.emissiveIntensity = 0.08;
+      this.playerActor.built.materials.sirenAmber.emissiveIntensity = 0.08;
+    }
+    this.emitDriveState(true);
+  }
+
+  private emitDriveState(force = false) {
+    if (!this.playerActor || !this.callbacks.onDriveStateChange) return;
+    const now = performance.now();
+    if (!force && now - this.lastDriveUiSyncMs < 110) return;
+    this.lastDriveUiSyncMs = now;
+    const p = this.playerActor;
+    this.callbacks.onDriveStateChange({
+      active: true,
+      vehicleId: p.concept.id,
+      vehicleName: p.concept.name,
+      kind: p.kind,
+      cameraMode: p.cameraMode,
+      lightsOn: p.lightsOn,
+      blinker: p.blinker,
+      sirenOn: p.sirenOn,
+      hasSiren: p.hasSiren,
+      speedKmh: Math.round(Math.abs(p.speed) * 3.6),
+    });
+  }
+
+  private handleKeyDown = (e: KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    const code = e.code;
+    this.keysDown.add(code);
+
+    if (!this.playerActor) return;
+    if (e.repeat) return;
+
+    if (code === 'KeyQ') {
+      this.setPlayerBlinker(this.playerActor.blinker === 'left' ? 'off' : 'left');
+    } else if (code === 'KeyE') {
+      this.setPlayerBlinker(this.playerActor.blinker === 'right' ? 'off' : 'right');
+    } else if (code === 'KeyX') {
+      this.setPlayerBlinker(this.playerActor.blinker === 'hazard' ? 'off' : 'hazard');
+    } else if (code === 'KeyF') {
+      this.setPlayerLights(!this.playerActor.lightsOn);
+    } else if (code === 'KeyG') {
+      if (this.playerActor.hasSiren) {
+        this.setPlayerSiren(!this.playerActor.sirenOn);
+      }
+    } else if (code === 'KeyC') {
+      this.setPlayerCameraMode(this.playerActor.cameraMode === 'chase' ? 'cockpit' : 'chase');
+    } else if (code === 'Escape') {
+      this.stopDriving();
+    }
+  };
+
+  private handleKeyUp = (e: KeyboardEvent) => {
+    this.keysDown.delete(e.code);
+  };
+
+  private updatePlayerDriving(dt: number, rawDt: number) {
+    const p = this.playerActor;
+    if (!p) return;
+
+    const accelIn = (this.keysDown.has('KeyW') || this.keysDown.has('ArrowUp') ? 1 : 0) -
+      (this.keysDown.has('KeyS') || this.keysDown.has('ArrowDown') ? 1 : 0);
+    const steerIn = (this.keysDown.has('KeyA') || this.keysDown.has('ArrowLeft') ? 1 : 0) -
+      (this.keysDown.has('KeyD') || this.keysDown.has('ArrowRight') ? 1 : 0);
+    const vertIn = (this.keysDown.has('Space') ? 1 : 0) -
+      (this.keysDown.has('ShiftLeft') || this.keysDown.has('ShiftRight') ? 1 : 0);
+
+    const tau = Math.PI * 2;
+    const targetSteer = steerIn * (p.kind === 'helicopter' ? 0.55 : 0.44);
+    p.steer = THREE.MathUtils.damp(p.steer, targetSteer, 11, dt);
+
+    if (p.kind === 'helicopter') {
+      const targetSpd = accelIn !== 0 ? accelIn * p.maxSpeed * 0.72 : 0;
+      p.speed = THREE.MathUtils.damp(p.speed, targetSpd, accelIn !== 0 ? 3.2 : 2.2, dt);
+      p.heading += p.steer * 1.9 * dt;
+      p.x += Math.sin(p.heading) * p.speed * dt;
+      p.z += Math.cos(p.heading) * p.speed * dt;
+      p.y = THREE.MathUtils.clamp(p.y + vertIn * 14 * dt, 1.8, 95);
+      p.x = THREE.MathUtils.clamp(p.x, -340, 152);
+      p.z = THREE.MathUtils.clamp(p.z, -116, 65);
+
+      const bob = Math.sin(this.elapsed * 2.2) * 0.14;
+      p.built.group.position.set(p.x, p.y + bob, p.z);
+      p.built.group.rotation.set(
+        THREE.MathUtils.clamp(p.speed / Math.max(1, p.maxSpeed), -1, 1) * 0.22,
+        p.heading,
+        -p.steer * 0.35,
+      );
+
+      const rotors = p.built.animatedParts.rotors;
+      for (let ri = 0; ri < rotors.length; ri++) {
+        const r = rotors[ri];
+        const axis = r.userData.rotorAxis ?? (ri === 0 ? 'y' : 'x');
+        if (axis === 'y') r.rotation.y = (r.rotation.y + dt * 16) % tau;
+        else r.rotation.x = (r.rotation.x + dt * 22) % tau;
+      }
+    } else {
+      const targetSpd = accelIn > 0 ? p.maxSpeed : accelIn < 0 ? -p.maxSpeed * 0.42 : 0;
+      p.speed = THREE.MathUtils.damp(p.speed, targetSpd, accelIn !== 0 ? 3.8 : 2.8, dt);
+
+      const turnFactor = p.kind === 'water'
+        ? 1.55 * Math.min(1, Math.abs(p.speed) / 4.5 + 0.35)
+        : 2.1 * Math.min(1, Math.abs(p.speed) / 5.5);
+      const revSign = p.speed >= -0.2 ? 1 : -1;
+      p.heading += p.steer * turnFactor * revSign * dt;
+
+      p.x += Math.sin(p.heading) * p.speed * dt;
+      p.z += Math.cos(p.heading) * p.speed * dt;
+
+      if (p.kind === 'water') {
+        p.x = THREE.MathUtils.clamp(p.x, -355, 115);
+        p.z = THREE.MathUtils.clamp(p.z, -112, 52);
+        const wave = Math.sin(this.elapsed * 2.5 + p.x * 0.15) * 0.06;
+        p.y = -1.22 + wave;
+        p.built.group.position.set(p.x, p.y, p.z);
+        p.built.group.rotation.set(-Math.min(0.12, Math.max(-0.04, p.speed * 0.005)), p.heading, -p.steer * 0.24);
+        const props = p.built.animatedParts.propellers;
+        for (let pi = 0; pi < props.length; pi++) {
+          props[pi].rotation.z = (props[pi].rotation.z + dt * (12 + Math.abs(p.speed) * 1.8)) % tau;
+        }
+      } else {
+        p.x = THREE.MathUtils.clamp(p.x, -166, 152);
+        p.z = THREE.MathUtils.clamp(p.z, -112, 38);
+        p.y = cityRoadY(p.z) + 0.04;
+        const slopePitch = -Math.atan(cityRoadSlopeDZ(p.z)) * Math.cos(p.heading);
+        const isTwoWheel = p.concept.geometry.archetype === 'bicycle' ||
+          p.concept.geometry.archetype === 'scooter' ||
+          p.concept.geometry.archetype === 'sportbike' ||
+          p.concept.geometry.archetype === 'cruiser' ||
+          p.concept.geometry.archetype === 'dirtbike';
+        const leanRoll = isTwoWheel ? -p.steer * Math.min(1, Math.abs(p.speed) / 8) * 0.42 : 0;
+        p.built.group.position.set(p.x, p.y, p.z);
+        p.built.group.rotation.set(slopePitch, p.heading, leanRoll);
+      }
+    }
+
+    const anim = p.built.animatedParts;
+    const wheelStep = (p.speed * dt) / p.wheelRadius;
+    for (let wi = 0; wi < anim.wheels.length; wi++) {
+      anim.wheels[wi].rotation.x = (anim.wheels[wi].rotation.x + wheelStep) % tau;
+    }
+    if (anim.cranks.length > 0) {
+      const crankStep = (p.speed * dt) / 1.15;
+      for (let ci = 0; ci < anim.cranks.length; ci++) {
+        anim.cranks[ci].rotation.x = (anim.cranks[ci].rotation.x + crankStep) % tau;
+      }
+      const crankAngle = anim.cranks[0].rotation.x;
+      for (let pi = 0; pi < anim.pedals.length; pi++) {
+        anim.pedals[pi].rotation.x = -crankAngle;
+      }
+    }
+    for (let si = 0; si < anim.steeringPivots.length; si++) {
+      anim.steeringPivots[si].rotation.y = p.steer;
+    }
+    for (let swi = 0; swi < anim.steeringWheels.length; swi++) {
+      anim.steeringWheels[swi].rotation.z = -p.steer * 3.0;
+    }
+
+    // Player turn signals (manual Q/E/X or auto-flash while steering strongly)
+    const flash = Math.sin(this.elapsed * 9.5) > 0 ? 2.8 : 0.1;
+    const autoLeft = p.blinker === 'off' && p.steer > 0.16;
+    const autoRight = p.blinker === 'off' && p.steer < -0.16;
+    const leftActive = p.blinker === 'left' || p.blinker === 'hazard' || autoLeft;
+    const rightActive = p.blinker === 'right' || p.blinker === 'hazard' || autoRight;
+    p.built.materials.signalLeft.emissiveIntensity = leftActive ? flash : 0.08;
+    p.built.materials.signalRight.emissiveIntensity = rightActive ? flash : 0.08;
+
+    // Player siren strobes
+    if (p.hasSiren && p.sirenOn) {
+      const tFlash = this.elapsed * 16;
+      const alt = Math.sin(tFlash) > 0;
+      const dbl = Math.sin(tFlash * 2.0) > 0.15 ? 1.0 : 0.45;
+      p.built.materials.sirenRed.emissiveIntensity = alt ? 3.2 * dbl : 0.15;
+      p.built.materials.sirenBlue.emissiveIntensity = !alt ? 3.2 * dbl : 0.15;
+      p.built.materials.sirenAmber.emissiveIntensity =
+        0.25 + Math.pow(Math.max(0, Math.sin(this.elapsed * 10)), 2) * 2.6;
+    }
+
+    // Update chase / cockpit camera (zero allocations)
+    p.built.group.updateMatrixWorld(true);
+    if (p.cameraMode === 'cockpit') {
+      if (anim.steeringWheels.length > 0) {
+        anim.steeringWheels[0].getWorldPosition(_drvLocalOffset);
+        _drvCamPos.set(0, 0.34, -0.52).applyQuaternion(p.built.group.quaternion).add(_drvLocalOffset);
+        _drvCamLook.set(0, 0.04, 3.6).applyQuaternion(p.built.group.quaternion).add(_drvLocalOffset);
+      } else {
+        const h = p.concept.dimensions.height;
+        const l = p.concept.dimensions.length;
+        const eyeY = p.kind === 'helicopter' ? h * 0.56 : h * 0.92;
+        const eyeZ = p.kind === 'helicopter' ? l * 0.16 : -l * 0.06;
+        _drvCamPos.set(0, eyeY, eyeZ).applyMatrix4(p.built.group.matrixWorld);
+        _drvLocalLook.set(0, eyeY - 0.22, eyeZ + 5.0);
+        _drvCamLook.copy(_drvLocalLook).applyMatrix4(p.built.group.matrixWorld);
+      }
+      this.camera.position.copy(_drvCamPos);
+      this.camera.lookAt(_drvCamLook);
+    } else {
+      const span = Math.max(4.5, p.concept.dimensions.length * 1.45);
+      const dist = p.kind === 'helicopter' ? span * 1.55 : span * 1.65;
+      const camH = p.kind === 'helicopter' ? 4.8 : Math.max(2.6, p.concept.dimensions.height * 1.85);
+      const sinH = Math.sin(p.heading);
+      const cosH = Math.cos(p.heading);
+      _drvCamPos.set(p.x - sinH * dist, p.y + camH, p.z - cosH * dist);
+      _drvCamLook.set(p.x + sinH * 3.5, p.y + p.concept.dimensions.height * 0.65, p.z + cosH * 3.5);
+      this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, _drvCamPos.x, 8.5, rawDt);
+      this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, _drvCamPos.y, 8.5, rawDt);
+      this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, _drvCamPos.z, 8.5, rawDt);
+      this.camera.lookAt(_drvCamLook);
+    }
+
+    this.emitDriveState(false);
   }
 
   public setWindStrength(val: number) {
@@ -1804,6 +2444,11 @@ export class CityConceptController {
     const rawDt = Math.min(this.clock.getDelta(), 0.08);
     const dt = this.simPaused ? 0 : rawDt;
     this.elapsed += dt;
+    this.frameCount++;
+
+    if (this.renderer.shadowMap.enabled && !this.simPaused && (this.frameCount & 1) === 0) {
+      this.renderer.shadowMap.needsUpdate = true;
+    }
 
     // 1. Camera smooth damping
     if (this.camTransitioning) {
@@ -1823,6 +2468,9 @@ export class CityConceptController {
     this.vegetation.update(this.elapsed, this.windStrength);
 
     if (!this.simPaused) {
+      const camX = this.camera.position.x;
+      const camZ = this.camera.position.z;
+
       this.atlas.waterRipple.offset.x = (this.elapsed * 0.06) % 1;
       this.atlas.waterRipple.offset.y = -((this.elapsed * 0.16) % 1);
       this.beachResult?.update(this.elapsed);
@@ -1835,7 +2483,9 @@ export class CityConceptController {
       }
 
       const blink = Math.sin(this.elapsed * 4.2) > 0 ? 2.4 : 0.15;
-      this.beacons.forEach((m) => (m.emissiveIntensity = blink));
+      for (let bi = 0; bi < this.beacons.length; bi++) {
+        this.beacons[bi].emissiveIntensity = blink;
+      }
 
       // 3. Synchronized Traffic Lights (only mutate shared materials on phase transition!)
       const sig = this.getSignalStates();
@@ -1843,44 +2493,61 @@ export class CityConceptController {
       if (phaseIdx !== this.lastPhaseIdx) {
         this.lastPhaseIdx = phaseIdx;
         this.callbacks.onTrafficPhase?.(sig.label);
-        this.trafficLights.forEach((rig) => {
+        for (let ti = 0; ti < this.trafficLights.length; ti++) {
+          const rig = this.trafficLights[ti];
           rig.setPhase(rig.axis === 'z' ? sig.zState : sig.xState);
-        });
+        }
       }
 
-      // Update shared emergency siren flash once per frame
-      const sirenSin = Math.sin(this.elapsed * 14);
-      const firstSirenActor = this.trafficActors.find((a) => a.built.materials.sirenRed);
-      if (firstSirenActor) {
-        firstSirenActor.built.materials.sirenRed.emissiveIntensity = sirenSin > 0 ? 2.6 : 0.2;
-        firstSirenActor.built.materials.sirenBlue.emissiveIntensity = sirenSin <= 0 ? 2.6 : 0.2;
+      // Update emergency police, ambulance, fire & amber beacons independently per vehicle
+      for (let ei = 0; ei < this.emergencyActors.length; ei++) {
+        const ea = this.emergencyActors[ei];
+        const m = ea.built.materials;
+        if (ea.mode === 'police_fire') {
+          const tFlash = this.elapsed * 16 + ea.phase;
+          const alt = Math.sin(tFlash) > 0;
+          const dbl = Math.sin(tFlash * 2.0) > 0.15 ? 1.0 : 0.45;
+          m.sirenRed.emissiveIntensity = alt ? 3.0 * dbl : 0.15;
+          m.sirenBlue.emissiveIntensity = !alt ? 3.0 * dbl : 0.15;
+          m.sirenAmber.emissiveIntensity =
+            0.25 + Math.pow(Math.max(0, Math.sin(this.elapsed * 10 + ea.phase)), 2) * 2.5;
+        } else {
+          m.sirenAmber.emissiveIntensity =
+            0.2 + Math.pow(Math.max(0, Math.sin(this.elapsed * 7.5 + ea.phase)), 2) * 2.4;
+        }
       }
 
-      // 4. Traffic Vehicles obeying signals & spacing
+      // 4. Traffic Vehicles & Bicycles obeying signals, length-aware spacing & slope physics
       const stopCoords = [-68, -34, 0, 34];
-      this.trafficActors.forEach((actor) => {
+      const tau = Math.PI * 2;
+      const wheelLodDistSq = 155 * 155;
+      for (let aIdx = 0; aIdx < this.trafficActors.length; aIdx++) {
+        const actor = this.trafficActors[aIdx];
         const mySignal = actor.axis === 'z' ? sig.zState : sig.xState;
         let mustStop = false;
 
-        if (mySignal !== 'green') {
+        if (!actor.ignoreSignals && mySignal !== 'green') {
           for (let i = 0; i < stopCoords.length; i++) {
             const c = stopCoords[i];
-            if (actor.axis === 'z' && c < -68) continue;
+            if (actor.axis === 'z' && c === -68 && Math.abs(actor.laneCoord) > 72) continue;
             if (actor.axis === 'x' && Math.abs(actor.laneCoord) > 40) continue;
-            const distAhead = (c - actor.posCoord) * actor.dir;
-            if (distAhead > 5.8 && distAhead < 11.2) {
+            const frontBumperDist = (c - actor.posCoord) * actor.dir - actor.halfLen;
+            if (frontBumperDist > 5.0 && frontBumperDist < 10.6) {
               mustStop = true;
               break;
             }
           }
         }
 
-        for (let j = 0; j < this.trafficActors.length; j++) {
-          const other = this.trafficActors[j];
-          if (other === actor || other.axis !== actor.axis || other.dir !== actor.dir) continue;
-          if (Math.abs(other.laneCoord - actor.laneCoord) > 1.0) continue;
-          const gap = (other.posCoord - actor.posCoord) * actor.dir;
-          if (gap > 0 && gap < 9.5) {
+        const span = Math.max(1, actor.maxC - actor.minC);
+        const peers = actor.lanePeers;
+        for (let j = 0; j < peers.length; j++) {
+          const other = peers[j];
+          if (other === actor) continue;
+          const rawGap = (other.posCoord - actor.posCoord) * actor.dir;
+          const modGap = ((rawGap % span) + span) % span;
+          const minSafeGap = actor.halfLen + other.halfLen + 3.2;
+          if (modGap > 0.05 && modGap < minSafeGap) {
             mustStop = true;
             break;
           }
@@ -1892,61 +2559,184 @@ export class CityConceptController {
         if (actor.dir > 0 && actor.posCoord > actor.maxC) actor.posCoord = actor.minC;
         if (actor.dir < 0 && actor.posCoord < actor.minC) actor.posCoord = actor.maxC;
 
+        const grpPos = actor.built.group.position;
         if (actor.axis === 'x') {
-          actor.built.group.position.x = actor.posCoord;
-          actor.built.group.position.y = cityRoadY(actor.laneCoord) + 0.04;
+          grpPos.x = actor.posCoord;
+          grpPos.y = actor.customY !== undefined ? actor.customY : cityRoadY(actor.laneCoord) + 0.04;
         } else {
-          actor.built.group.position.z = actor.posCoord;
-          actor.built.group.position.y = cityRoadY(actor.posCoord) + 0.04;
-          actor.built.group.rotation.x = -actor.dir * Math.atan(cityRoadSlopeDZ(actor.posCoord));
+          grpPos.z = actor.posCoord;
+          if (actor.customY !== undefined) {
+            grpPos.y = actor.customY;
+          } else {
+            grpPos.y = cityRoadY(actor.posCoord) + 0.04;
+            actor.built.group.rotation.x = -actor.dir * Math.atan(cityRoadSlopeDZ(actor.posCoord));
+          }
         }
 
-        const wheelSpin = actor.speed * dt * 2.4;
-        const wheels = actor.built.animatedParts.wheels;
-        for (let wi = 0; wi < wheels.length; wi++) {
-          wheels[wi].rotation.x += wheelSpin;
+        const dxCam = grpPos.x - camX;
+        const dzCam = grpPos.z - camZ;
+        if (dxCam * dxCam + dzCam * dzCam < wheelLodDistSq) {
+          const wheelSpin = (actor.speed * dt) / actor.wheelRadius;
+          const anim = actor.built.animatedParts;
+          for (let wi = 0; wi < anim.wheels.length; wi++) {
+            anim.wheels[wi].rotation.x = (anim.wheels[wi].rotation.x + wheelSpin) % tau;
+          }
+          if (anim.cranks.length > 0) {
+            const crankStep = (actor.speed * dt) / 1.15;
+            for (let ci = 0; ci < anim.cranks.length; ci++) {
+              anim.cranks[ci].rotation.x = (anim.cranks[ci].rotation.x + crankStep) % tau;
+            }
+            const crankAngle = anim.cranks[0].rotation.x;
+            for (let pi = 0; pi < anim.pedals.length; pi++) {
+              anim.pedals[pi].rotation.x = -crankAngle;
+            }
+          }
+          const steerAngle = Math.sin(this.elapsed * 1.15 + aIdx * 0.9) * (actor.speed > 0.5 ? 0.14 : 0.04);
+          for (let si = 0; si < anim.steeringPivots.length; si++) {
+            anim.steeringPivots[si].rotation.y = steerAngle;
+          }
+          for (let swi = 0; swi < anim.steeringWheels.length; swi++) {
+            anim.steeringWheels[swi].rotation.z = -steerAngle * 2.8;
+          }
+          const sigCycle = (this.elapsed + aIdx * 1.7) % 11.0;
+          const signaling = (mustStop && actor.speed > 0.25) || sigCycle < 3.6;
+          if (signaling) {
+            const flash = Math.sin(this.elapsed * 9.0) > 0 ? 2.4 : 0.1;
+            const useLeft = aIdx % 2 === 0;
+            actor.built.materials.signalLeft.emissiveIntensity = useLeft ? flash : 0.08;
+            actor.built.materials.signalRight.emissiveIntensity = !useLeft ? flash : 0.08;
+          } else {
+            actor.built.materials.signalLeft.emissiveIntensity = 0.08;
+            actor.built.materials.signalRight.emissiveIntensity = 0.08;
+          }
+          if (anim.mixerDrum) {
+            anim.mixerDrum.rotation.z = (anim.mixerDrum.rotation.z + dt * 1.4) % tau;
+          }
+          for (let bi = 0; bi < anim.sweeperBrushes.length; bi++) {
+            anim.sweeperBrushes[bi].rotation.y =
+              (anim.sweeperBrushes[bi].rotation.y + dt * (bi === 0 ? 5.5 : -5.5)) % tau;
+          }
         }
-      });
+      }
 
-      // 5. River Boats (navigating + moored at Cais Baixo pier)
-      this.boatActors.forEach((b) => {
+      // 5. Aquatic & Amphibious Fleet (River & West Ocean Bay)
+      for (let bIdx = 0; bIdx < this.boatActors.length; bIdx++) {
+        const b = this.boatActors[bIdx];
         if (b.speed > 0) {
-          b.x += b.dir * b.speed * dt;
-          if (b.dir > 0 && b.x > 96) b.x = -96;
-          if (b.dir < 0 && b.x < -96) b.x = 96;
+          if (b.axis === 'x') {
+            b.x += b.dir * b.speed * dt;
+            if (b.dir > 0 && b.x > b.maxC) b.x = b.minC;
+            if (b.dir < 0 && b.x < b.minC) b.x = b.maxC;
+          } else {
+            b.z += b.dir * b.speed * dt;
+            if (b.dir > 0 && b.z > b.maxC) b.z = b.minC;
+            if (b.dir < 0 && b.z < b.minC) b.z = b.maxC;
+          }
         }
         b.built.group.position.x = b.x;
-        b.built.group.position.y = -1.22 + Math.sin(this.elapsed * 2.4 + b.x * 0.2) * (b.speed > 0 ? 0.08 : 0.04);
-        b.built.group.rotation.z = Math.sin(this.elapsed * 1.9 + b.x * 0.15) * (b.speed > 0 ? 0.03 : 0.015);
-      });
+        b.built.group.position.z = b.z;
+        const phase = b.x * 0.2 + b.z * 0.17;
+        b.built.group.position.y = -1.22 + Math.sin(this.elapsed * 2.4 + phase) * (b.speed > 0 ? 0.08 : 0.04);
+        b.built.group.rotation.z = Math.sin(this.elapsed * 1.9 + phase) * (b.speed > 0 ? 0.035 : 0.015);
+        const bAnim = b.built.animatedParts;
+        const props = bAnim.propellers;
+        for (let pi = 0; pi < props.length; pi++) {
+          const spinSpeed = (props[pi].userData.spinSpeed as number | undefined) ?? 18;
+          props[pi].rotation.z = (props[pi].rotation.z + dt * spinSpeed) % tau;
+        }
+        const boatSteer = Math.sin(this.elapsed * 1.1 + bIdx * 1.3) * 0.24;
+        for (let si = 0; si < bAnim.steeringPivots.length; si++) {
+          bAnim.steeringPivots[si].rotation.y = boatSteer;
+        }
+        for (let swi = 0; swi < bAnim.steeringWheels.length; swi++) {
+          bAnim.steeringWheels[swi].rotation.z = -boatSteer * 2.8;
+        }
+        if ((this.elapsed + bIdx * 2.1) % 10.0 < 3.2) {
+          const flash = Math.sin(this.elapsed * 8.5) > 0 ? 2.4 : 0.1;
+          const useLeft = bIdx % 2 === 0;
+          b.built.materials.signalLeft.emissiveIntensity = useLeft ? flash : 0.08;
+          b.built.materials.signalRight.emissiveIntensity = !useLeft ? flash : 0.08;
+        } else {
+          b.built.materials.signalLeft.emissiveIntensity = 0.08;
+          b.built.materials.signalRight.emissiveIntensity = 0.08;
+        }
+      }
 
-      // 6. Patrol Helicopters high above skyscrapers
-      this.heliActors.forEach((h, hIdx) => {
-        const ang = this.elapsed * h.speed + hIdx * 1.4;
-        const hx = h.cx + Math.cos(ang) * h.rx;
-        const hz = h.cz + Math.sin(ang) * h.rz;
-        h.built.group.position.set(hx, h.alt + Math.sin(this.elapsed * 1.1 + hIdx) * 1.4, hz);
-        h.built.group.rotation.y = h.speed > 0 ? -ang : -ang + Math.PI;
-        h.built.group.rotation.x = 0.12;
-        h.built.group.rotation.z = h.speed > 0 ? -0.14 : 0.14;
-        h.built.animatedParts.rotors.forEach((r, idx) => {
-          if (idx === 0) r.rotation.y += dt * 16;
-          else r.rotation.x += dt * 20;
-        });
-      });
+      // 6. Airspace Fleet (Helicopters, Airplanes & Jets with turbines & afterburner flames)
+      for (let aIdx = 0; aIdx < this.airActors.length; aIdx++) {
+        const a = this.airActors[aIdx];
+        const ang = this.elapsed * a.speed + aIdx * 1.15;
+        const ax = a.cx + Math.cos(ang) * a.rx;
+        const az = a.cz + Math.sin(ang) * a.rz;
+        const vx = -a.speed * a.rx * Math.sin(ang);
+        const vz = a.speed * a.rz * Math.cos(ang);
+        const bobAmp = a.kind === 'helicopter' ? 1.3 : 0.65;
+        a.built.group.position.set(ax, a.alt + Math.sin(this.elapsed * 1.1 + aIdx) * bobAmp, az);
+        a.built.group.rotation.y = Math.atan2(vx, vz);
+        a.built.group.rotation.x = a.kind === 'helicopter' ? 0.09 : -0.02;
+        a.built.group.rotation.z =
+          a.kind === 'helicopter'
+            ? (a.speed > 0 ? -0.11 : 0.11)
+            : (a.speed > 0 ? -0.22 : 0.22);
 
-      // 7. Articulated Realistic NPCs
+        const anim = a.built.animatedParts;
+        for (let ri = 0; ri < anim.rotors.length; ri++) {
+          const r = anim.rotors[ri];
+          const axis = r.userData.rotorAxis ?? (ri === 0 ? 'y' : 'x');
+          if (axis === 'y') {
+            r.rotation.y = (r.rotation.y + dt * 15) % tau;
+          } else {
+            r.rotation.x = (r.rotation.x + dt * 21) % tau;
+          }
+        }
+        for (let pi = 0; pi < anim.propellers.length; pi++) {
+          const p = anim.propellers[pi];
+          const spinSpeed = (p.userData.spinSpeed as number | undefined) ?? 18;
+          p.rotation.z = (p.rotation.z + dt * spinSpeed) % tau;
+        }
+        const airSteer = a.speed > 0 ? -0.18 : 0.18;
+        for (let si = 0; si < anim.steeringPivots.length; si++) {
+          anim.steeringPivots[si].rotation.y = airSteer;
+        }
+        const airFlash = Math.sin(this.elapsed * 6.5 + aIdx) > 0.25 ? 2.2 : 0.12;
+        a.built.materials.signalLeft.emissiveIntensity = a.speed > 0 ? airFlash : 0.12;
+        a.built.materials.signalRight.emissiveIntensity = a.speed <= 0 ? airFlash : 0.12;
+        for (let fi = 0; fi < anim.afterburners.length; fi++) {
+          const ab = anim.afterburners[fi];
+          ab.visible = true;
+          const flicker =
+            0.88 +
+            0.12 * Math.sin(this.elapsed * 38 + fi * 1.9 + aIdx) +
+            0.07 * Math.cos(this.elapsed * 63 + fi * 2.7);
+          const xyScale = 0.88 + 0.14 * flicker;
+          const zScale = 0.82 + 0.30 * flicker;
+          ab.scale.set(xyScale, xyScale, zScale);
+          ab.rotation.z = (ab.rotation.z + dt * 10) % tau;
+        }
+      }
+
+      // 7. Articulated Realistic NPCs (with distance LOD for distant limb articulation)
       const crossStops = [-148, -68, -34, 0, 34, 68, 148];
-      this.npcs.forEach((npc) => {
+      const npcLodDistSq = 105 * 105;
+      for (let nIdx = 0; nIdx < this.npcs.length; nIdx++) {
+        const npc = this.npcs[nIdx];
+        const dxNpc = npc.group.position.x - camX;
+        const dzNpc = npc.group.position.z - camZ;
+        const nearCam = dxNpc * dxNpc + dzNpc * dzNpc < npcLodDistSq;
+
         if (npc.mode === 'sit') {
-          npc.head.rotation.y = Math.sin(this.elapsed * 0.7 + npc.phase) * 0.28;
-          return;
+          if (nearCam) {
+            npc.head.rotation.y = Math.sin(this.elapsed * 0.7 + npc.phase) * 0.28;
+          }
+          continue;
         }
         if (npc.mode === 'chat') {
-          npc.head.rotation.y = Math.sin(this.elapsed * 1.4 + npc.phase) * 0.22;
-          npc.rightArm.rotation.x = -0.45 + Math.sin(this.elapsed * 3.1 + npc.phase) * 0.28;
-          npc.leftArm.rotation.x = -0.15 + Math.cos(this.elapsed * 2.2 + npc.phase) * 0.12;
-          return;
+          if (nearCam) {
+            npc.head.rotation.y = Math.sin(this.elapsed * 1.4 + npc.phase) * 0.22;
+            npc.rightArm.rotation.x = -0.45 + Math.sin(this.elapsed * 3.1 + npc.phase) * 0.28;
+            npc.leftArm.rotation.x = -0.15 + Math.cos(this.elapsed * 2.2 + npc.phase) * 0.12;
+          }
+          continue;
         }
 
         let waitingAtCurb = false;
@@ -1965,21 +2755,25 @@ export class CityConceptController {
         }
 
         if (waitingAtCurb) {
-          npc.leftLeg.rotation.x = THREE.MathUtils.damp(npc.leftLeg.rotation.x, 0, 8, dt);
-          npc.rightLeg.rotation.x = THREE.MathUtils.damp(npc.rightLeg.rotation.x, 0, 8, dt);
-          npc.leftArm.rotation.x = THREE.MathUtils.damp(npc.leftArm.rotation.x, 0, 8, dt);
-          npc.rightArm.rotation.x = THREE.MathUtils.damp(npc.rightArm.rotation.x, 0, 8, dt);
-          npc.head.rotation.y = Math.sin(this.elapsed * 1.2 + npc.phase) * 0.35;
-          return;
+          if (nearCam) {
+            npc.leftLeg.rotation.x = THREE.MathUtils.damp(npc.leftLeg.rotation.x, 0, 8, dt);
+            npc.rightLeg.rotation.x = THREE.MathUtils.damp(npc.rightLeg.rotation.x, 0, 8, dt);
+            npc.leftArm.rotation.x = THREE.MathUtils.damp(npc.leftArm.rotation.x, 0, 8, dt);
+            npc.rightArm.rotation.x = THREE.MathUtils.damp(npc.rightArm.rotation.x, 0, 8, dt);
+            npc.head.rotation.y = Math.sin(this.elapsed * 1.2 + npc.phase) * 0.35;
+          }
+          continue;
         }
 
-        const strideFreq = npc.mode === 'jog' ? 9.5 : 5.2;
-        const strideAmp = npc.mode === 'jog' ? 0.72 : 0.45;
-        const swing = Math.sin(this.elapsed * strideFreq + npc.phase) * strideAmp;
-        npc.leftLeg.rotation.x = swing;
-        npc.rightLeg.rotation.x = -swing;
-        npc.leftArm.rotation.x = npc.mode === 'jog' ? -1.1 - swing * 0.55 : -swing * 0.75;
-        npc.rightArm.rotation.x = npc.mode === 'jog' ? -1.1 + swing * 0.55 : swing * 0.75;
+        if (nearCam) {
+          const strideFreq = npc.mode === 'jog' ? 9.5 : 5.2;
+          const strideAmp = npc.mode === 'jog' ? 0.72 : 0.45;
+          const swing = Math.sin(this.elapsed * strideFreq + npc.phase) * strideAmp;
+          npc.leftLeg.rotation.x = swing;
+          npc.rightLeg.rotation.x = -swing;
+          npc.leftArm.rotation.x = npc.mode === 'jog' ? -1.1 - swing * 0.55 : -swing * 0.75;
+          npc.rightArm.rotation.x = npc.mode === 'jog' ? -1.1 + swing * 0.55 : swing * 0.75;
+        }
 
         if (npc.axis === 'x') {
           npc.group.position.x += npc.dir * npc.speed * dt;
@@ -1997,10 +2791,14 @@ export class CityConceptController {
             npc.group.rotation.y = npc.dir > 0 ? 0 : Math.PI;
           }
         }
-      });
+      }
     }
 
-    this.controls.update();
+    if (this.playerActor && !this.simPaused) {
+      this.updatePlayerDriving(dt, rawDt);
+    } else {
+      this.controls.update();
+    }
     this.renderer.render(this.scene, this.camera);
 
     if (isSoftwareGl) this.afterDraw(this.tick);
@@ -2073,8 +2871,11 @@ export class CityConceptController {
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
     window.removeEventListener('resize', this.handleResize);
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
     this.renderer.domElement.removeEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
+    this.cleanupPlayerActor();
     this.disposableBuilt.forEach((b) => b.dispose());
     this.disposableBuilt = [];
     this.vegetation?.dispose();

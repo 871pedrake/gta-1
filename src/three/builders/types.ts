@@ -20,6 +20,12 @@ export interface BuiltVehicle {
     wheels: THREE.Object3D[];
     rotors: THREE.Object3D[];
     propellers: THREE.Object3D[];
+    afterburners: THREE.Object3D[];
+    cranks: THREE.Object3D[];
+    pedals: THREE.Object3D[];
+    steeringPivots: THREE.Object3D[];
+    steeringWheels: THREE.Object3D[];
+    headlightBeams: THREE.Object3D[];
     mixerDrum: THREE.Object3D | null;
     sweeperBrushes: THREE.Object3D[];
     openables: OpenablePart[];
@@ -204,7 +210,7 @@ export function createAerodynamicMirror(
 
   const sigStrip = new THREE.Mesh(
     new THREE.BoxGeometry(0.085, 0.012, 0.018),
-    mats.amberSignal,
+    side < 0 ? mats.signalLeft : mats.signalRight,
   );
   sigStrip.position.set(side * 0.125, 0.038, 0.038);
   mirrorGroup.add(sigStrip);
@@ -280,4 +286,60 @@ export function createEngineBayAssembly(
   engine.add(radiator);
 
   return engine;
+}
+
+let cachedBeamGeo: THREE.BufferGeometry | null = null;
+let cachedBeamMat: THREE.MeshBasicMaterial | null = null;
+
+function getSoftBeamTexture(): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 4;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const grad = ctx.createLinearGradient(0, 0, 0, 64);
+  grad.addColorStop(0.0, 'rgba(255, 246, 210, 0.85)');
+  grad.addColorStop(0.28, 'rgba(255, 246, 210, 0.36)');
+  grad.addColorStop(0.68, 'rgba(255, 246, 210, 0.09)');
+  grad.addColorStop(1.0, 'rgba(255, 246, 210, 0.0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 4, 64);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+export function createHeadlightBeamMesh(
+  length = 4.2,
+  endRadius = 0.85,
+  downPitch = 0.08,
+): THREE.Mesh {
+  if (!cachedBeamGeo) {
+    const geo = new THREE.ConeGeometry(1, 1, 14, 1, true);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(0, 0, 0.5);
+    cachedBeamGeo = geo;
+  }
+  if (!cachedBeamMat) {
+    const beamTex = getSoftBeamTexture();
+    cachedBeamMat = new THREE.MeshBasicMaterial({
+      color: 0xfff5cc,
+      map: beamTex ?? undefined,
+      transparent: true,
+      opacity: 0.11,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+  }
+  const mesh = new THREE.Mesh(cachedBeamGeo, cachedBeamMat);
+  mesh.scale.set(endRadius, endRadius, length);
+  mesh.rotation.x = downPitch;
+  mesh.userData.sharedGeometry = true;
+  mesh.userData.noShadow = true;
+  mesh.renderOrder = 3;
+  return mesh;
 }

@@ -5,6 +5,7 @@ export type VehicleCategory =
   | 'Emergência & Polícia'
   | 'Carga & Transporte'
   | 'Motos & ATV'
+  | 'Bicicletas'
   | 'Aquáticos'
   | 'Aéreos & Especiais';
 
@@ -17,6 +18,7 @@ export type VehicleTierClass =
   | 'Emergência & Polícia'
   | 'Carga & Transporte Pesado'
   | 'Motos, Triciclos & ATV'
+  | 'Bicicletas Urbanas, BMX & Speed'
   | 'Jet Skis & Náuticos'
   | 'Aviões & Helicópteros'
   | 'Jatos & Caças Supersônicos';
@@ -59,6 +61,7 @@ export type BodyArchetype =
   | 'dirtbike'
   | 'trike'
   | 'atv'
+  | 'bicycle'
   | 'speedboat'
   | 'jetski'
   | 'rib_boat'
@@ -83,6 +86,8 @@ export type WheelStyle =
   | 'wire_spoke'
   | 'moto_sport'
   | 'moto_spoke'
+  | 'bike_spoke'
+  | 'bike_aero'
   | 'scooter_small'
   | 'atv_balloon'
   | 'aircraft_gear'
@@ -167,7 +172,13 @@ export type VehicleAttachment =
   | 'window_louvers'
   | 'roof_scoop'
   | 'canards'
-  | 'f1_wings';
+  | 'f1_wings'
+  | 'bike_bmx'
+  | 'bike_speed'
+  | 'bike_rack'
+  | 'bike_pegs'
+  | 'bike_fenders'
+  | 'bike_suspension';
 
 export interface VehicleConcept {
   id: number;

@@ -12,6 +12,7 @@ import {
   createAerodynamicMirror,
   createEngineBayAssembly,
   createExtrudedProfile,
+  createHeadlightBeamMesh,
   createRoundedBoxGeo,
   enableShadows,
   makeStrutBetween,
@@ -121,6 +122,7 @@ export function addFrontAndRearFascias(
   archetype: string,
   includeMirrors = true,
   cityMode = false,
+  animated?: BuiltVehicle['animatedParts'],
 ) {
   const halfL = length / 2;
   const frontY = groundClearance + hoodHeight * 0.56;
@@ -160,6 +162,7 @@ export function addFrontAndRearFascias(
   const hlW = width * 0.21;
   const hlH = Math.max(0.085, hoodHeight * 0.19);
   [-1, 1].forEach((side) => {
+    const sigMat = side < 0 ? mats.signalLeft : mats.signalRight;
     const hlGroup = new THREE.Group();
     if (isQuad) {
       const bezel = new THREE.Mesh(
@@ -177,7 +180,7 @@ export function addFrontAndRearFascias(
       });
       const amber = new THREE.Mesh(
         createRoundedBoxGeo(hlW * 0.36, hlH * 0.62, 0.08, 0.012, 2, 6),
-        mats.amberSignal,
+        sigMat,
       );
       amber.position.set(side * (hlW * 0.34), -hlH * 0.95, 0.01);
       hlGroup.add(amber);
@@ -195,7 +198,7 @@ export function addFrontAndRearFascias(
       const drl = new THREE.Mesh(new THREE.BoxGeometry(hlW * 1.02, 0.022, 0.095), mats.headlight);
       drl.position.y = -hlH * 0.42;
       hlGroup.add(drl);
-      const amber = new THREE.Mesh(new THREE.BoxGeometry(0.055, hlH * 0.55, 0.09), mats.amberSignal);
+      const amber = new THREE.Mesh(new THREE.BoxGeometry(0.055, hlH * 0.55, 0.09), sigMat);
       amber.position.set(side * (hlW * 0.46), 0, 0.005);
       hlGroup.add(amber);
     }
@@ -209,6 +212,11 @@ export function addFrontAndRearFascias(
     );
     group.add(hlGroup);
 
+    const beam = createHeadlightBeamMesh(4.4, 0.85, 0.08);
+    beam.position.set(side * (width * 0.35), frontY + 0.02, halfL + 0.04);
+    group.add(beam);
+    animated?.headlightBeams.push(beam);
+
     const tlGroup = new THREE.Group();
     const tlFrame = new THREE.Mesh(
       createRoundedBoxGeo(hlW * 1.24, hlH * 1.04, 0.06, 0.022, 2, 8),
@@ -216,14 +224,17 @@ export function addFrontAndRearFascias(
     );
     tlGroup.add(tlFrame);
     const tl = new THREE.Mesh(
-      createRoundedBoxGeo(hlW * 1.05, hlH * 0.78, 0.075, 0.018, 2, 8),
+      createRoundedBoxGeo(hlW * 0.92, hlH * 0.78, 0.075, 0.018, 2, 8),
       mats.taillight,
     );
-    tl.position.x = -side * (hlW * 0.08);
+    tl.position.x = -side * (hlW * 0.14);
     tlGroup.add(tl);
-    const rev = new THREE.Mesh(new THREE.BoxGeometry(hlW * 0.24, hlH * 0.56, 0.08), mats.headlight);
-    rev.position.set(side * (hlW * 0.42), 0, 0);
+    const rev = new THREE.Mesh(new THREE.BoxGeometry(hlW * 0.22, hlH * 0.34, 0.08), mats.headlight);
+    rev.position.set(side * (hlW * 0.38), -hlH * 0.18, 0);
     tlGroup.add(rev);
+    const rearBlink = new THREE.Mesh(new THREE.BoxGeometry(hlW * 0.24, hlH * 0.36, 0.082), sigMat);
+    rearBlink.position.set(side * (hlW * 0.40), hlH * 0.20, 0);
+    tlGroup.add(rearBlink);
     tlGroup.position.set(side * (width * 0.34), rearY, -halfL + 0.005);
     tagPart(
       tlGroup,
@@ -380,7 +391,7 @@ export function addCarBodyDetailsAndLivery(
         // Fog lamp pod inset into lower front bumper apron
         const fog = new THREE.Mesh(
           createRoundedBoxGeo(0.14, 0.055, 0.04, 0.01, 2, 6),
-          mats.amberSignal,
+          mats.headlight,
         );
         fog.position.set(side * (width * 0.31), bodyLift + 0.11, halfL + 0.042);
         group.add(fog);
@@ -824,6 +835,7 @@ export function addVehicleAttachments(
     }
     const isBuggy = v.geometry.archetype === 'buggy';
     const isOpenCar = v.geometry.archetype === 'roadster' || v.geometry.archetype === 'convertible';
+    const isJetski = v.geometry.archetype === 'jetski';
     let barY = roofY + 0.04;
     let barZ = v.geometry.archetype === 'helicopter' ? 0.5 : length * 0.05;
     if (isBuggy) {
@@ -835,6 +847,9 @@ export function addVehicleAttachments(
     } else if (isOpenCar) {
       barY = rearY + 0.24;
       barZ = -length * 0.18;
+    } else if (isJetski) {
+      barY = rearY + 0.16;
+      barZ = -length * 0.36;
     }
     lb.position.set(0, barY, barZ);
     tagPart(lb, isPolice ? 'Giroflex LED Bipartido Polícia' : 'Barra Sinalizadora Âmbar', 0, 0.6, 0);
@@ -1107,8 +1122,147 @@ function buildSolidSideProfile(
 }
 
 // =========================================================================
-// 5. FORMULA 1 CAR (SMOOTH MONOCOQUE + OPEN ENGINE COWL + DRS FLAP)
+// 5. FORMULA 1 CAR (LOFTED MONOCOQUE, SWEPT MULTI-FLAP WINGS, DOUBLE WISHBONES & HALO)
 // =========================================================================
+function createLoftedFormulaHullGeo(
+  stations: { z: number; hw: number; yBot: number; yTop: number; crownDip?: number }[],
+): THREE.BufferGeometry {
+  // 10-point symmetric chamfered aero cross section per station
+  const M = 10;
+  const positions: number[] = [];
+  const indices: number[] = [];
+
+  for (let i = 0; i < stations.length; i++) {
+    const s = stations[i];
+    const h = Math.max(0.02, s.yTop - s.yBot);
+    const yMidLow = s.yBot + h * 0.28;
+    const yMidHigh = s.yBot + h * 0.72;
+    const dip = s.crownDip ?? 0;
+    const pts: [number, number][] = [
+      [0, s.yBot], // 0: bottom center
+      [s.hw * 0.72, s.yBot + h * 0.04], // 1: +X bottom chine
+      [s.hw, yMidLow], // 2: +X lower flank
+      [s.hw * 0.90, yMidHigh], // 3: +X upper shoulder
+      [s.hw * 0.44, s.yTop - dip * 0.25], // 4: +X crown shoulder
+      [0, s.yTop - dip], // 5: top spine (dips for recessed cockpit if needed)
+      [-s.hw * 0.44, s.yTop - dip * 0.25], // 6: -X crown shoulder
+      [-s.hw * 0.90, yMidHigh], // 7: -X upper shoulder
+      [-s.hw, yMidLow], // 8: -X lower flank
+      [-s.hw * 0.72, s.yBot + h * 0.04], // 9: -X bottom chine
+    ];
+    for (let j = 0; j < M; j++) {
+      positions.push(pts[j][0], pts[j][1], s.z);
+    }
+  }
+
+  for (let i = 0; i < stations.length - 1; i++) {
+    for (let j = 0; j < M; j++) {
+      const jNext = (j + 1) % M;
+      const a = i * M + j;
+      const b = (i + 1) * M + j;
+      const c = i * M + jNext;
+      const d = (i + 1) * M + jNext;
+      indices.push(a, c, b);
+      indices.push(c, d, b);
+    }
+  }
+
+  // Cap front nose tip & rear bulkhead cleanly (outward normals)
+  const frontCenter = positions.length / 3;
+  const fS = stations[stations.length - 1];
+  positions.push(0, (fS.yBot + fS.yTop) * 0.5, fS.z + 0.04);
+  const fBase = (stations.length - 1) * M;
+  for (let j = 0; j < M; j++) {
+    const jNext = (j + 1) % M;
+    indices.push(frontCenter, fBase + j, fBase + jNext);
+  }
+
+  const backCenter = positions.length / 3;
+  const bS = stations[0];
+  positions.push(0, (bS.yBot + bS.yTop) * 0.5, bS.z - 0.02);
+  for (let j = 0; j < M; j++) {
+    const jNext = (j + 1) % M;
+    indices.push(backCenter, jNext, j);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function createLoftedSidepodGeo(
+  side: number,
+  stations: { z: number; xIn: number; xOut: number; yBot: number; yTop: number }[],
+): THREE.BufferGeometry {
+  const M = 8;
+  const positions: number[] = [];
+  const indices: number[] = [];
+
+  for (let i = 0; i < stations.length; i++) {
+    const s = stations[i];
+    const w = Math.max(0.03, s.xOut - s.xIn);
+    const h = Math.max(0.03, s.yTop - s.yBot);
+    const undercutX = s.xIn + w * 0.42;
+    const pts: [number, number][] = [
+      [side * s.xIn, s.yBot], // 0: inner bottom
+      [side * undercutX, s.yBot + h * 0.06], // 1: undercut inner floor
+      [side * s.xOut, s.yBot + h * 0.38], // 2: outer lower flank
+      [side * (s.xOut * 0.98), s.yBot + h * 0.78], // 3: outer upper shoulder
+      [side * (s.xIn + w * 0.68), s.yTop], // 4: upper outer deck
+      [side * (s.xIn + w * 0.25), s.yTop - h * 0.02], // 5: upper inner deck
+      [side * s.xIn, s.yTop - h * 0.14], // 6: inner top
+      [side * s.xIn, s.yBot + h * 0.45], // 7: inner mid
+    ];
+    for (let j = 0; j < M; j++) {
+      positions.push(pts[j][0], pts[j][1], s.z);
+    }
+  }
+
+  for (let i = 0; i < stations.length - 1; i++) {
+    for (let j = 0; j < M; j++) {
+      const jNext = (j + 1) % M;
+      const a = i * M + j;
+      const b = (i + 1) * M + j;
+      const c = i * M + jNext;
+      const d = (i + 1) * M + jNext;
+      if (side > 0) {
+        indices.push(a, c, b);
+        indices.push(c, d, b);
+      } else {
+        indices.push(a, b, c);
+        indices.push(c, b, d);
+      }
+    }
+  }
+
+  const frontC = positions.length / 3;
+  const fS = stations[stations.length - 1];
+  positions.push(side * (fS.xIn + fS.xOut) * 0.5, (fS.yBot + fS.yTop) * 0.5, fS.z);
+  const fBase = (stations.length - 1) * M;
+  for (let j = 0; j < M; j++) {
+    const jNext = (j + 1) % M;
+    if (side > 0) indices.push(frontC, fBase + j, fBase + jNext);
+    else indices.push(frontC, fBase + jNext, fBase + j);
+  }
+
+  const backC = positions.length / 3;
+  const bS = stations[0];
+  positions.push(side * (bS.xIn + bS.xOut) * 0.5, (bS.yBot + bS.yTop) * 0.5, bS.z);
+  for (let j = 0; j < M; j++) {
+    const jNext = (j + 1) % M;
+    if (side > 0) indices.push(backC, jNext, j);
+    else indices.push(backC, j, jNext);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 export function buildFormulaCar(
   v: VehicleConcept,
   mats: VehicleMaterialSet,
@@ -1119,190 +1273,532 @@ export function buildFormulaCar(
   const group = new THREE.Group();
   const { length, width, wheelbase } = v.dimensions;
   const g = v.geometry;
-  const halfL = length / 2;
+  const halfL = length * 0.5;
   const fZ = wheelbase * 0.5;
   const rZ = -wheelbase * 0.5;
-  const seg = cityMode ? 12 : 24;
+  const gc = g.groundClearance; // 0.08m
+  const wheelX = width * 0.415;
 
-  // Carbon Venturi floor plank
-  const floor = new THREE.Mesh(
-    createRoundedBoxGeo(width * 0.72, 0.05, length * 0.82, 0.02, 2, 10),
-    mats.trim,
-  );
-  floor.position.set(0, g.groundClearance + 0.03, -0.1);
-  tagPart(floor, 'Assoalho e Difusor Venturi', 0, -0.2, 0);
-  group.add(floor);
+  // 1. Sculpted Carbon Venturi Floor Plank, T-Tray Splitter, Bargeboards & Rear Diffuser
+  // Note: rotateX(-PI/2) maps 2D +Y -> 3D -Z, so we pass -z in 2D shape Y!
+  const floorGroup = new THREE.Group();
+  const floorShape = new THREE.Shape();
+  floorShape.moveTo(-0.22, -0.58);
+  floorShape.lineTo(0.22, -0.58);
+  floorShape.lineTo(width * 0.37, -0.32);
+  floorShape.lineTo(width * 0.38, 1.22);
+  floorShape.lineTo(0.28, 1.38);
+  floorShape.lineTo(0.27, halfL - 0.16);
+  floorShape.lineTo(-0.27, halfL - 0.16);
+  floorShape.lineTo(-0.28, 1.38);
+  floorShape.lineTo(-width * 0.38, 1.22);
+  floorShape.lineTo(-width * 0.37, -0.32);
+  floorShape.closePath();
 
-  // Smooth sculpted Lathe monocoque & tapered nosecone
-  const monoPts = [
-    new THREE.Vector2(0.03, halfL - 0.06),
-    new THREE.Vector2(width * 0.09, halfL - 0.32),
-    new THREE.Vector2(width * 0.14, halfL * 0.48),
-    new THREE.Vector2(width * 0.18, 0.15),
-    new THREE.Vector2(width * 0.17, -0.45),
-    new THREE.Vector2(width * 0.12, -halfL + 0.45),
-    new THREE.Vector2(0.05, -halfL + 0.18),
-  ];
-  const monoGeo = new THREE.LatheGeometry(monoPts, seg);
-  monoGeo.rotateX(Math.PI / 2);
-  monoGeo.scale(1.0, 0.76, 1.0);
-  const mono = new THREE.Mesh(monoGeo, mats.body);
-  mono.position.set(0, g.groundClearance + 0.25, 0);
-  tagPart(mono, 'Monocoque Central Aerodinâmico', 0, 0.15, 0);
-  group.add(mono);
+  const floorGeo = new THREE.ExtrudeGeometry(floorShape, {
+    depth: 0.032,
+    bevelEnabled: true,
+    bevelThickness: 0.008,
+    bevelSize: 0.012,
+    bevelSegments: 2,
+  });
+  floorGeo.rotateX(-Math.PI / 2);
+  const floorPlank = new THREE.Mesh(floorGeo, mats.trim);
+  floorPlank.position.y = gc + 0.005;
+  floorGroup.add(floorPlank);
 
-  // Curved beveled sidepods
+  // Side floor edge strakes + swept bargeboard turning vanes behind front wheels
   [-1, 1].forEach((side) => {
-    const pod = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.25, 0.3, length * 0.42, 0.08, cityMode ? 2 : 4, 14),
-      mats.body,
+    const edgeLip = new THREE.Mesh(
+      createRoundedBoxGeo(0.045, 0.026, 1.56, 0.008, 2, 6),
+      mats.accent,
     );
-    pod.position.set(side * width * 0.25, g.groundClearance + 0.23, -0.15);
-    tagPart(pod, 'Sidepod Aerodinâmico Esculpido', side * 0.4, 0.1, 0);
-    group.add(pod);
-
-    const intake = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.19, 0.22, 0.05, 0.03, 2, 8),
-      mats.grille,
-    );
-    intake.position.set(side * width * 0.25, g.groundClearance + 0.24, -0.15 + length * 0.21);
-    group.add(intake);
+    edgeLip.position.set(side * (width * 0.375), gc + 0.035, -0.45);
+    floorGroup.add(edgeLip);
 
     if (!cityMode) {
-      const mirPos = new THREE.Vector3(side * width * 0.24, g.groundClearance + 0.48, 0.34);
-      const mirRoot = new THREE.Vector3(side * width * 0.22, g.groundClearance + 0.34, 0.24);
-      const stalk = makeStrutBetween(mirRoot, mirPos, 0.014, 0.014, mats.trim, 6);
-      group.add(stalk);
-      const mirror = createAerodynamicMirror(side, mats, cityMode);
-      mirror.position.copy(mirPos);
-      tagPart(mirror, 'Retrovisores Aero F1', side * 0.35, 0.2, 0);
-      group.add(mirror);
+      const bargeMain = new THREE.Mesh(
+        createRoundedBoxGeo(0.022, 0.16, 0.42, 0.006, 2, 6),
+        mats.trim,
+      );
+      bargeMain.position.set(side * 0.52, gc + 0.11, 0.62);
+      bargeMain.rotation.y = side * 0.18;
+      const bargeWing = new THREE.Mesh(
+        createRoundedBoxGeo(0.24, 0.02, 0.32, 0.005, 2, 6),
+        mats.trim,
+      );
+      bargeWing.position.set(side * 0.56, gc + 0.08, 0.58);
+      bargeWing.rotation.z = side * 0.08;
+      floorGroup.add(bargeMain, bargeWing);
     }
   });
 
-  // Recessed Formula cockpit + bucket seat + LCD steering wheel + Halo
-  const seat = new THREE.Mesh(
-    createRoundedBoxGeo(0.42, 0.38, 0.46, 0.08, 3, 10),
-    mats.interior,
-  );
-  seat.position.set(0, g.groundClearance + 0.36, -0.06);
-  seat.rotation.x = -0.4;
-  tagPart(seat, 'Cockpit do Piloto e Volante F1', 0, 0.35, 0);
-  group.add(seat);
-
-  const f1Wheel = new THREE.Mesh(
-    createRoundedBoxGeo(0.24, 0.14, 0.035, 0.025, 2, 8),
+  // Rear Venturi diffuser ramp & vertical strakes
+  const diffRamp = new THREE.Mesh(
+    createRoundedBoxGeo(0.56, 0.03, 0.42, 0.008, 2, 6),
     mats.trim,
   );
-  f1Wheel.position.set(0, g.groundClearance + 0.44, 0.26);
-  f1Wheel.rotation.x = -0.25;
-  group.add(f1Wheel);
-  const f1Screen = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.055, 0.04), mats.sirenBlue);
-  f1Screen.position.set(0, g.groundClearance + 0.46, 0.255);
-  f1Screen.rotation.x = -0.25;
-  group.add(f1Screen);
+  diffRamp.position.set(0, gc + 0.09, -halfL + 0.24);
+  diffRamp.rotation.x = 0.28;
+  floorGroup.add(diffRamp);
+  [-0.22, -0.075, 0.075, 0.22].forEach((dx) => {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.11, 0.36), mats.trim);
+    fin.position.set(dx, gc + 0.085, -halfL + 0.22);
+    floorGroup.add(fin);
+  });
 
-  const haloCurve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-0.22, g.groundClearance + 0.56, -0.22),
-    new THREE.Vector3(0, g.groundClearance + 0.67, 0.36),
-    new THREE.Vector3(0.22, g.groundClearance + 0.56, -0.22),
+  tagPart(floorGroup, 'Assoalho Venturi, Bargeboards & Difusor', 0, -0.2, 0);
+  group.add(floorGroup);
+
+  // 2. Lofted Monocoque Tub & Long Sloping Nosecone (joins directly onto Front Wing!)
+  const noseTipZ = halfL - 0.06;
+  const monoGeo = createLoftedFormulaHullGeo([
+    { z: -0.92, hw: 0.21, yBot: gc + 0.03, yTop: gc + 0.44 },
+    { z: -0.36, hw: 0.28, yBot: gc + 0.025, yTop: gc + 0.51, crownDip: 0.04 },
+    { z: 0.05, hw: 0.295, yBot: gc + 0.025, yTop: gc + 0.49, crownDip: 0.23 },
+    { z: 0.42, hw: 0.275, yBot: gc + 0.025, yTop: gc + 0.49, crownDip: 0.18 },
+    { z: 0.62, hw: 0.255, yBot: gc + 0.03, yTop: gc + 0.48 },
+    { z: 1.05, hw: 0.22, yBot: gc + 0.055, yTop: gc + 0.40 },
+    { z: fZ, hw: 0.18, yBot: gc + 0.075, yTop: gc + 0.29 },
+    { z: noseTipZ - 0.38, hw: 0.135, yBot: gc + 0.045, yTop: gc + 0.18 },
+    { z: noseTipZ, hw: 0.08, yBot: gc + 0.025, yTop: gc + 0.105 },
   ]);
-  const halo = new THREE.Mesh(new THREE.TubeGeometry(haloCurve, 22, 0.028, 12, false), mats.trim);
-  tagPart(halo, 'Proteção Halo Titânio', 0, 0.55, 0);
-  group.add(halo);
-  group.add(
-    makeStrutBetween(
-      new THREE.Vector3(0, g.groundClearance + 0.45, 0.46),
-      new THREE.Vector3(0, g.groundClearance + 0.67, 0.35),
-      0.025,
-      0.03,
-      mats.trim,
-      10,
-    ),
-  );
+  const monoGroup = new THREE.Group();
+  const monoMesh = new THREE.Mesh(monoGeo, mats.body);
+  monoGroup.add(monoMesh);
 
-  // V6 Turbo Power Unit inside rear engine bay + Hinged Openable Airbox Cowl
-  const powerUnit = createEngineBayAssembly(width * 0.28, 0.72, mats, false);
-  powerUnit.position.set(0, g.groundClearance + 0.35, -0.68);
+  // Raised cockpit rim bolsters + dark cockpit tub interior + nose racing stripe
+  [-1, 1].forEach((side) => {
+    const bolster = new THREE.Mesh(
+      createRoundedBoxGeo(0.065, 0.11, 0.72, 0.022, 2, 8),
+      mats.body,
+    );
+    bolster.position.set(side * 0.235, gc + 0.47, 0.08);
+    monoGroup.add(bolster);
+  });
+  const tubDark = new THREE.Mesh(
+    createRoundedBoxGeo(0.41, 0.08, 0.68, 0.02, 2, 8),
+    mats.interior,
+  );
+  tubDark.position.set(0, gc + 0.24, 0.08);
+  monoGroup.add(tubDark);
+
+  const noseStripe = new THREE.Mesh(
+    createRoundedBoxGeo(0.085, 0.02, 1.56, 0.008, 2, 6),
+    mats.liveryStripe,
+  );
+  noseStripe.position.set(0, gc + 0.31, 1.44);
+  noseStripe.rotation.x = 0.21;
+  monoGroup.add(noseStripe);
+
+  if (!cityMode) {
+    // Nose pitot mast + front wing camera winglets (from reference!)
+    const pitot = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.007, 0.08, 6), mats.chrome);
+    pitot.position.set(0, gc + 0.44, 0.92);
+    monoGroup.add(pitot);
+
+    [-1, 1].forEach((side) => {
+      const camPod = new THREE.Mesh(
+        createRoundedBoxGeo(0.11, 0.025, 0.08, 0.006, 2, 6),
+        mats.trim,
+      );
+      camPod.position.set(side * 0.16, gc + 0.22, fZ + 0.28);
+      monoGroup.add(camPod);
+    });
+  }
+
+  tagPart(monoGroup, 'Monocoque & Bico Aerodinâmico', 0, 0.16, 0.1);
+  group.add(monoGroup);
+
+  // 3. Sculpted Undercut Sidepods + Overbite Radiator Intakes + Coke-Bottle Taper + Aero Mirrors
+  const sidepodsGroup = new THREE.Group();
+  [-1, 1].forEach((side) => {
+    const podGeo = createLoftedSidepodGeo(side, [
+      { z: -1.42, xIn: 0.14, xOut: 0.26, yBot: gc + 0.04, yTop: gc + 0.22 },
+      { z: -0.95, xIn: 0.17, xOut: 0.42, yBot: gc + 0.06, yTop: gc + 0.30 },
+      { z: -0.35, xIn: 0.22, xOut: 0.62, yBot: gc + 0.09, yTop: gc + 0.40 },
+      { z: 0.18, xIn: 0.24, xOut: 0.66, yBot: gc + 0.12, yTop: gc + 0.44 },
+      { z: 0.46, xIn: 0.23, xOut: 0.62, yBot: gc + 0.16, yTop: gc + 0.43 },
+    ]);
+    const podMesh = new THREE.Mesh(podGeo, mats.body);
+    sidepodsGroup.add(podMesh);
+
+    // Side radiator intake cavity + upper overbite intake lip
+    const intake = new THREE.Mesh(
+      createRoundedBoxGeo(0.32, 0.18, 0.05, 0.022, 2, 8),
+      mats.grille,
+    );
+    intake.position.set(side * 0.43, gc + 0.29, 0.455);
+    sidepodsGroup.add(intake);
+
+    const overbite = new THREE.Mesh(
+      createRoundedBoxGeo(0.36, 0.028, 0.12, 0.01, 2, 8),
+      mats.body,
+    );
+    overbite.position.set(side * 0.43, gc + 0.415, 0.48);
+    sidepodsGroup.add(overbite);
+
+    // Sidepod sponsor/accent trim stripe
+    const podStripe = new THREE.Mesh(
+      createRoundedBoxGeo(0.03, 0.045, 0.88, 0.01, 2, 6),
+      mats.accent,
+    );
+    podStripe.position.set(side * 0.61, gc + 0.30, -0.18);
+    podStripe.rotation.y = side * -0.16;
+    sidepodsGroup.add(podStripe);
+
+    if (!cityMode) {
+      const mirRoot = new THREE.Vector3(side * 0.26, gc + 0.44, 0.36);
+      const mirPos = new THREE.Vector3(side * 0.45, gc + 0.50, 0.38);
+      const stalk = makeStrutBetween(mirRoot, mirPos, 0.011, 0.012, mats.trim, 6);
+      const mirShell = new THREE.Mesh(
+        createRoundedBoxGeo(0.11, 0.055, 0.075, 0.015, 2, 8),
+        mats.body,
+      );
+      mirShell.position.copy(mirPos);
+      const mirFace = new THREE.Mesh(
+        createRoundedBoxGeo(0.09, 0.04, 0.012, 0.008, 2, 6),
+        mats.mirrorGlass,
+      );
+      mirFace.position.set(mirPos.x, mirPos.y, mirPos.z - 0.036);
+      sidepodsGroup.add(stalk, mirShell, mirFace);
+    }
+  });
+  tagPart(sidepodsGroup, 'Sidepods Esculpidos & Coke-Bottle', 0, 0.14, 0);
+  group.add(sidepodsGroup);
+
+  // 4. Recessed Cockpit, Driver Helmet, Compact Butterfly Wheel & Titanium Halo
+  const cockpitGroup = new THREE.Group();
+  const seat = new THREE.Mesh(
+    createRoundedBoxGeo(0.36, 0.26, 0.44, 0.06, 2, 8),
+    mats.interior,
+  );
+  seat.position.set(0, gc + 0.28, -0.06);
+  seat.rotation.x = -0.52;
+  cockpitGroup.add(seat);
+
+  const headrest = new THREE.Mesh(
+    createRoundedBoxGeo(0.32, 0.16, 0.18, 0.04, 2, 8),
+    mats.interior,
+  );
+  headrest.position.set(0, gc + 0.46, -0.22);
+  cockpitGroup.add(headrest);
+
+  // Driver Helmet + Tinted Visor cleanly framed inside Halo
+  const helmetGrp = new THREE.Group();
+  helmetGrp.position.set(0, gc + 0.46, -0.06);
+  const helmetShell = new THREE.Mesh(
+    new THREE.SphereGeometry(0.118, cityMode ? 10 : 18, cityMode ? 8 : 14),
+    mats.accent,
+  );
+  helmetShell.scale.set(0.94, 1.0, 1.12);
+  const visor = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.115, 0.115, 0.062, 16, 1, false, -Math.PI * 0.34, Math.PI * 0.68),
+    mats.trim,
+  );
+  visor.position.set(0, 0.01, 0.02);
+  helmetGrp.add(helmetShell, visor);
+  cockpitGroup.add(helmetGrp);
+
+  // Compact F1 Butterfly Steering Wheel tucked inside cockpit below Halo
+  const f1SteerMount = new THREE.Group();
+  f1SteerMount.position.set(0, gc + 0.38, 0.28);
+  f1SteerMount.rotation.x = -0.34;
+  const f1SteerWheel = new THREE.Group();
+  const f1Body = new THREE.Mesh(
+    createRoundedBoxGeo(0.20, 0.105, 0.028, 0.018, 2, 8),
+    mats.trim,
+  );
+  f1SteerWheel.add(f1Body);
+  [-1, 1].forEach((side) => {
+    const grip = new THREE.Mesh(
+      createRoundedBoxGeo(0.032, 0.095, 0.034, 0.012, 2, 6),
+      mats.interior,
+    );
+    grip.position.set(side * 0.088, -0.005, 0);
+    f1SteerWheel.add(grip);
+  });
+  const f1Screen = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.048, 0.032), mats.sirenBlue);
+  f1Screen.position.set(0, 0.012, -0.004);
+  f1SteerWheel.add(f1Screen);
+  f1SteerMount.add(f1SteerWheel);
+  cockpitGroup.add(f1SteerMount);
+  animated.steeringWheels.push(f1SteerWheel);
+
+  tagPart(cockpitGroup, 'Cockpit, Capacete & Volante F1', 0, 0.38, 0);
+  group.add(cockpitGroup);
+
+  // Titanium Halo framing driver helmet
+  const haloGroup = new THREE.Group();
+  const haloCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.22, gc + 0.51, -0.24),
+    new THREE.Vector3(-0.21, gc + 0.58, 0.08),
+    new THREE.Vector3(0, gc + 0.61, 0.42),
+    new THREE.Vector3(0.21, gc + 0.58, 0.08),
+    new THREE.Vector3(0.22, gc + 0.51, -0.24),
+  ]);
+  const haloTube = new THREE.Mesh(
+    new THREE.TubeGeometry(haloCurve, cityMode ? 14 : 24, 0.024, 10, false),
+    mats.trim,
+  );
+  const haloPylon = makeStrutBetween(
+    new THREE.Vector3(0, gc + 0.47, 0.52),
+    new THREE.Vector3(0, gc + 0.61, 0.41),
+    0.02,
+    0.028,
+    mats.trim,
+    8,
+  );
+  haloGroup.add(haloTube, haloPylon);
+  tagPart(haloGroup, 'Proteção Halo Titânio', 0, 0.58, 0);
+  group.add(haloGroup);
+
+  // 5. V6 Turbo Power Unit + Hinged Openable Airbox, T-Cam & Coke-Bottle Engine Cover
+  const powerUnit = createEngineBayAssembly(width * 0.22, 0.72, mats, false);
+  powerUnit.position.set(0, gc + 0.22, -0.82);
   group.add(powerUnit);
 
   const cowlPivot = new THREE.Group();
-  cowlPivot.position.set(0, g.groundClearance + 0.46, -1.05);
-  const airbox = new THREE.Mesh(
-    createRoundedBoxGeo(0.3, 0.34, 0.92, 0.08, cityMode ? 2 : 4, 12),
+  cowlPivot.position.set(0, gc + 0.24, -1.52);
+
+  // Tapered sculpted engine cover shell
+  const engineCowlGeo = createLoftedFormulaHullGeo([
+    { z: 0.02, hw: 0.13, yBot: 0.0, yTop: 0.22 },
+    { z: 0.45, hw: 0.19, yBot: 0.02, yTop: 0.36 },
+    { z: 0.92, hw: 0.22, yBot: 0.06, yTop: 0.50 },
+    { z: 1.24, hw: 0.18, yBot: 0.16, yTop: 0.58 },
+  ]);
+  cowlPivot.add(new THREE.Mesh(engineCowlGeo, mats.body));
+
+  // Overhead Airbox Scoop + Dark Intake + Dorsal T-Cam Pod + Shark Fin
+  const airboxBody = new THREE.Mesh(
+    createRoundedBoxGeo(0.21, 0.18, 0.38, 0.05, 2, 10),
     mats.body,
   );
-  airbox.position.set(0, 0.14, 0.44);
-  cowlPivot.add(airbox);
-  const sharkFin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.28, 0.78), mats.accent);
-  sharkFin.position.set(0, 0.28, 0.38);
-  cowlPivot.add(sharkFin);
-  tagPart(cowlPivot, 'Carenagem do Motor V6 Turbo', 0, 0.48, -0.15);
+  airboxBody.position.set(0, 0.56, 1.18);
+  const airboxIntake = new THREE.Mesh(
+    createRoundedBoxGeo(0.15, 0.12, 0.04, 0.02, 2, 8),
+    mats.grille,
+  );
+  airboxIntake.position.set(0, 0.57, 1.36);
+
+  const tCamStem = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.09, 0.06), mats.trim);
+  tCamStem.position.set(0, 0.67, 1.18);
+  const tCamBar = new THREE.Mesh(createRoundedBoxGeo(0.22, 0.026, 0.065, 0.008, 2, 6), mats.trim);
+  tCamBar.position.set(0, 0.71, 1.18);
+
+  const sharkShape = new THREE.Shape();
+  sharkShape.moveTo(0.06, 0.14);
+  sharkShape.lineTo(1.06, 0.52);
+  sharkShape.lineTo(1.06, 0.30);
+  sharkShape.lineTo(0.06, 0.10);
+  sharkShape.closePath();
+  const sharkGeo = createExtrudedProfile(sharkShape, 0.026, 0.006, 0.006, 1, 6);
+  const sharkFin = new THREE.Mesh(sharkGeo, mats.accent);
+  sharkFin.position.set(0, 0.04, 0.0);
+
+  cowlPivot.add(airboxBody, airboxIntake, tCamStem, tCamBar, sharkFin);
+  tagPart(cowlPivot, 'Airbox, T-Cam & Capô Motor V6', 0, 0.5, -0.15);
   group.add(cowlPivot);
-  registerOpenable(animated, cowlPivot, 'Capô do Motor F1', { x: 0.58 });
+  registerOpenable(animated, cowlPivot, 'Capô do Motor F1', { x: 0.55 });
 
-  // Multi-element Front & Active DRS Rear Wing
-  const fWing = new THREE.Mesh(
-    createRoundedBoxGeo(width * 0.98, 0.042, 0.38, 0.015, 2, 10),
+  // 6. Swept Multi-Element Curved Front Wing with Contoured Endplates (integrated with nose tip!)
+  const fWingGroup = new THREE.Group();
+  const fWingCenter = new THREE.Mesh(
+    createRoundedBoxGeo(0.42, 0.032, 0.28, 0.01, 2, 8),
     mats.trim,
   );
-  fWing.position.set(0, g.groundClearance + 0.08, halfL - 0.04);
-  tagPart(fWing, 'Asa Dianteira Multi-Elementos', 0, 0, 0.65);
-  group.add(fWing);
+  fWingCenter.position.set(0, gc + 0.025, noseTipZ - 0.14);
+  fWingGroup.add(fWingCenter);
 
-  const rWingBase = new THREE.Mesh(
-    createRoundedBoxGeo(width * 0.72, 0.035, 0.24, 0.012, 2, 8),
+  [-1, 1].forEach((side) => {
+    // 4 stepped swept wing elements per side (matching reference F1 front wing!)
+    const wingSpan = width * 0.38;
+    const xCenter = side * (0.17 + wingSpan * 0.5);
+    const wingColors = [mats.trim, mats.body, mats.body, mats.accent];
+    for (let e = 0; e < 4; e++) {
+      const elem = new THREE.Mesh(
+        createRoundedBoxGeo(wingSpan, 0.022, 0.105, 0.006, 2, 6),
+        wingColors[e],
+      );
+      elem.position.set(
+        xCenter,
+        gc + 0.022 + e * 0.026,
+        noseTipZ - 0.06 - e * 0.09,
+      );
+      elem.rotation.y = side * -0.14;
+      elem.rotation.x = 0.08 + e * 0.075;
+      fWingGroup.add(elem);
+    }
+
+    // Sculpted curved outer Front Wing Endplate + footplate strake
+    const epShape = new THREE.Shape();
+    epShape.moveTo(-0.22, 0.0);
+    epShape.lineTo(0.24, 0.0);
+    epShape.lineTo(0.20, 0.07);
+    epShape.quadraticCurveTo(0.06, 0.20, -0.22, 0.23);
+    epShape.closePath();
+    const epGeo = createExtrudedProfile(epShape, 0.024, 0.006, 0.006, 2, 10);
+    const ep = new THREE.Mesh(epGeo, mats.body);
+    ep.position.set(side * (width * 0.472), gc + 0.01, noseTipZ - 0.18);
+    ep.rotation.z = side * -0.06;
+    fWingGroup.add(ep);
+
+    const footplate = new THREE.Mesh(
+      createRoundedBoxGeo(0.055, 0.016, 0.44, 0.005, 2, 6),
+      mats.trim,
+    );
+    footplate.position.set(side * (width * 0.485), gc + 0.014, noseTipZ - 0.18);
+    fWingGroup.add(footplate);
+  });
+
+  tagPart(fWingGroup, 'Asa Dianteira Multi-Elementos F1', 0, 0.05, 0.65);
+  group.add(fWingGroup);
+
+  // 7. Contoured High-Downforce Rear Wing, Beam Wing, Twin Pylons & Articulated DRS Flap
+  const rWingZ = -halfL + 0.18;
+  const rWingStruct = new THREE.Group();
+  const rWingMain = new THREE.Mesh(
+    createRoundedBoxGeo(width * 0.50, 0.032, 0.24, 0.01, 2, 8),
     mats.trim,
   );
-  rWingBase.position.set(0, g.groundClearance + 0.82, -halfL + 0.15);
-  group.add(rWingBase);
+  rWingMain.position.set(0, gc + 0.72, rWingZ + 0.04);
+  rWingMain.rotation.x = 0.16;
+  rWingStruct.add(rWingMain);
+
+  const beamWing = new THREE.Mesh(
+    createRoundedBoxGeo(width * 0.38, 0.024, 0.16, 0.008, 2, 6),
+    mats.trim,
+  );
+  beamWing.position.set(0, gc + 0.38, rWingZ + 0.12);
+  beamWing.rotation.x = 0.22;
+  rWingStruct.add(beamWing);
+
+  [-0.14, 0.14].forEach((px) => {
+    const pylon = makeStrutBetween(
+      new THREE.Vector3(px, gc + 0.24, rWingZ + 0.36),
+      new THREE.Vector3(px, gc + 0.72, rWingZ + 0.06),
+      0.018,
+      0.024,
+      mats.trim,
+      6,
+    );
+    rWingStruct.add(pylon);
+  });
+
+  [-1, 1].forEach((side) => {
+    const repShape = new THREE.Shape();
+    repShape.moveTo(-0.18, 0.22);
+    repShape.lineTo(0.08, 0.22);
+    repShape.lineTo(0.20, 0.84);
+    repShape.lineTo(-0.18, 0.84);
+    repShape.closePath();
+    const repGeo = createExtrudedProfile(repShape, 0.024, 0.006, 0.006, 2, 8);
+    const rep = new THREE.Mesh(repGeo, mats.body);
+    rep.position.set(side * (width * 0.255), gc + 0.04, rWingZ);
+    rWingStruct.add(rep);
+  });
+  tagPart(rWingStruct, 'Asa Traseira & Beam Wing', 0, 0.45, -0.5);
+  group.add(rWingStruct);
 
   const drsPivot = new THREE.Group();
-  drsPivot.position.set(0, g.groundClearance + 0.9, -halfL + 0.08);
+  drsPivot.position.set(0, gc + 0.81, rWingZ - 0.06);
   const drsFlap = new THREE.Mesh(
-    createRoundedBoxGeo(width * 0.7, 0.03, 0.16, 0.01, 2, 8),
+    createRoundedBoxGeo(width * 0.48, 0.026, 0.14, 0.008, 2, 8),
     mats.accent,
   );
   drsFlap.position.set(0, 0, 0.06);
+  drsFlap.rotation.x = 0.28;
   drsPivot.add(drsFlap);
-  tagPart(drsPivot, 'Asa Traseira DRS Articulada', 0, 0.55, -0.55);
+  tagPart(drsPivot, 'Flap DRS Traseiro Articulado', 0, 0.58, -0.55);
   group.add(drsPivot);
-  registerOpenable(animated, drsPivot, 'Flap DRS Traseiro', { x: 0.44 });
+  registerOpenable(animated, drsPivot, 'Flap DRS Traseiro', { x: 0.46 });
 
-  [-0.22, 0.22].forEach((px) => {
-    const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.44, 0.18), mats.trim);
-    pylon.position.set(px, g.groundClearance + 0.64, -halfL + 0.14);
-    group.add(pylon);
-  });
-
-  const rainLight = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.05), mats.taillight);
-  rainLight.position.set(0, g.groundClearance + 0.24, -halfL - 0.02);
+  // Central FIA Rain Light & High Exhaust Tailpipe
+  const rainLight = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.095, 0.04), mats.taillight);
+  rainLight.position.set(0, gc + 0.20, -halfL + 0.08);
   group.add(rainLight);
 
-  addExhaustSystem(group, width, halfL, g.groundClearance + 0.18, mats, 'center_twin');
+  const exhaustTube = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.048, 0.052, 0.34, 14).rotateX(Math.PI / 2),
+    mats.chrome,
+  );
+  exhaustTube.position.set(0, gc + 0.29, -halfL + 0.40);
+  const exhaustBore = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.038, 0.038, 0.04, 12).rotateX(Math.PI / 2),
+    mats.exhaustBore,
+  );
+  exhaustBore.position.set(0, gc + 0.29, -halfL + 0.23);
+  group.add(exhaustTube, exhaustBore);
 
+  // 8. True Double-Wishbone Suspension, Brake Cooling Ducts & 4 Wide F1 Slicks
   [fZ, rZ].forEach((wz, idx) => {
+    const isFront = idx === 0;
+    const tireW = g.wheelWidth * (isFront ? 0.96 : 1.24);
+    const uprightX = wheelX - tireW * 0.36;
+
     [-1, 1].forEach((side) => {
-      const wishbone = makeStrutBetween(
-        new THREE.Vector3(side * width * 0.15, g.wheelRadius + 0.06, wz),
-        new THREE.Vector3(side * width * 0.44, g.wheelRadius, wz),
-        0.02,
-        0.02,
+      // Carbon brake cooling duct / upright hub
+      const duct = new THREE.Mesh(
+        new THREE.CylinderGeometry(g.wheelRadius * 0.42, g.wheelRadius * 0.42, 0.055, 14).rotateZ(Math.PI / 2),
         mats.trim,
       );
-      group.add(wishbone);
+      duct.position.set(side * uprightX, g.wheelRadius, wz);
+      group.add(duct);
+
+      // Upper & Lower A-Arm Double Wishbones + Diagonal Pushrod (and front tie-rod)
+      const chInX = side * (isFront ? 0.16 : 0.14);
+      const upOuter = new THREE.Vector3(side * uprightX, g.wheelRadius + 0.085, wz);
+      const loOuter = new THREE.Vector3(side * uprightX, g.wheelRadius - 0.085, wz);
+
+      group.add(
+        makeStrutBetween(new THREE.Vector3(chInX, g.wheelRadius + 0.075, wz + 0.20), upOuter, 0.011, 0.011, mats.trim, 6),
+        makeStrutBetween(new THREE.Vector3(chInX, g.wheelRadius + 0.075, wz - 0.20), upOuter, 0.011, 0.011, mats.trim, 6),
+        makeStrutBetween(new THREE.Vector3(chInX * 0.92, g.wheelRadius - 0.11, wz + 0.20), loOuter, 0.012, 0.012, mats.trim, 6),
+        makeStrutBetween(new THREE.Vector3(chInX * 0.92, g.wheelRadius - 0.11, wz - 0.20), loOuter, 0.012, 0.012, mats.trim, 6),
+        makeStrutBetween(
+          loOuter,
+          new THREE.Vector3(chInX, g.wheelRadius + 0.11, wz + (isFront ? -0.06 : 0.10)),
+          0.01,
+          0.01,
+          mats.alloy,
+          6,
+        ),
+      );
+      if (isFront) {
+        group.add(
+          makeStrutBetween(
+            new THREE.Vector3(chInX, g.wheelRadius, wz - 0.12),
+            new THREE.Vector3(side * uprightX, g.wheelRadius, wz - 0.08),
+            0.0085,
+            0.0085,
+            mats.alloy,
+            6,
+          ),
+        );
+      }
+
       const w = createCraftedWheel(
         g.wheelRadius,
-        g.wheelWidth * (idx === 1 ? 1.25 : 1.0),
+        tireW,
         wheelStyle,
         mats,
         side > 0,
         false,
         cityMode,
       );
-      w.position.set(side * (width * 0.45), g.wheelRadius, wz);
-      tagPart(w, idx === 0 ? 'Roda Slick Dianteira' : 'Roda Slick Traseira', side * 0.48, 0, 0);
-      group.add(w);
+      if (isFront) {
+        const steerPivot = new THREE.Group();
+        steerPivot.position.set(side * wheelX, g.wheelRadius, wz);
+        steerPivot.add(w);
+        tagPart(steerPivot, 'Roda Slick Dianteira', side * 0.48, 0, 0);
+        group.add(steerPivot);
+        animated.steeringPivots.push(steerPivot);
+      } else {
+        w.position.set(side * wheelX, g.wheelRadius, wz);
+        tagPart(w, 'Roda Slick Traseira', side * 0.48, 0, 0);
+        group.add(w);
+      }
       animated.wheels.push(w);
     });
   });
@@ -1852,6 +2348,7 @@ export function buildStandardWheeledVehicle(
       hasHollowCockpit ? interiorDropY : 0.06,
       cityMode,
       interiorStyle,
+      animated,
     );
     interior.position.y = hasHollowCockpit ? -interiorDropY : -0.02;
     cockpitGroup.add(interior);
@@ -1988,6 +2485,7 @@ export function buildStandardWheeledVehicle(
       hasHollowCockpit, // Doors carry their own moving window glass when hollowed!
       undefined,
       interiorStyle,
+      animated,
     );
     cab.position.set(0, beltlineY, cabCenterZ);
     tagPart(cab, 'Cabine com Vidros Aparentes e Interior 3D', 0, 0.48, 0);
@@ -2011,8 +2509,8 @@ export function buildStandardWheeledVehicle(
   const wheelY = g.wheelRadius;
   const wheelX = width * (isMonster ? 0.56 : 0.46);
   [
-    { z: frontWheelZ, label: 'Roda Dianteira' },
-    { z: rearWheelZ, label: 'Roda Traseira' },
+    { z: frontWheelZ, label: 'Roda Dianteira', isFront: true },
+    { z: rearWheelZ, label: 'Roda Traseira', isFront: false },
   ].forEach((axle) => {
     [-1, 1].forEach((side) => {
       const w = createCraftedWheel(
@@ -2024,9 +2522,18 @@ export function buildStandardWheeledVehicle(
         false,
         cityMode,
       );
-      w.position.set(side * wheelX, wheelY, axle.z);
-      tagPart(w, `${axle.label} ${side < 0 ? 'Esquerda' : 'Direita'}`, side * 0.48, -0.05, 0);
-      group.add(w);
+      if (axle.isFront) {
+        const steerPivot = new THREE.Group();
+        steerPivot.position.set(side * wheelX, wheelY, axle.z);
+        steerPivot.add(w);
+        tagPart(steerPivot, `${axle.label} ${side < 0 ? 'Esquerda' : 'Direita'}`, side * 0.48, -0.05, 0);
+        group.add(steerPivot);
+        animated.steeringPivots.push(steerPivot);
+      } else {
+        w.position.set(side * wheelX, wheelY, axle.z);
+        tagPart(w, `${axle.label} ${side < 0 ? 'Esquerda' : 'Direita'}`, side * 0.48, -0.05, 0);
+        group.add(w);
+      }
       animated.wheels.push(w);
     });
   });
@@ -2067,6 +2574,7 @@ export function buildStandardWheeledVehicle(
     g.archetype,
     !hasHollowCockpit && !isBuggy,
     cityMode,
+    animated,
   );
   addExhaustSystem(group, width, halfL, bodyLift, mats, exhaustStyle);
   addVehicleAttachments(group, v, mats, beltlineY + cabH, bodyLift + rearH, bodyLift + hoodH, animated);

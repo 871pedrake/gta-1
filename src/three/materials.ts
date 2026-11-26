@@ -164,6 +164,8 @@ export interface VehicleMaterialSet {
   mirrorGlass: THREE.MeshStandardMaterial;
   exhaustBore: THREE.MeshStandardMaterial;
   amberSignal: THREE.MeshStandardMaterial;
+  signalLeft: THREE.MeshStandardMaterial;
+  signalRight: THREE.MeshStandardMaterial;
   liveryStripe: THREE.MeshStandardMaterial;
   brakeDisc: THREE.MeshStandardMaterial;
   caliper: THREE.MeshStandardMaterial;
@@ -242,19 +244,19 @@ function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMater
     sirenRed: new THREE.MeshStandardMaterial({
       color: 0xef4444,
       emissive: 0xef4444,
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 0.45,
       roughness: 0.2,
     }),
     sirenBlue: new THREE.MeshStandardMaterial({
       color: 0x3b82f6,
       emissive: 0x3b82f6,
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 0.45,
       roughness: 0.2,
     }),
     sirenAmber: new THREE.MeshStandardMaterial({
       color: 0xf59e0b,
       emissive: 0xf59e0b,
-      emissiveIntensity: 1.3,
+      emissiveIntensity: 0.45,
       roughness: 0.22,
     }),
     grille: new THREE.MeshStandardMaterial({ color: 0x121216, metalness: 0.5, roughness: 0.55 }),
@@ -270,7 +272,7 @@ export function createVehicleMaterials(
   finish: PaintFinish,
   trimStyle: TrimFinish,
   maxAniso = 4,
-  options?: { cityMode?: boolean; stripeColor?: string },
+  options?: { cityMode?: boolean; stripeColor?: string; enableSirens?: boolean },
 ): VehicleMaterialSet {
   const isMatte = finish === 'matte';
   const isMetallic = finish === 'metallic' || finish === 'pearl';
@@ -311,7 +313,54 @@ export function createVehicleMaterials(
       roughness: 0.22,
     });
 
-    const owned = [body, secondary, accent, trim, liveryStripe];
+    // Lightweight per-vehicle untextured emitter materials so blinkers, headlights,
+    // and sirens animate independently per vehicle without breaking mesh merging
+    const signalLeft = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.1,
+      roughness: 0.2,
+    });
+    const signalRight = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.1,
+      roughness: 0.2,
+    });
+    const headlight = new THREE.MeshStandardMaterial({
+      color: 0xfefce8,
+      emissive: 0xfef3c7,
+      emissiveIntensity: 1.65,
+      roughness: 0.14,
+      metalness: 0.1,
+    });
+
+    const owned = [body, secondary, accent, trim, liveryStripe, signalLeft, signalRight, headlight];
+    let sirenRed = shared.sirenRed;
+    let sirenBlue = shared.sirenBlue;
+    let sirenAmber = shared.sirenAmber;
+    if (options?.enableSirens) {
+      sirenRed = new THREE.MeshStandardMaterial({
+        color: 0xef4444,
+        emissive: 0xef4444,
+        emissiveIntensity: 1.8,
+        roughness: 0.2,
+      });
+      sirenBlue = new THREE.MeshStandardMaterial({
+        color: 0x3b82f6,
+        emissive: 0x3b82f6,
+        emissiveIntensity: 1.8,
+        roughness: 0.2,
+      });
+      sirenAmber = new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 1.6,
+        roughness: 0.22,
+      });
+      owned.push(sirenRed, sirenBlue, sirenAmber);
+    }
+
     return {
       body,
       secondary,
@@ -325,14 +374,16 @@ export function createVehicleMaterials(
       mirrorGlass: shared.mirrorGlass,
       exhaustBore: shared.exhaustBore,
       amberSignal: shared.amberSignal,
+      signalLeft,
+      signalRight,
       liveryStripe,
       brakeDisc: shared.brakeDisc,
       caliper: accent,
-      headlight: shared.headlight,
+      headlight,
       taillight: shared.taillight,
-      sirenRed: shared.sirenRed,
-      sirenBlue: shared.sirenBlue,
-      sirenAmber: shared.sirenAmber,
+      sirenRed,
+      sirenBlue,
+      sirenAmber,
       grille: shared.grille,
       dispose: () => {
         owned.forEach((m) => m.dispose());
@@ -438,6 +489,22 @@ export function createVehicleMaterials(
     metalness: 0.1,
   });
 
+  const signalLeft = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 0.85,
+    roughness: 0.18,
+    metalness: 0.1,
+  });
+
+  const signalRight = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 0.85,
+    roughness: 0.18,
+    metalness: 0.1,
+  });
+
   const liveryStripe = new THREE.MeshStandardMaterial({
     color: new THREE.Color(options?.stripeColor ?? accentColor),
     metalness: 0.25,
@@ -512,6 +579,8 @@ export function createVehicleMaterials(
     mirrorGlass,
     exhaustBore,
     amberSignal,
+    signalLeft,
+    signalRight,
     liveryStripe,
     brakeDisc,
     caliper,
@@ -536,6 +605,8 @@ export function createVehicleMaterials(
     mirrorGlass,
     exhaustBore,
     amberSignal,
+    signalLeft,
+    signalRight,
     liveryStripe,
     brakeDisc,
     caliper,

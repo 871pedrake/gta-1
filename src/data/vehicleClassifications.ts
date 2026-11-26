@@ -9,6 +9,7 @@ export const VEHICLE_TIER_CLASSES: VehicleTierClass[] = [
   'Emergência & Polícia',
   'Carga & Transporte Pesado',
   'Motos, Triciclos & ATV',
+  'Bicicletas Urbanas, BMX & Speed',
   'Jet Skis & Náuticos',
   'Aviões & Helicópteros',
   'Jatos & Caças Supersônicos',
@@ -69,6 +70,12 @@ export const VEHICLE_TIER_META: Record<VehicleTierClass, TierMeta> = {
     unityHandlingSummary:
       'Inclinação dinâmica nas curvas (MotoControle), agilidade extrema no corredor do trânsito, piloto visível no assento e esterçamento ágil.',
   },
+  'Bicicletas Urbanas, BMX & Speed': {
+    rank: 'Classe Bike',
+    tagline: 'Bicicletas urbanas trail, BMX freestyle, road speed e track aero',
+    unityHandlingSummary:
+      'Chassi ultraleve com animação sincronizada de pedivela/pedais, rodas raiadas e guidão esterçante para ciclovias, calçadão da praia e manobras no morro.',
+  },
   'Jet Skis & Náuticos': {
     rank: 'Classe Náutica',
     tagline: 'Jet skis freestyle/racing, lanchas offshore, botes, rebocadores e iate',
@@ -111,6 +118,8 @@ export function classifyVehicle(v: VehicleConcept): {
     arch === 'yacht'
   ) {
     tierClass = 'Jet Skis & Náuticos';
+  } else if (arch === 'bicycle' || v.category === 'Bicicletas') {
+    tierClass = 'Bicicletas Urbanas, BMX & Speed';
   } else if (
     arch === 'scooter' ||
     arch === 'sportbike' ||
@@ -181,6 +190,9 @@ export function classifyVehicle(v: VehicleConcept): {
   } else if (arch === 'helicopter') {
     specificNote =
       'Portas laterais de cabine articuladas, cockpit panorâmico com instrumentos e rotor principal de alta sustentação.';
+  } else if (arch === 'bicycle') {
+    specificNote =
+      'Bicicleta com transmissão por corrente, pedais contra-rotativos horizontais, rodas raiadas e conjunto frontal esterçante (guidão, garfo e roda).';
   } else {
     specificNote = meta.unityHandlingSummary;
   }

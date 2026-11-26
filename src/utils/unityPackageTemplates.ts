@@ -73,10 +73,15 @@ public class ControleVeiculo50 : MonoBehaviour
     }
 
     [Header("Peças Animadas (preenchido pela Fábrica)")]
+    public bool ehBicicleta = false;
+    public Transform guidaoPivo;
+    public Transform pedivelaPivo;
+    public List<Transform> pedais = new List<Transform>();
     public List<Transform> rodasDianteiras = new List<Transform>();
     public List<Transform> rodasTraseiras = new List<Transform>();
     public List<Transform> rotores = new List<Transform>();
     public List<Transform> helices = new List<Transform>();
+    public List<Transform> chamasJato = new List<Transform>();
     public Transform tamborBetoneira;
     public List<Transform> escovasVarredoura = new List<Transform>();
     public List<PortaArticulada50> portasArticuladas = new List<PortaArticulada50>();
@@ -1244,12 +1249,25 @@ public class ControleVeiculo50 : MonoBehaviour
         anguloRodas += (velMs / rVis) * Mathf.Rad2Deg * dt;
         AnguloGuidaoAtual = Mathf.Lerp(AnguloGuidaoAtual, steerSuave * 30f, 12f * dt);
 
+        if (guidaoPivo != null)
+        {
+            guidaoPivo.localRotation = Quaternion.Euler(0f, AnguloGuidaoAtual, 0f);
+        }
+        if (pedivelaPivo != null)
+        {
+            float angPedivela = anguloRodas * 0.68f;
+            pedivelaPivo.localRotation = Quaternion.Euler(angPedivela, 0f, 0f);
+            for (int i = 0; i < pedais.Count; i++)
+                if (pedais[i] != null) pedais[i].localRotation = Quaternion.Euler(-angPedivela, 0f, 0f);
+        }
+
+        float steerRodaFrente = (ehBicicleta && guidaoPivo != null) ? 0f : AnguloGuidaoAtual;
         for (int i = 0; i < rodasDianteiras.Count; i++)
         {
             Transform r = rodasDianteiras[i];
             if (r == null) continue;
-            r.localRotation = Quaternion.Euler(anguloRodas, AnguloGuidaoAtual, 0f);
-            if (i < baseYDianteiras.Count)
+            r.localRotation = Quaternion.Euler(anguloRodas, steerRodaFrente, 0f);
+            if (i < baseYDianteiras.Count && !(ehBicicleta && guidaoPivo != null))
             {
                 Vector3 lp = r.localPosition;
                 lp.y = Mathf.Lerp(lp.y, baseYDianteiras[i] + visualOffsetDianteiro, 16f * dt);
@@ -1274,12 +1292,26 @@ public class ControleVeiculo50 : MonoBehaviour
         for (int i = 0; i < rotores.Count; i++)
         {
             if (rotores[i] == null) continue;
-            if (i == 0) rotores[i].Rotate(Vector3.up, velRotor * dt, Space.Self);
-            else rotores[i].Rotate(Vector3.right, velRotor * 1.3f * dt, Space.Self);
+            bool ehCauda = rotores[i].name.Contains("Cauda") || rotores[i].name.Contains("Fenestron");
+            if (ehCauda) rotores[i].Rotate(Vector3.right, velRotor * 1.3f * dt, Space.Self);
+            else rotores[i].Rotate(Vector3.up, velRotor * dt, Space.Self);
         }
 
         for (int i = 0; i < helices.Count; i++)
             if (helices[i] != null) helices[i].Rotate(Vector3.forward, (MotorLigado ? 820f : 0f) * dt, Space.Self);
+
+        for (int i = 0; i < chamasJato.Count; i++)
+        {
+            Transform ch = chamasJato[i];
+            if (ch == null) continue;
+            ch.gameObject.SetActive(MotorLigado);
+            if (MotorLigado)
+            {
+                float pulso = 0.88f + 0.14f * Mathf.Sin(Time.time * 38f + i * 1.7f);
+                ch.localScale = new Vector3(pulso, pulso, 0.8f + 0.3f * pulso);
+                ch.Rotate(Vector3.forward, 540f * dt, Space.Self);
+            }
+        }
 
         if (tamborBetoneira != null)
             tamborBetoneira.Rotate(Vector3.forward, 55f * dt, Space.Self);
@@ -1824,6 +1856,12 @@ ${rows}
         ctrl.zEixoDianteiro = d.arquetipo == "articulated_bus" ? d.comp * 0.38f : ctrl.distanciaEixos * 0.5f;
         ctrl.zEixoTraseiro = d.arquetipo == "articulated_bus" ? -d.comp * 0.36f : -ctrl.distanciaEixos * 0.5f;
         ctrl.ehQuadriciclo = d.arquetipo == "atv";
+        ctrl.ehBicicleta = d.arquetipo == "bicycle" || d.categoria == "Bicicletas";
+        if (ctrl.ehBicicleta)
+        {
+            ctrl.inclinacaoCurva = 16f;
+            ctrl.velocidadeGiro = 124f;
+        }
         ctrl.meioComprimento = d.comp * 0.5f;
         ctrl.ehVeiculoLongo = d.comp >= 7.5f;
         ctrl.AplicarConfigFisica();
@@ -1832,7 +1870,7 @@ ${rows}
         inter.offsetSaida = new Vector3(-(d.larg * 0.5f + 1.15f), 0.6f, 0f);
         inter.veiculoAbertoSemTeto = (d.tipo == TipoFisicaVeiculo50.Moto || d.arquetipo == "roadster" || d.arquetipo == "convertible" || d.arquetipo == "formula" || d.arquetipo == "buggy" || d.arquetipo == "jetski");
         inter.assentoVisivelLocal = d.tipo == TipoFisicaVeiculo50.Moto
-            ? new Vector3(0f, d.vao + 0.52f, -0.18f)
+            ? new Vector3(0f, d.vao + (ctrl.ehBicicleta ? 0.64f : 0.52f), -0.18f)
             : new Vector3(0f, d.vao + 0.45f, -0.10f);
 
         Color cPrim = Hex(d.corPrim);
@@ -1851,6 +1889,8 @@ ${rows}
             MontarHovercraft(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro);
         else if (d.tipo == TipoFisicaVeiculo50.Barco)
             MontarBarco(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro);
+        else if (d.arquetipo == "bicycle")
+            MontarBicicleta(raiz.transform, d, ctrl, cPrim, cSec, cDest, cPneu, cAro, cCromo);
         else if (d.tipo == TipoFisicaVeiculo50.Moto)
             MontarMotoOuAtv(raiz.transform, d, ctrl, cPrim, cSec, cDest, cPneu, cAro, cCromo);
         else
@@ -2554,6 +2594,150 @@ ${rows}
             Peca(PrimitiveType.Cube, "Bau_Entregas", raiz, new Vector3(0f, d.vao + 0.78f, zT - 0.04f), new Vector3(0.48f, 0.44f, 0.48f), cDest, 0.5f);
     }
 
+    private static void MontarBicicleta(
+        Transform raiz, DefVeiculo d, ControleVeiculo50 ctrl,
+        Color cPrim, Color cSec, Color cDest, Color cPneu, Color cAro, Color cCromo)
+    {
+        float zF = d.eixos * 0.5f;
+        float zT = -d.eixos * 0.5f;
+        float r = Mathf.Max(0.22f, d.raioRoda);
+        bool ehBmx = d.extras.Contains("bike_bmx");
+        bool ehSpeed = d.extras.Contains("bike_speed");
+        bool ehCesta = d.extras.Contains("bike_basket");
+        bool temBagageiro = d.extras.Contains("bike_rack");
+        bool temPegs = d.extras.Contains("bike_pegs");
+        Color cEscuro = new Color(0.14f, 0.15f, 0.17f);
+
+        float bbY = ehBmx ? 0.275f : 0.285f;
+        float bbZ = ehBmx ? -0.04f : -0.075f;
+        float selimY = ehBmx ? 0.565f : (ehSpeed ? 0.895f : 0.785f);
+        float selimZ = bbZ - (selimY - bbY) * 0.29f;
+        float headZ = zF * 0.76f;
+        float headBotY = r * 2f + (ehBmx ? 0.045f : 0.055f);
+        float headTopY = headBotY + (ehBmx ? 0.125f : (ehCesta ? 0.195f : 0.165f));
+
+        // Roda Traseira + Cassete + Pegs Traseiros
+        ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_Traseira", new Vector3(0f, r, zT), r, d.largRoda, cPneu, cAro, cDest));
+        Peca(PrimitiveType.Cylinder, "Cassete_Traseiro", raiz, new Vector3(0.032f, r, zT), new Vector3(0.08f, 0.006f, 0.08f), cCromo, 0.85f)
+            .localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+        // Quadro Principal (Head tube, Seat tube, Top tube, Down tube, Stays)
+        Vector3 pHeadBot = new Vector3(0f, headBotY, headZ);
+        Vector3 pHeadTop = new Vector3(0f, headTopY, headZ - 0.045f);
+        Vector3 pBb = new Vector3(0f, bbY, bbZ);
+        Vector3 pSelimBase = new Vector3(0f, selimY, selimZ);
+
+        Transform headTube = Peca(PrimitiveType.Cylinder, "Quadro_HeadTube", raiz, Vector3.Lerp(pHeadBot, pHeadTop, 0.5f), new Vector3(0.042f, Vector3.Distance(pHeadBot, pHeadTop) * 0.52f, 0.042f), cPrim, 0.78f);
+        headTube.rotation = Quaternion.FromToRotation(Vector3.up, (pHeadTop - pHeadBot).normalized);
+
+        Transform seatTube = Peca(PrimitiveType.Cylinder, "Quadro_SeatTube", raiz, Vector3.Lerp(pBb, pSelimBase, 0.5f), new Vector3(0.034f, Vector3.Distance(pBb, pSelimBase) * 0.52f, 0.034f), cPrim, 0.78f);
+        seatTube.rotation = Quaternion.FromToRotation(Vector3.up, (pSelimBase - pBb).normalized);
+
+        Transform downTube = Peca(PrimitiveType.Cylinder, "Quadro_DownTube", raiz, Vector3.Lerp(pHeadBot, pBb, 0.5f), new Vector3(0.038f, Vector3.Distance(pHeadBot, pBb) * 0.52f, 0.038f), cPrim, 0.78f);
+        downTube.rotation = Quaternion.FromToRotation(Vector3.up, (pBb - pHeadBot).normalized);
+
+        Vector3 topAnchor = ehCesta ? Vector3.Lerp(pBb, pSelimBase, 0.38f) : pSelimBase;
+        Transform topTube = Peca(PrimitiveType.Cylinder, "Quadro_TopTube", raiz, Vector3.Lerp(pHeadTop, topAnchor, 0.5f), new Vector3(0.032f, Vector3.Distance(pHeadTop, topAnchor) * 0.52f, 0.032f), cPrim, 0.78f);
+        topTube.rotation = Quaternion.FromToRotation(Vector3.up, (topAnchor - pHeadTop).normalized);
+
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Vector3 pDrop = new Vector3(s * 0.056f, r, zT);
+            Transform cs = Peca(PrimitiveType.Cylinder, s < 0 ? "Chainstay_E" : "Chainstay_D", raiz, Vector3.Lerp(pBb, pDrop, 0.5f), new Vector3(0.020f, Vector3.Distance(pBb, pDrop) * 0.52f, 0.020f), cPrim, 0.75f);
+            cs.rotation = Quaternion.FromToRotation(Vector3.up, (pDrop - pBb).normalized);
+            Transform ss = Peca(PrimitiveType.Cylinder, s < 0 ? "Seatstay_E" : "Seatstay_D", raiz, Vector3.Lerp(pSelimBase, pDrop, 0.5f), new Vector3(0.018f, Vector3.Distance(pSelimBase, pDrop) * 0.52f, 0.018f), cPrim, 0.75f);
+            ss.rotation = Quaternion.FromToRotation(Vector3.up, (pDrop - pSelimBase).normalized);
+
+            if (temPegs)
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Peg_Tras_E" : "Peg_Tras_D", raiz, new Vector3(s * 0.105f, r, zT), new Vector3(0.036f, 0.048f, 0.036f), cEscuro, 0.5f)
+                    .localRotation = Quaternion.Euler(0f, 0f, 90f);
+        }
+
+        // Canote + Selim
+        float postH = ehBmx ? 0.065f : (ehSpeed ? 0.12f : 0.16f);
+        Peca(PrimitiveType.Cylinder, "Canote", raiz, new Vector3(0f, selimY + postH * 0.5f, selimZ - 0.015f), new Vector3(0.026f, postH * 0.52f, 0.026f), ehCesta ? cCromo : cEscuro, 0.8f);
+        Peca(PrimitiveType.Cube, "Assento", raiz, new Vector3(0f, selimY + postH + 0.02f, selimZ - 0.02f), new Vector3(ehCesta ? 0.18f : 0.12f, 0.045f, 0.25f), ehCesta ? cSec : cEscuro, 0.25f);
+
+        // Corrente superior/inferior + Pedivela Animado & Pedais Contra-Rotativos
+        Transform chainTop = Peca(PrimitiveType.Cylinder, "Corrente_Sup", raiz, Vector3.Lerp(new Vector3(0.036f, bbY + 0.07f, bbZ), new Vector3(0.034f, r + 0.03f, zT), 0.5f), new Vector3(0.009f, Vector3.Distance(pBb, new Vector3(0.034f, r, zT)) * 0.5f, 0.009f), cEscuro, 0.5f);
+        chainTop.rotation = Quaternion.FromToRotation(Vector3.up, (new Vector3(0.034f, r + 0.03f, zT) - new Vector3(0.036f, bbY + 0.07f, bbZ)).normalized);
+
+        GameObject pedivelaGo = new GameObject("Pedivela_Pivo");
+        pedivelaGo.transform.SetParent(raiz, false);
+        pedivelaGo.transform.localPosition = pBb;
+        ctrl.pedivelaPivo = pedivelaGo.transform;
+
+        Peca(PrimitiveType.Cylinder, "Coroa_Bike", pedivelaGo.transform, new Vector3(0.036f, 0f, 0f), new Vector3(0.15f, 0.008f, 0.15f), cAro, 0.85f)
+            .localRotation = Quaternion.Euler(0f, 0f, 90f);
+        for (int s = -1; s <= 1; s += 2)
+        {
+            float crankLen = 0.165f;
+            Peca(PrimitiveType.Cube, s < 0 ? "Braco_Pedivela_E" : "Braco_Pedivela_D", pedivelaGo.transform, new Vector3(s * 0.064f, s * crankLen * 0.5f, 0f), new Vector3(0.018f, crankLen, 0.024f), cCromo, 0.82f);
+            GameObject pedalPivo = new GameObject(s < 0 ? "Pedal_E" : "Pedal_D");
+            pedalPivo.transform.SetParent(pedivelaGo.transform, false);
+            pedalPivo.transform.localPosition = new Vector3(s * 0.10f, s * crankLen, 0f);
+            Peca(PrimitiveType.Cube, "Plataforma_Pedal", pedalPivo.transform, Vector3.zero, new Vector3(0.085f, 0.02f, 0.07f), cEscuro, 0.25f);
+            ctrl.pedais.Add(pedalPivo.transform);
+        }
+
+        // Conjunto Dianteiro Esterçante (Mesa, Garfo, Guidão, Roda Dianteira, Cesta Dianteira)
+        GameObject rigSteer = new GameObject("Rig_Esterco_Bike");
+        rigSteer.transform.SetParent(raiz, false);
+        rigSteer.transform.localPosition = pHeadTop;
+        rigSteer.transform.localRotation = Quaternion.FromToRotation(Vector3.up, (pHeadTop - pHeadBot).normalized);
+
+        GameObject pivoGuidao = new GameObject("Pivo_Guidao");
+        pivoGuidao.transform.SetParent(rigSteer.transform, false);
+        ctrl.guidaoPivo = pivoGuidao.transform;
+
+        Vector3 headBotLocal = rigSteer.transform.InverseTransformPoint(raiz.TransformPoint(pHeadBot));
+        Vector3 frontAxleLocal = rigSteer.transform.InverseTransformPoint(raiz.TransformPoint(new Vector3(0f, r, zF)));
+
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Vector3 gTop = new Vector3(s * 0.054f, headBotLocal.y, 0f);
+            Vector3 gBot = new Vector3(s * 0.054f, frontAxleLocal.y, frontAxleLocal.z);
+            Transform leg = Peca(PrimitiveType.Cylinder, s < 0 ? "Garfo_Bike_E" : "Garfo_Bike_D", pivoGuidao.transform, Vector3.Lerp(gTop, gBot, 0.5f), new Vector3(0.026f, Vector3.Distance(gTop, gBot) * 0.52f, 0.026f), cPrim, 0.78f);
+            leg.localRotation = Quaternion.FromToRotation(Vector3.up, (gBot - gTop).normalized);
+            if (temPegs)
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Peg_Frente_E" : "Peg_Frente_D", pivoGuidao.transform, new Vector3(s * 0.105f, frontAxleLocal.y, frontAxleLocal.z), new Vector3(0.036f, 0.048f, 0.036f), cEscuro, 0.5f)
+                    .localRotation = Quaternion.Euler(0f, 0f, 90f);
+        }
+
+        float stemH = ehBmx ? 0.055f : (ehCesta ? 0.145f : 0.05f);
+        float stemReach = ehSpeed ? 0.10f : 0.045f;
+        float barW = Mathf.Max(0.40f, d.larg * 0.92f);
+        Peca(PrimitiveType.Cylinder, "Mesa_Stem_Bike", pivoGuidao.transform, new Vector3(0f, stemH * 0.5f, stemReach * 0.35f), new Vector3(0.028f, stemH * 0.6f, 0.028f), cEscuro, 0.75f);
+        Transform barraGuidao = Peca(PrimitiveType.Cylinder, "Guidao_Bike", pivoGuidao.transform, new Vector3(0f, stemH + (ehBmx ? 0.18f : 0.01f), stemReach), new Vector3(0.022f, barW * 0.5f, 0.022f), ehBmx || ehSpeed ? cEscuro : cCromo, 0.8f);
+        barraGuidao.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        if (ehBmx)
+        {
+            Peca(PrimitiveType.Cylinder, "Crossbar_BMX", pivoGuidao.transform, new Vector3(0f, stemH + 0.13f, stemReach), new Vector3(0.018f, barW * 0.34f, 0.018f), cPrim, 0.7f)
+                .localRotation = Quaternion.Euler(0f, 0f, 90f);
+        }
+        if (ehCesta)
+        {
+            Vector3 basketLocal = rigSteer.transform.InverseTransformPoint(raiz.TransformPoint(new Vector3(0f, r * 2f + 0.175f, zF - 0.02f)));
+            Peca(PrimitiveType.Cube, "Cesta_Dianteira", pivoGuidao.transform, basketLocal, new Vector3(0.28f, 0.18f, 0.22f), cSec, 0.35f);
+        }
+        if (temBagageiro)
+        {
+            Peca(PrimitiveType.Cube, "Bagageiro_Bike", raiz, new Vector3(0f, r * 2f + 0.075f, zT), new Vector3(0.14f, 0.02f, 0.34f), cCromo, 0.8f);
+            Peca(PrimitiveType.Cube, "Cesta_Traseira", raiz, new Vector3(0f, r * 2f + 0.165f, zT), new Vector3(0.26f, 0.15f, 0.32f), cSec, 0.35f);
+        }
+
+        Transform farolBike = PecaEmissiva(PrimitiveType.Cylinder, "Farol_Bike", pivoGuidao.transform, new Vector3(0f, stemH + 0.02f, stemReach + 0.03f), new Vector3(0.055f, 0.03f, 0.055f));
+        farolBike.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        ctrl.farois.Add(farolBike.GetComponent<Renderer>());
+
+        // Roda Dianteira alinhada horizontalmente dentro de pivoGuidao
+        GameObject alignF = new GameObject("Roda_Frente_Alinhamento");
+        alignF.transform.SetParent(pivoGuidao.transform, false);
+        alignF.transform.localPosition = frontAxleLocal;
+        alignF.transform.localRotation = Quaternion.Inverse(rigSteer.transform.localRotation);
+        ctrl.rodasDianteiras.Add(CriarRoda(alignF.transform, "Roda_Dianteira", Vector3.zero, r, d.largRoda, cPneu, cAro, cDest));
+    }
+
     private static void MontarBarco(
         Transform raiz, DefVeiculo d, ControleVeiculo50 ctrl,
         Color cPrim, Color cSec, Color cDest, Color cVidro)
@@ -2968,7 +3152,6 @@ ${rows}
         rotorCauda.transform.localPosition = new Vector3((ehVIP || ehStealth) ? 0f : 0.12f, boomY + ((ehVIP || ehStealth) ? 0.42f : d.alt * 0.30f), boomEndZ + 0.06f);
         Peca(PrimitiveType.Cube, "Pa_Cauda_1", rotorCauda.transform, Vector3.zero, new Vector3(0.03f, 1.05f, 0.12f), cDest, 0.55f);
         Peca(PrimitiveType.Cube, "Pa_Cauda_2", rotorCauda.transform, Vector3.zero, new Vector3(0.03f, 0.12f, 1.05f), cDest, 0.55f);
-        ctrl.rotores.Add(rotorCauda.transform);
 
         // 7. Trem de pouso (Apache rodas de cauda, Skycrane 4 rodas altas ou Esquis tubulares + degraus)
         if (ehApache)
@@ -3016,6 +3199,7 @@ ${rows}
         if (ehApache)
             Peca(PrimitiveType.Sphere, "Radar_Longbow", rotorPivo.transform, new Vector3(0f, 0.45f, 0f), new Vector3(0.75f, 0.28f, 0.75f), cSec, 0.55f);
         ctrl.rotores.Add(rotorPivo.transform);
+        ctrl.rotores.Add(rotorCauda.transform);
 
         // 9. Kits específicos (Apache asas/foguetes/canhão, Polícia FLIR/holofote, Resgate/Skycrane guincho)
         if (ehApache)
@@ -3166,12 +3350,38 @@ ${rows}
         if (ehLear)
         {
             for (int s = -1; s <= 1; s += 2)
-                Peca(PrimitiveType.Cylinder, s < 0 ? "Turbofan_Traseiro_E" : "Turbofan_Traseiro_D", raiz, new Vector3(s * fuseW * 0.78f, fy + fuseH * 0.26f, -hl * 0.44f), new Vector3(0.48f, 0.75f, 0.48f), cSec, 0.72f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+            {
+                float nx = s * fuseW * 0.78f;
+                float ny = fy + fuseH * 0.26f;
+                float nz = -hl * 0.44f;
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Turbofan_Traseiro_E" : "Turbofan_Traseiro_D", raiz, new Vector3(nx, ny, nz), new Vector3(0.48f, 0.75f, 0.48f), cSec, 0.72f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+                Transform fanF = Peca(PrimitiveType.Cube, s < 0 ? "Turbina_Frontal_E" : "Turbina_Frontal_D", raiz, new Vector3(nx, ny, nz + 0.76f), new Vector3(0.36f, 0.06f, 0.04f), cAro, 0.85f);
+                ctrl.helices.Add(fanF);
+                Transform fanT = Peca(PrimitiveType.Cube, s < 0 ? "Turbina_Traseira_E" : "Turbina_Traseira_D", raiz, new Vector3(nx, ny, nz - 0.76f), new Vector3(0.32f, 0.06f, 0.04f), cAro, 0.85f);
+                ctrl.helices.Add(fanT);
+                Transform chama = PecaChama(s < 0 ? "Chama_Jato_E" : "Chama_Jato_D", raiz, new Vector3(nx, ny, nz - 1.18f), new Vector3(0.24f, 0.45f, 0.24f));
+                chama.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                ctrl.chamasJato.Add(chama);
+            }
         }
         else if (ehConcorde)
         {
             for (int s = -1; s <= 1; s += 2)
-                Peca(PrimitiveType.Cube, s < 0 ? "Turbinas_Olympus_E" : "Turbinas_Olympus_D", raiz, new Vector3(s * d.larg * 0.20f, asaY - 0.20f, asaZ - 0.45f), new Vector3(0.76f, 0.36f, 2.20f), cSec, 0.65f);
+            {
+                float bx = s * d.larg * 0.20f;
+                Peca(PrimitiveType.Cube, s < 0 ? "Turbinas_Olympus_E" : "Turbinas_Olympus_D", raiz, new Vector3(bx, asaY - 0.20f, asaZ - 0.45f), new Vector3(0.76f, 0.36f, 2.20f), cSec, 0.65f);
+                for (int t = -1; t <= 1; t += 2)
+                {
+                    float tx = bx + t * 0.18f;
+                    Transform fanF = Peca(PrimitiveType.Cube, "Turbina_Olympus_F", raiz, new Vector3(tx, asaY - 0.20f, asaZ + 0.66f), new Vector3(0.24f, 0.05f, 0.04f), cAro, 0.85f);
+                    ctrl.helices.Add(fanF);
+                    Transform fanT = Peca(PrimitiveType.Cube, "Turbina_Olympus_T", raiz, new Vector3(tx, asaY - 0.20f, asaZ - 1.62f), new Vector3(0.22f, 0.05f, 0.04f), cAro, 0.85f);
+                    ctrl.helices.Add(fanT);
+                    Transform chama = PecaChama("Chama_Olympus", raiz, new Vector3(tx, asaY - 0.20f, asaZ - 2.05f), new Vector3(0.22f, 0.50f, 0.22f));
+                    chama.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                    ctrl.chamasJato.Add(chama);
+                }
+            }
         }
         else if (ehJato)
         {
@@ -3180,6 +3390,11 @@ ${rows}
             {
                 float nx = nNoz == 2 ? (i == 0 ? -fuseW * 0.28f : fuseW * 0.28f) : 0f;
                 Peca(PrimitiveType.Cylinder, "Pos_Combustor_" + i, raiz, new Vector3(nx, fy, -hl + 0.22f), new Vector3(0.56f, 0.32f, 0.56f), cDest, 0.85f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+                Transform fanT = Peca(PrimitiveType.Cube, "Turbina_Jato_" + i, raiz, new Vector3(nx, fy, -hl - 0.08f), new Vector3(0.36f, 0.06f, 0.04f), cAro, 0.85f);
+                ctrl.helices.Add(fanT);
+                Transform chama = PecaChama("Chama_PosCombustor_" + i, raiz, new Vector3(nx, fy, -hl - 0.65f), new Vector3(0.30f, 0.65f, 0.30f));
+                chama.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                ctrl.chamasJato.Add(chama);
             }
         }
         else if (ehBimotor)
@@ -3280,6 +3495,17 @@ ${rows}
         go.transform.localScale = esc;
         go.GetComponent<Renderer>().sharedMaterial = PegarMaterialEmissivo();
         return go.transform;
+    }
+
+    private static Transform PecaChama(string nome, Transform pai, Vector3 pos, Vector3 esc)
+    {
+        Transform t = PecaEmissiva(PrimitiveType.Capsule, nome, pai, pos, esc);
+        Material m = new Material(PegarMaterialEmissivo());
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", new Color(1f, 0.55f, 0.08f, 0.85f));
+        if (m.HasProperty("_Color")) m.SetColor("_Color", new Color(1f, 0.55f, 0.08f, 0.85f));
+        if (m.HasProperty("_EmissionColor")) m.SetColor("_EmissionColor", new Color(1f, 0.45f, 0.05f) * 2.8f);
+        t.GetComponent<Renderer>().sharedMaterial = m;
+        return t;
     }
 
     private static void GarantirShader()

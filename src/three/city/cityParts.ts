@@ -170,6 +170,14 @@ export function createMonumentalFlag(atlas: CityTextureAtlas): MonumentalFlagRig
   flagGeo.translate(flagW * 0.5 + 0.15, 0, 0);
 
   const basePositions = new Float32Array(flagGeo.attributes.position.array);
+  const vertCount = basePositions.length / 3;
+  const uArr = new Float32Array(vertCount);
+  const envArr = new Float32Array(vertCount);
+  for (let v = 0; v < vertCount; v++) {
+    const u = THREE.MathUtils.clamp((basePositions[v * 3] - 0.15) / flagW, 0, 1);
+    uArr[v] = u;
+    envArr[v] = Math.pow(u, 1.18);
+  }
 
   const flagMat = new THREE.MeshStandardMaterial({
     map: atlas.flagAlbedo,
@@ -206,11 +214,11 @@ export function createMonumentalFlag(atlas: CityTextureAtlas): MonumentalFlagRig
     const wind = THREE.MathUtils.clamp(windStrength, 0.15, 2.0);
     const speed = 2.6 + wind * 2.1;
 
-    for (let i = 0; i < arr.length; i += 3) {
+    for (let v = 0, i = 0; v < vertCount; v++, i += 3) {
       const bx = basePositions[i];
       const by = basePositions[i + 1];
-      const u = THREE.MathUtils.clamp((bx - 0.15) / flagW, 0, 1);
-      const env = Math.pow(u, 1.18);
+      const u = uArr[v];
+      const env = envArr[v];
 
       // Multi-harmonic wind wave + diagonal crease + gentle gravity droop at low wind
       const wave1 = Math.sin(u * 6.4 - elapsed * speed + by * 0.35) * 0.44 * wind;
