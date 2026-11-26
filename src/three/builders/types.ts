@@ -170,6 +170,43 @@ export function makeStrutBetween(
   return mesh;
 }
 
+const _beamX = new THREE.Vector3();
+const _beamY = new THREE.Vector3();
+const _beamZ = new THREE.Vector3();
+const _beamMat4 = new THREE.Matrix4();
+
+export function makeBeamBetween(
+  p1: THREE.Vector3,
+  p2: THREE.Vector3,
+  width: number,
+  depth: number,
+  mat: THREE.Material,
+  outwardHint?: THREE.Vector3,
+  bevelRadius = 0.008,
+): THREE.Mesh {
+  _beamY.subVectors(p2, p1);
+  const len = Math.max(0.01, _beamY.length());
+  _beamY.normalize();
+
+  if (outwardHint && outwardHint.lengthSq() > 1e-6) {
+    _beamZ.copy(outwardHint).normalize();
+  } else {
+    _beamZ.set(0, 0, 1);
+  }
+  if (Math.abs(_beamY.dot(_beamZ)) > 0.96) {
+    _beamZ.set(1, 0, 0);
+  }
+  _beamX.crossVectors(_beamY, _beamZ).normalize();
+  _beamZ.crossVectors(_beamX, _beamY).normalize();
+
+  const geo = createRoundedBoxGeo(width, len, depth, Math.min(bevelRadius, width * 0.3, depth * 0.3), 2, 6);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(p1).add(p2).multiplyScalar(0.5);
+  _beamMat4.makeBasis(_beamX, _beamY, _beamZ);
+  mesh.quaternion.setFromRotationMatrix(_beamMat4);
+  return mesh;
+}
+
 export function createAerodynamicMirror(
   side: number,
   mats: VehicleMaterialSet,
@@ -179,40 +216,44 @@ export function createAerodynamicMirror(
   const seg = cityMode ? 6 : 12;
 
   const baseMount = new THREE.Mesh(
-    createRoundedBoxGeo(0.036, 0.064, 0.08, 0.014, cityMode ? 2 : 3, seg),
+    createRoundedBoxGeo(0.028, 0.048, 0.072, 0.01, cityMode ? 2 : 3, seg),
     mats.trim,
   );
   mirrorGroup.add(baseMount);
 
-  const stalk = makeStrutBetween(
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(side * 0.1, 0.035, -0.01),
-    0.016,
-    0.02,
+  const stalk = makeBeamBetween(
+    new THREE.Vector3(0, 0.005, 0),
+    new THREE.Vector3(side * 0.088, 0.032, -0.012),
+    0.022,
+    0.036,
     mats.trim,
-    seg,
+    new THREE.Vector3(0, 1, 0),
+    0.006,
   );
   mirrorGroup.add(stalk);
 
-  const capGeo = new THREE.CapsuleGeometry(0.044, 0.09, cityMode ? 3 : 6, seg);
-  capGeo.rotateZ(Math.PI / 2);
-  capGeo.scale(1.0, 0.9, 1.15);
-  const cap = new THREE.Mesh(capGeo, mats.body);
-  cap.position.set(side * 0.125, 0.038, -0.01);
-  mirrorGroup.add(cap);
+  const housing = new THREE.Mesh(
+    createRoundedBoxGeo(0.128, 0.064, 0.082, 0.024, cityMode ? 2 : 4, seg),
+    mats.body,
+  );
+  housing.position.set(side * 0.118, 0.036, -0.012);
+  housing.rotation.y = -side * 0.14;
+  mirrorGroup.add(housing);
 
   const mirrorFace = new THREE.Mesh(
-    createRoundedBoxGeo(0.115, 0.062, 0.014, 0.016, 2, seg),
+    createRoundedBoxGeo(0.112, 0.052, 0.012, 0.016, 2, seg),
     mats.mirrorGlass,
   );
-  mirrorFace.position.set(side * 0.125, 0.038, -0.056);
+  mirrorFace.position.set(side * 0.118, 0.036, -0.052);
+  mirrorFace.rotation.y = -side * 0.14;
   mirrorGroup.add(mirrorFace);
 
   const sigStrip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.085, 0.012, 0.018),
+    new THREE.BoxGeometry(0.078, 0.009, 0.012),
     side < 0 ? mats.signalLeft : mats.signalRight,
   );
-  sigStrip.position.set(side * 0.125, 0.038, 0.038);
+  sigStrip.position.set(side * 0.122, 0.034, 0.028);
+  sigStrip.rotation.y = -side * 0.14;
   mirrorGroup.add(sigStrip);
 
   return mirrorGroup;
@@ -299,9 +340,9 @@ function getSoftBeamTexture(): THREE.CanvasTexture | null {
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const grad = ctx.createLinearGradient(0, 0, 0, 64);
-  grad.addColorStop(0.0, 'rgba(255, 246, 210, 0.85)');
-  grad.addColorStop(0.28, 'rgba(255, 246, 210, 0.36)');
-  grad.addColorStop(0.68, 'rgba(255, 246, 210, 0.09)');
+  grad.addColorStop(0.0, 'rgba(255, 246, 210, 0.65)');
+  grad.addColorStop(0.28, 'rgba(255, 246, 210, 0.24)');
+  grad.addColorStop(0.68, 'rgba(255, 246, 210, 0.06)');
   grad.addColorStop(1.0, 'rgba(255, 246, 210, 0.0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 4, 64);
@@ -312,9 +353,9 @@ function getSoftBeamTexture(): THREE.CanvasTexture | null {
 }
 
 export function createHeadlightBeamMesh(
-  length = 4.2,
-  endRadius = 0.85,
-  downPitch = 0.08,
+  length = 3.8,
+  endRadius = 0.62,
+  downPitch = 0.09,
 ): THREE.Mesh {
   if (!cachedBeamGeo) {
     const geo = new THREE.ConeGeometry(1, 1, 14, 1, true);
@@ -328,7 +369,7 @@ export function createHeadlightBeamMesh(
       color: 0xfff5cc,
       map: beamTex ?? undefined,
       transparent: true,
-      opacity: 0.11,
+      opacity: 0.055,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
@@ -336,7 +377,7 @@ export function createHeadlightBeamMesh(
     });
   }
   const mesh = new THREE.Mesh(cachedBeamGeo, cachedBeamMat);
-  mesh.scale.set(endRadius, endRadius, length);
+  mesh.scale.set(endRadius, endRadius * 0.68, length);
   mesh.rotation.x = downPitch;
   mesh.userData.sharedGeometry = true;
   mesh.userData.noShadow = true;

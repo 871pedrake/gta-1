@@ -13,7 +13,7 @@ import {
   tagPart,
 } from './types';
 import {
-  buildVisibleInterior,
+  buildHeavyCabinInterior,
   buildWheelWellLiners,
   createCraftedWheel,
   createSideDoorGroup,
@@ -209,6 +209,22 @@ function addHeavyBumperAndLights(
   vBar.position.set(0, grilleY, frontZ + 0.02);
   group.add(vBar);
 
+  if (!isSchoolBus) {
+    const emblemRing = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.056, 0.056, 0.022, 18),
+      mats.chrome,
+    );
+    emblemRing.rotation.x = Math.PI / 2;
+    emblemRing.position.set(0, grilleY + grilleH * 0.12, frontZ + 0.056);
+    const emblemDot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.032, 0.032, 0.026, 16),
+      isArmored ? mats.trim : mats.accent,
+    );
+    emblemDot.rotation.x = Math.PI / 2;
+    emblemDot.position.set(0, grilleY + grilleH * 0.12, frontZ + 0.058);
+    group.add(emblemRing, emblemDot);
+  }
+
   [-1, 1].forEach((side) => {
     const sigMat = side < 0 ? mats.signalLeft : mats.signalRight;
     const hlGroup = new THREE.Group();
@@ -388,7 +404,9 @@ function buildTransitBusModule(
   const windowH = Math.max(0.55, roofY - beltY);
   const archR = wheelRadius * 1.15;
 
-  // 1. Hollowed Lower Body Tub (interior floor + lower skirt walls so passenger rows sit cleanly inside)
+  const floorTopY = groundClearance + 0.25;
+
+  // 1. Hollowed Bus Floor Chassis Pan + Side Lower Skirts (leaves interior 100% open above floorTopY!)
   const lowerShape = new THREE.Shape();
   lowerShape.moveTo(-hl + 0.08, groundClearance);
   const sortedWheels = [...wheelZs].sort((a, b) => a - b);
@@ -402,87 +420,315 @@ function buildTransitBusModule(
     cursor = wEnd;
   }
   lowerShape.lineTo(hl - 0.06, groundClearance + 0.05);
-  lowerShape.lineTo(options.hasFrontEnd ? hl - 0.055 : hl, groundClearance + 0.28);
-  lowerShape.lineTo(options.hasFrontEnd ? hl - 0.075 : hl - 0.03, beltY);
-  lowerShape.lineTo(-hl + 0.03, beltY);
-  lowerShape.lineTo(-hl, groundClearance + 0.28);
+  lowerShape.lineTo(options.hasFrontEnd ? hl - 0.055 : hl, floorTopY);
+  lowerShape.lineTo(-hl, floorTopY);
   lowerShape.lineTo(-hl + 0.04, groundClearance + 0.05);
   lowerShape.closePath();
 
   const lowerGeo = createExtrudedProfile(
     lowerShape,
-    width,
-    0.045,
-    0.045,
+    width * 0.66,
+    0.03,
+    0.03,
     options.cityMode ? 2 : 4,
-    options.cityMode ? 10 : 18,
+    options.cityMode ? 10 : 16,
   );
   const lowerMesh = new THREE.Mesh(lowerGeo, mats.body);
-  tagPart(lowerMesh, `${options.labelPrefix} — Carroceria Inferior`, 0, 0, 0);
+  tagPart(lowerMesh, `${options.labelPrefix} — Assoalho e Chassi`, 0, 0, 0);
   mod.add(lowerMesh);
 
-  // Wheel-arch flare moldings + lower black rub-rails + contrast belt stripe
+  // Lower outer side body walls (groundClearance+0.04 .. beltY) sculpted with real semicircular wheel-arch cutouts & boarding door stepwells
+  const frontTopZ = options.hasFrontEnd ? hl - 0.16 : hl - 0.02;
+  const rearTopZ = options.hasRearEnd ? -hl + 0.10 : -hl + 0.02;
+  const bayCount = Math.max(3, Math.round(modLen / 1.45));
+  const spanZ = frontTopZ - 0.14 - (rearTopZ + 0.18);
+  const bayLen = spanZ / bayCount;
+  const doorBayIndices = new Set<number>();
+  if (options.hasBoardingDoors) {
+    for (const dz of options.doorPositionsZ) {
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let b = 0; b < bayCount; b++) {
+        const bc = rearTopZ + 0.18 + (b + 0.5) * bayLen;
+        const d = Math.abs(dz - bc);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = b;
+        }
+      }
+      if (bestDist < bayLen * 0.95) doorBayIndices.add(bestIdx);
+    }
+  }
+  const doorBayCenters = Array.from(doorBayIndices)
+    .sort((a, b) => a - b)
+    .map((b) => rearTopZ + 0.18 + (b + 0.5) * bayLen);
+
+  const doorCutHalf = bayLen * 0.45;
+  const doorRanges =
+    options.hasBoardingDoors && !options.cityMode
+      ? doorBayCenters.map((dbc) => [dbc - doorCutHalf, dbc + doorCutHalf] as const)
+      : [];
+
+  const skirtBotY = groundClearance + 0.05;
+  const skirtTopY = beltY + 0.015;
+  const archCutR = archR * 1.02;
+  const archDy = THREE.MathUtils.clamp(wheelRadius - skirtBotY, 0, archCutR * 0.92);
+  const archHalfSpan = Math.sqrt(Math.max(0.01, archCutR * archCutR - archDy * archDy));
+  const archAngStart = Math.PI + Math.asin(archDy / archCutR);
+  const archAngEnd = -Math.asin(archDy / archCutR);
+
+  const buildSculptedSkirtSegment = (zStart: number, zEnd: number, side: -1 | 1) => {
+    if (zEnd - zStart < 0.12) return;
+    const s = new THREE.Shape();
+    let startedOnLeftArch = false;
+    for (const wz of sortedWheels) {
+      const a0 = wz - archHalfSpan;
+      const a1 = wz + archHalfSpan;
+      if (a0 < zStart && a1 > zStart + 0.02) {
+        const dz0 = THREE.MathUtils.clamp(zStart - wz, -archCutR * 0.96, archCutR * 0.96);
+        const startY = Math.max(skirtBotY, wheelRadius + Math.sqrt(Math.max(0.01, archCutR * archCutR - dz0 * dz0)));
+        s.moveTo(zStart, startY);
+        startedOnLeftArch = true;
+        break;
+      }
+    }
+    if (!startedOnLeftArch) {
+      s.moveTo(zStart, skirtBotY);
+    }
+
+    let endedOnRightArch = false;
+    for (const wz of sortedWheels) {
+      const a0 = wz - archHalfSpan;
+      const a1 = wz + archHalfSpan;
+      if (a1 <= zStart + 0.04 || a0 >= zEnd - 0.04) continue;
+
+      const startOnSegment = a0 >= zStart;
+      if (startOnSegment) {
+        s.lineTo(a0, skirtBotY);
+      }
+      const clampZ0 = Math.max(zStart, a0);
+      const clampZ1 = Math.min(zEnd, a1);
+      const y0 = startOnSegment
+        ? skirtBotY
+        : wheelRadius + Math.sqrt(Math.max(0.01, archCutR * archCutR - Math.pow(clampZ0 - wz, 2)));
+      const y1 =
+        a1 <= zEnd
+          ? skirtBotY
+          : wheelRadius + Math.sqrt(Math.max(0.01, archCutR * archCutR - Math.pow(clampZ1 - wz, 2)));
+
+      const aStart = startOnSegment ? archAngStart : Math.atan2(y0 - wheelRadius, clampZ0 - wz);
+      const aEnd = a1 <= zEnd ? archAngEnd : Math.atan2(y1 - wheelRadius, clampZ1 - wz);
+      s.absarc(wz, wheelRadius, archCutR, aStart, aEnd, true);
+
+      if (a1 <= zEnd) {
+        s.lineTo(a1, skirtBotY);
+      } else {
+        endedOnRightArch = true;
+      }
+    }
+
+    if (!endedOnRightArch) {
+      s.lineTo(zEnd, skirtBotY);
+    }
+    s.lineTo(zEnd, skirtTopY);
+    s.lineTo(zStart, skirtTopY);
+    s.closePath();
+
+    const geo = createExtrudedProfile(s, 0.052, 0.012, 0.012, 2, options.cityMode ? 10 : 18);
+    const mesh = new THREE.Mesh(geo, mats.body);
+    mesh.position.x = side * (width * 0.468);
+    mod.add(mesh);
+  };
+
+  buildSculptedSkirtSegment(-hl + 0.06, hl - 0.06, -1);
+
+  let rCursor = -hl + 0.06;
+  const rEnd = hl - 0.06;
+  for (const [d0, d1] of doorRanges) {
+    const segEnd = Math.min(rEnd, d0);
+    buildSculptedSkirtSegment(rCursor, segEnd, 1);
+    rCursor = Math.max(rCursor, d1);
+  }
+  buildSculptedSkirtSegment(rCursor, rEnd, 1);
+
+  // Dark inner wheel-well arch baffles flanking each tire (completely outboard of main floor, zero tire clipping!)
+  const archLinerGeo = new THREE.CylinderGeometry(
+    archR * 1.01,
+    archR * 1.01,
+    width * 0.145,
+    options.cityMode ? 12 : 20,
+    1,
+    true,
+    0,
+    Math.PI,
+  );
+  archLinerGeo.rotateZ(Math.PI / 2);
+  archLinerGeo.rotateX(-Math.PI / 2);
+  sortedWheels.forEach((wz) => {
+    [-1, 1].forEach((side) => {
+      const liner = new THREE.Mesh(archLinerGeo, mats.grille);
+      liner.position.set(side * (width * 0.402), wheelRadius, wz);
+      mod.add(liner);
+    });
+  });
+
+  if (options.hasFrontEnd) {
+    const frontMask = new THREE.Mesh(
+      createRoundedBoxGeo(width * 0.94, beltY - groundClearance - 0.12, 0.18, 0.03, 2, 8),
+      mats.body,
+    );
+    frontMask.position.set(0, groundClearance + 0.12 + (beltY - groundClearance - 0.12) * 0.5, hl - 0.11);
+    mod.add(frontMask);
+  }
+  if (options.hasRearEnd) {
+    const rearBulk = new THREE.Mesh(
+      createRoundedBoxGeo(width * 0.94, beltY - groundClearance - 0.12, 0.36, 0.03, 2, 8),
+      mats.body,
+    );
+    rearBulk.position.set(0, groundClearance + 0.12 + (beltY - groundClearance - 0.12) * 0.5, -hl + 0.20);
+    mod.add(rearBulk);
+  }
+
+  // Wheel-arch flare moldings + lower black rub-rails + contrast belt stripe (avoiding wheel cutouts)
   sortedWheels.forEach((wz) => {
     [-1, 1].forEach((side) => {
       const archFlare = new THREE.Mesh(
-        new THREE.TorusGeometry(archR * 0.99, 0.038, 8, 18, Math.PI),
+        new THREE.TorusGeometry(archCutR * 1.01, 0.036, 8, 20, Math.PI),
         mats.trim,
       );
       archFlare.rotation.y = Math.PI / 2;
-      archFlare.position.set(side * (width * 0.494), groundClearance + archR * 0.14, wz);
+      archFlare.position.set(side * (width * 0.496), wheelRadius, wz);
       mod.add(archFlare);
     });
   });
 
-  const beltStripe = new THREE.Mesh(
-    new THREE.BoxGeometry(width + 0.016, 0.15, modLen * 0.96),
-    mats.secondary,
-  );
-  beltStripe.position.set(0, beltY - 0.13, 0);
-  mod.add(beltStripe);
+  // Outer side contrast belt stripes & rub-rails (strictly outer skin only, split cleanly around door cutouts!)
+  const addSegmentedSideStrip = (
+    side: -1 | 1,
+    stripX: number,
+    stripY: number,
+    stripW: number,
+    stripH: number,
+    zStart: number,
+    zEnd: number,
+    mat: THREE.Material,
+    skipWheelArches = false,
+  ) => {
+    const rawGaps: Array<readonly [number, number]> = [];
+    if (side > 0) {
+      for (const dr of doorRanges) rawGaps.push(dr);
+    }
+    if (skipWheelArches) {
+      for (const wz of sortedWheels) {
+        rawGaps.push([wz - archHalfSpan - 0.04, wz + archHalfSpan + 0.04]);
+      }
+    }
+    rawGaps.sort((a, b) => a[0] - b[0]);
 
-  [-1, 1].forEach((side) => {
-    const rub = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.065, modLen * 0.92), mats.trim);
-    rub.position.set(side * (width * 0.502), groundClearance + 0.24, 0);
-    mod.add(rub);
+    let zCur = zStart;
+    for (const [d0, d1] of rawGaps) {
+      const segEnd = Math.min(zEnd, d0);
+      if (segEnd - zCur > 0.08) {
+        const seg = new THREE.Mesh(
+          new THREE.BoxGeometry(stripW, stripH, segEnd - zCur),
+          mat,
+        );
+        seg.position.set(stripX, stripY, (zCur + segEnd) * 0.5);
+        mod.add(seg);
+      }
+      zCur = Math.max(zCur, d1);
+    }
+    if (zEnd - zCur > 0.08) {
+      const seg = new THREE.Mesh(
+        new THREE.BoxGeometry(stripW, stripH, zEnd - zCur),
+        mat,
+      );
+      seg.position.set(stripX, stripY, (zCur + zEnd) * 0.5);
+      mod.add(seg);
+    }
+  };
 
-    // Side amber marker lamps along beltline
+  if (options.hasFrontEnd) {
+    const frontBelt = new THREE.Mesh(
+      new THREE.BoxGeometry(width * 0.96, 0.15, 0.03),
+      mats.secondary,
+    );
+    frontBelt.position.set(0, beltY - 0.13, hl - 0.025);
+    mod.add(frontBelt);
+  }
+  if (options.hasRearEnd) {
+    const rearBelt = new THREE.Mesh(
+      new THREE.BoxGeometry(width * 0.96, 0.15, 0.03),
+      mats.secondary,
+    );
+    rearBelt.position.set(0, beltY - 0.13, -hl + 0.025);
+    mod.add(rearBelt);
+  }
+
+  [-1, 1].forEach((s) => {
+    const side = s as -1 | 1;
+    addSegmentedSideStrip(
+      side,
+      side * (width * 0.496),
+      beltY - 0.13,
+      0.026,
+      0.15,
+      -hl + 0.06,
+      hl - 0.06,
+      mats.secondary,
+      false,
+    );
+    addSegmentedSideStrip(
+      side,
+      side * (width * 0.502),
+      groundClearance + 0.24,
+      0.032,
+      0.065,
+      -hl + 0.12,
+      hl - 0.12,
+      mats.trim,
+      true,
+    );
+
+    // Side amber marker lamps along beltline (skipping open boarding door cutouts)
     if (!options.cityMode) {
       for (let m = -2; m <= 2; m++) {
+        const mz = m * (modLen * 0.20);
+        if (side > 0 && doorRanges.some(([d0, d1]) => mz >= d0 - 0.06 && mz <= d1 + 0.06)) {
+          continue;
+        }
         const marker = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.035, 0.09), mats.amberSignal);
-        marker.position.set(side * (width * 0.504), groundClearance + 0.34, m * (modLen * 0.20));
+        marker.position.set(side * (width * 0.504), beltY - 0.24, mz);
         mod.add(marker);
       }
     }
   });
 
-  // 2. Curved Beveled Roof Shell + Gutter Trim
-  const frontTopZ = options.hasFrontEnd ? hl - 0.16 : hl - 0.02;
-  const rearTopZ = options.hasRearEnd ? -hl + 0.10 : -hl + 0.02;
+  // 2. Curved Beveled Roof Shell seated cleanly ABOVE roofY (zero downward overlap into ceiling/windshield!)
   const roofLen = frontTopZ - rearTopZ;
   const roofCenterZ = (frontTopZ + rearTopZ) * 0.5;
 
   const roofShape = new THREE.Shape();
   const rHalf = roofLen * 0.5;
   roofShape.moveTo(-rHalf, 0);
-  roofShape.quadraticCurveTo(0, 0.12, rHalf, 0);
-  roofShape.lineTo(rHalf - 0.03, -0.14);
-  roofShape.lineTo(-rHalf + 0.03, -0.14);
+  roofShape.quadraticCurveTo(0, 0.10, rHalf, 0);
+  roofShape.lineTo(rHalf - 0.02, -0.05);
+  roofShape.lineTo(-rHalf + 0.02, -0.05);
   roofShape.closePath();
 
   const roofGeo = new THREE.ExtrudeGeometry(roofShape, {
-    depth: width - 0.12,
+    depth: width - 0.10,
     bevelEnabled: true,
-    bevelSize: 0.05,
-    bevelThickness: 0.05,
+    bevelSize: 0.04,
+    bevelThickness: 0.04,
     bevelSegments: options.cityMode ? 2 : 4,
     curveSegments: options.cityMode ? 8 : 16,
   });
-  roofGeo.translate(0, 0, -(width - 0.12) / 2);
+  roofGeo.translate(0, 0, -(width - 0.10) / 2);
   roofGeo.rotateY(-Math.PI / 2);
   roofGeo.computeVertexNormals();
   const roofMesh = new THREE.Mesh(roofGeo, mats.secondary);
-  roofMesh.position.set(0, height - 0.08, roofCenterZ);
+  roofMesh.position.set(0, height - 0.05, roofCenterZ);
   tagPart(roofMesh, `${options.labelPrefix} — Teto Aerodinâmico`, 0, 0.45, 0);
   mod.add(roofMesh);
 
@@ -560,10 +806,6 @@ function buildTransitBusModule(
       ),
     );
 
-    const bayCount = Math.max(3, Math.round(modLen / 1.45));
-    const spanZ = frontTopZ - 0.14 - (rearTopZ + 0.18);
-    const bayLen = spanZ / bayCount;
-
     for (let b = 0; b <= bayCount; b++) {
       const mz = rearTopZ + 0.18 + b * bayLen;
       const mullion = new THREE.Mesh(
@@ -575,74 +817,137 @@ function buildTransitBusModule(
 
       if (b < bayCount) {
         const bayCenterZ = mz + bayLen * 0.5;
-        const isDoorBay =
-          side > 0 &&
-          options.hasBoardingDoors &&
-          options.doorPositionsZ.some((dz) => Math.abs(dz - bayCenterZ) < bayLen * 0.62);
+        const isDoorBay = side > 0 && options.hasBoardingDoors && doorBayIndices.has(b);
 
         if (isDoorBay && !options.cityMode) {
-          // Articulated flush curb-side boarding door with twin framed windows & rubber center seal
-          const doorPivot = new THREE.Group();
-          doorPivot.position.set(side * (width * 0.49), beltY + windowH * 0.25, bayCenterZ + bayLen * 0.44);
+          // Hollow-frame twin-leaf outward-opening pantograph doors (opens cleanly to BOTH sides!)
+          const doorSpan = bayLen * 0.90;
+          const leafW = doorSpan * 0.485;
           const doorFullH = windowH + (beltY - groundClearance) * 0.72;
-          const doorFrame = new THREE.Mesh(
-            createRoundedBoxGeo(0.048, doorFullH, bayLen * 0.88, 0.018, 2, 6),
-            mats.secondary,
-          );
-          doorFrame.position.set(0, -doorFullH * 0.12, -bayLen * 0.44);
-          doorPivot.add(doorFrame);
+          const doorX = side * (width * 0.49);
+          const doorY = beltY + windowH * 0.25;
 
-          const centerSeal = new THREE.Mesh(
-            new THREE.BoxGeometry(0.056, doorFullH * 0.94, 0.04),
-            mats.trim,
-          );
-          centerSeal.position.set(0, -doorFullH * 0.12, -bayLen * 0.44);
-          doorPivot.add(centerSeal);
+          const buildBusDoorLeaf = (dir: -1 | 1, leafLabel: string) => {
+            const leafPivot = new THREE.Group();
+            const hingeZ = bayCenterZ - dir * (doorSpan * 0.49);
+            leafPivot.position.set(doorX, doorY, hingeZ);
 
-          const upperGlass = new THREE.Mesh(
-            createRoundedBoxGeo(0.054, doorFullH * 0.44, bayLen * 0.72, 0.015, 2, 6),
-            mats.glass,
-          );
-          upperGlass.position.set(0, doorFullH * 0.10, -bayLen * 0.44);
-          upperGlass.userData.noShadow = true;
-          upperGlass.renderOrder = 2;
-          doorPivot.add(upperGlass);
+            const leafMidZ = dir * (leafW * 0.5);
+            const railThick = 0.038;
+            const stileW = 0.044;
 
-          const lowerGlass = new THREE.Mesh(
-            createRoundedBoxGeo(0.054, doorFullH * 0.26, bayLen * 0.72, 0.015, 2, 6),
-            mats.glass,
-          );
-          lowerGlass.position.set(0, -doorFullH * 0.34, -bayLen * 0.44);
-          lowerGlass.userData.noShadow = true;
-          lowerGlass.renderOrder = 2;
-          doorPivot.add(lowerGlass);
+            // Lower painted kick panel + hollow upper/lower window perimeter frame
+            const kickPanel = new THREE.Mesh(
+              createRoundedBoxGeo(railThick, doorFullH * 0.14, leafW, 0.012, 2, 6),
+              mats.body,
+            );
+            kickPanel.position.set(0, -doorFullH * 0.55, leafMidZ);
+            leafPivot.add(kickPanel);
 
-          tagPart(doorPivot, 'Porta de Embarque Articulada', side * 0.4, 0, 0);
-          mod.add(doorPivot);
-          registerOpenable(animated, doorPivot, 'Porta Embarque Ônibus', { y: -1.32 });
+            const waistRail = new THREE.Mesh(
+              new THREE.BoxGeometry(railThick, 0.055, leafW),
+              mats.trim,
+            );
+            waistRail.position.set(0, -doorFullH * 0.16, leafMidZ);
+            leafPivot.add(waistRail);
+
+            const topRail = new THREE.Mesh(
+              new THREE.BoxGeometry(railThick, 0.055, leafW),
+              mats.trim,
+            );
+            topRail.position.set(0, doorFullH * 0.35, leafMidZ);
+            leafPivot.add(topRail);
+
+            const hingeStile = new THREE.Mesh(
+              new THREE.BoxGeometry(railThick, doorFullH * 0.96, stileW),
+              mats.trim,
+            );
+            hingeStile.position.set(0, -doorFullH * 0.12, dir * (stileW * 0.5));
+            leafPivot.add(hingeStile);
+
+            const meetStile = new THREE.Mesh(
+              new THREE.BoxGeometry(railThick, doorFullH * 0.96, stileW),
+              mats.trim,
+            );
+            meetStile.position.set(0, -doorFullH * 0.12, dir * (leafW - stileW * 0.5));
+            leafPivot.add(meetStile);
+
+            const meetingSeal = new THREE.Mesh(
+              new THREE.BoxGeometry(0.046, doorFullH * 0.95, 0.022),
+              mats.grille,
+            );
+            meetingSeal.position.set(0, -doorFullH * 0.12, dir * (leafW - 0.01));
+            leafPivot.add(meetingSeal);
+
+            const glassW = Math.max(0.12, leafW - stileW * 2);
+            const upperGlass = new THREE.Mesh(
+              new THREE.PlaneGeometry(glassW, doorFullH * 0.45),
+              mats.glass,
+            );
+            upperGlass.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+            upperGlass.position.set(0, doorFullH * 0.10, leafMidZ);
+            upperGlass.userData.noShadow = true;
+            upperGlass.renderOrder = 2;
+            leafPivot.add(upperGlass);
+
+            const lowerGlass = new THREE.Mesh(
+              new THREE.PlaneGeometry(glassW, doorFullH * 0.27),
+              mats.glass,
+            );
+            lowerGlass.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+            lowerGlass.position.set(0, -doorFullH * 0.33, leafMidZ);
+            lowerGlass.userData.noShadow = true;
+            lowerGlass.renderOrder = 2;
+            leafPivot.add(lowerGlass);
+
+            const innerGrab = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.012, 0.012, doorFullH * 0.40, 8),
+              mats.safetyYellow,
+            );
+            innerGrab.position.set(-side * 0.032, -doorFullH * 0.08, leafMidZ);
+            leafPivot.add(innerGrab);
+
+            tagPart(leafPivot, leafLabel, side * 0.4, 0, dir * 0.15);
+            mod.add(leafPivot);
+            // Front leaf (extends -Z, dir=-1) rotates -1.42 rad; Rear leaf (extends +Z, dir=+1) rotates +1.42 rad -> both swing outward!
+            registerOpenable(animated, leafPivot, leafLabel, { y: dir * 1.42 });
+          };
+
+          buildBusDoorLeaf(-1, 'Porta Basculante Dianteira Ônibus');
+          buildBusDoorLeaf(1, 'Porta Basculante Traseira Ônibus');
         } else {
-          // Recessed passenger window pane + black gasket surround + sliding transom bar
-          const gasket = new THREE.Mesh(
-            new THREE.BoxGeometry(0.032, windowH * 0.92, bayLen * 0.94),
-            mats.trim,
-          );
-          gasket.position.set(side * (width * 0.464), beltY + windowH * 0.48, bayCenterZ);
-          mod.add(gasket);
+          // Hollow 4-bar rubber perimeter window frame + single-layer transparent smoked glass + slim transom
+          const frameW = bayLen * 0.92;
+          const frameH = windowH * 0.90;
+          const frameX = side * (width * 0.474);
+          const frameY = beltY + windowH * 0.48;
+          const barThick = 0.036;
+
+          const topBar = new THREE.Mesh(new THREE.BoxGeometry(0.038, barThick, frameW), mats.trim);
+          topBar.position.set(frameX, frameY + frameH * 0.5 - barThick * 0.5, bayCenterZ);
+          const botBar = new THREE.Mesh(new THREE.BoxGeometry(0.038, barThick, frameW), mats.trim);
+          botBar.position.set(frameX, frameY - frameH * 0.5 + barThick * 0.5, bayCenterZ);
+          const fwdJamb = new THREE.Mesh(new THREE.BoxGeometry(0.038, frameH, barThick), mats.trim);
+          fwdJamb.position.set(frameX, frameY, bayCenterZ + frameW * 0.5 - barThick * 0.5);
+          const aftJamb = new THREE.Mesh(new THREE.BoxGeometry(0.038, frameH, barThick), mats.trim);
+          aftJamb.position.set(frameX, frameY, bayCenterZ - frameW * 0.5 + barThick * 0.5);
+          mod.add(topBar, botBar, fwdJamb, aftJamb);
 
           const winGlass = new THREE.Mesh(
-            createRoundedBoxGeo(0.026, windowH * 0.84, bayLen * 0.88, 0.014, 2, 6),
+            new THREE.PlaneGeometry(Math.max(0.2, frameW - barThick * 1.6), Math.max(0.2, frameH - barThick * 1.6)),
             mats.glass,
           );
-          winGlass.position.set(side * (width * 0.472), beltY + windowH * 0.48, bayCenterZ);
+          winGlass.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+          winGlass.position.set(side * (width * 0.476), frameY, bayCenterZ);
           winGlass.userData.noShadow = true;
           winGlass.renderOrder = 2;
           mod.add(winGlass);
 
           const transom = new THREE.Mesh(
-            new THREE.BoxGeometry(0.034, 0.034, bayLen * 0.88),
+            new THREE.BoxGeometry(0.030, 0.022, frameW - barThick * 1.4),
             mats.trim,
           );
-          transom.position.set(side * (width * 0.474), beltY + windowH * 0.68, bayCenterZ);
+          transom.position.set(side * (width * 0.475), beltY + windowH * 0.68, bayCenterZ);
           mod.add(transom);
         }
       }
@@ -664,29 +969,42 @@ function buildTransitBusModule(
     mod.add(cowlCap);
 
     const browCap = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.88, 0.10, 0.16, 0.02, 2, 8),
+      createRoundedBoxGeo(width * 0.88, 0.07, 0.14, 0.02, 2, 8),
       mats.body,
     );
-    browCap.position.set(0, roofY - 0.02, frontTopZ);
+    browCap.position.set(0, roofY + 0.02, frontTopZ);
     mod.add(browCap);
 
-    const wsGeo = createTrapezoidGlassGeo(width * 0.86, width * 0.82, wsLen * 0.86, 0.024);
+    const wsGeo = createTrapezoidGlassGeo(width * 0.88, width * 0.85, wsLen * 0.95, 0.024);
     const ws = new THREE.Mesh(wsGeo, mats.glass);
-    ws.position.set(0, beltY + windowH * 0.48, (fBotZ + frontTopZ) * 0.5 - 0.004);
+    ws.position.set(0, beltY + windowH * 0.49, (fBotZ + frontTopZ) * 0.5 - 0.004);
     ws.rotation.x = -wsAngle;
     ws.userData.noShadow = true;
     ws.renderOrder = 2;
     tagPart(ws, 'Para-brisa Panorâmico', 0, 0.35, 0.45);
     mod.add(ws);
 
-    const centerBar = new THREE.Mesh(new THREE.BoxGeometry(0.042, windowH * 0.84, 0.045), mats.trim);
-    centerBar.position.set(0, beltY + windowH * 0.48, (fBotZ + frontTopZ) * 0.5 - 0.01);
+    [-1, 1].forEach((side) => {
+      mod.add(
+        makeStrutBetween(
+          new THREE.Vector3(side * (width * 0.445), beltY + 0.02, fBotZ - 0.02),
+          new THREE.Vector3(side * (width * 0.43), roofY - 0.02, frontTopZ),
+          0.024,
+          0.024,
+          mats.trim,
+          6,
+        ),
+      );
+    });
+
+    const centerBar = new THREE.Mesh(new THREE.BoxGeometry(0.042, wsLen * 0.92, 0.045), mats.trim);
+    centerBar.position.set(0, beltY + windowH * 0.49, (fBotZ + frontTopZ) * 0.5 - 0.008);
     centerBar.rotation.x = -wsAngle;
     mod.add(centerBar);
 
     [-0.24, 0.24].forEach((wx) => {
       const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.025, 0.03), mats.trim);
-      wiper.position.set(wx * width, beltY + 0.08, fBotZ - 0.03);
+      wiper.position.set(wx * width, beltY + 0.08, fBotZ - 0.02);
       wiper.rotation.z = 0.08;
       mod.add(wiper);
     });
@@ -715,19 +1033,29 @@ function buildTransitBusModule(
     });
   }
 
-  // 5. Rear Engine Access Door, Louvered Vents & Framed Rear Window
+  // 5. Rear Engine Access Door, Louvered Vents & Hollow Framed Rear Window
   if (options.hasRearEnd) {
-    const rwFrame = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.92, windowH * 0.96, 0.11, 0.02, 2, 6),
-      mats.trim,
-    );
-    rwFrame.position.set(0, beltY + windowH * 0.48, rearTopZ);
-    mod.add(rwFrame);
+    const rwW = width * 0.88;
+    const rwH = windowH * 0.86;
+    const rwY = beltY + windowH * 0.48;
+    const rwBar = 0.075;
+
+    const rwTop = new THREE.Mesh(new THREE.BoxGeometry(rwW, rwBar, 0.08), mats.trim);
+    rwTop.position.set(0, rwY + rwH * 0.5 - rwBar * 0.5, rearTopZ);
+    const rwBot = new THREE.Mesh(new THREE.BoxGeometry(rwW, rwBar, 0.08), mats.trim);
+    rwBot.position.set(0, rwY - rwH * 0.5 + rwBar * 0.5, rearTopZ);
+    const rwLeft = new THREE.Mesh(new THREE.BoxGeometry(rwBar, rwH, 0.08), mats.trim);
+    rwLeft.position.set(-rwW * 0.5 + rwBar * 0.5, rwY, rearTopZ);
+    const rwRight = new THREE.Mesh(new THREE.BoxGeometry(rwBar, rwH, 0.08), mats.trim);
+    rwRight.position.set(rwW * 0.5 - rwBar * 0.5, rwY, rearTopZ);
+    mod.add(rwTop, rwBot, rwLeft, rwRight);
+
     const rw = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.78, windowH * 0.68, 0.13, 0.02, 2, 6),
+      new THREE.PlaneGeometry(rwW - rwBar * 1.6, rwH - rwBar * 1.6),
       mats.glass,
     );
-    rw.position.set(0, beltY + windowH * 0.48, rearTopZ);
+    rw.rotation.y = Math.PI;
+    rw.position.set(0, rwY, rearTopZ);
     rw.userData.noShadow = true;
     rw.renderOrder = 2;
     mod.add(rw);
@@ -746,65 +1074,578 @@ function buildTransitBusModule(
     }
   }
 
-  // 6. Visible 3D Bus Interior (Driver Cockpit + Steering Wheel even in cityMode; Passenger Rows in studio)
+  // 6. Full Hollowed Brazilian Transit Bus Interior (Contoured Seats, Priority Seats, Turnstile, Yellow Stanchions & Straps)
   {
     const interior = new THREE.Group();
-    const floorY = groundClearance + 0.24;
+    const floorY = floorTopY + 0.025;
+    const busInnerH = Math.max(1.4, roofY - floorY);
+
+    // Non-slip matte rubber center aisle + segmented side bay floors (zero overlap with wheelhouses or stepwells!)
+    const floorDeck = new THREE.Mesh(
+      createRoundedBoxGeo(width * 0.66, 0.03, modLen * 0.90, 0.014, 2, 6),
+      mats.trim,
+    );
+    floorDeck.position.set(0, floorY, 0);
+    interior.add(floorDeck);
+
+    // Outer side floor strips strictly between wheel arches and door stepwells
+    const wheelBoxTopY = Math.max(floorY + 0.16, wheelRadius * 2.04);
+    const wheelBoxH = wheelBoxTopY - floorY;
+    [-1, 1].forEach((s) => {
+      const side = s as -1 | 1;
+      const sideGaps: Array<readonly [number, number]> = [];
+      if (side > 0) {
+        for (const dr of doorRanges) sideGaps.push(dr);
+      }
+      for (const wz of sortedWheels) {
+        sideGaps.push([wz - archCutR, wz + archCutR]);
+      }
+      sideGaps.sort((a, b) => a[0] - b[0]);
+
+      let zCur = -hl + 0.12;
+      const zEnd = hl - 0.12;
+      for (const [g0, g1] of sideGaps) {
+        const segEnd = Math.min(zEnd, g0);
+        if (segEnd - zCur > 0.10) {
+          const sideFloor = new THREE.Mesh(
+            new THREE.BoxGeometry(width * 0.145, 0.028, segEnd - zCur),
+            mats.trim,
+          );
+          sideFloor.position.set(side * (width * 0.398), floorY, (zCur + segEnd) * 0.5);
+          interior.add(sideFloor);
+        }
+        zCur = Math.max(zCur, g1);
+      }
+      if (zEnd - zCur > 0.10) {
+        const sideFloor = new THREE.Mesh(
+          new THREE.BoxGeometry(width * 0.145, 0.028, zEnd - zCur),
+          mats.trim,
+        );
+        sideFloor.position.set(side * (width * 0.398), floorY, (zCur + zEnd) * 0.5);
+        interior.add(sideFloor);
+      }
+
+      // Sealed interior wheelhouse boxes tightly enclosing top of tires & supporting wheel-arch seat pedestals
+      for (const wz of sortedWheels) {
+        const whBox = new THREE.Mesh(
+          createRoundedBoxGeo(width * 0.21, wheelBoxH, archCutR * 1.94, 0.02, 2, 6),
+          mats.trim,
+        );
+        whBox.position.set(side * (width * 0.365), floorY + wheelBoxH * 0.5, wz);
+        const whCap = new THREE.Mesh(
+          new THREE.BoxGeometry(width * 0.20, 0.02, archCutR * 1.88),
+          mats.grille,
+        );
+        whCap.position.set(side * (width * 0.365), wheelBoxTopY + 0.004, wz);
+        interior.add(whBox, whCap);
+      }
+    });
+
+    const aisleRunner = new THREE.Mesh(
+      new THREE.BoxGeometry(width * 0.26, 0.036, modLen * 0.86),
+      mats.grille,
+    );
+    aisleRunner.position.set(0, floorY + 0.004, 0);
+    interior.add(aisleRunner);
+
+    [-1, 1].forEach((side) => {
+      const safetyStrip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.032, 0.038, modLen * 0.84),
+        mats.safetyYellow,
+      );
+      safetyStrip.position.set(side * (width * 0.145), floorY + 0.005, 0);
+      interior.add(safetyStrip);
+    });
+
+    if (!options.cityMode) {
+      const cabinFillLight = new THREE.PointLight(0xf8fafc, 0.72, modLen * 0.75, 1.5);
+      cabinFillLight.position.set(0, roofY - 0.18, options.hasFrontEnd ? hl * 0.25 : 0);
+      interior.add(cabinFillLight);
+    }
 
     if (options.hasFrontEnd) {
-      const dash = new THREE.Mesh(
-        createRoundedBoxGeo(width * 0.44, 0.36, 0.48, 0.04, 2, 8),
-        mats.trim,
-      );
-      dash.position.set(-width * 0.20, floorY + 0.62, hl - 0.48);
-      interior.add(dash);
+      const cockpitDepth = Math.min(1.35, modLen * 0.28);
+      const driverCockpit = buildHeavyCabinInterior({
+        cabWidth: width * 0.84,
+        cabDepth: cockpitDepth,
+        cabHeight: busInnerH,
+        dashTopY: Math.max(0.72, beltY - floorY + 0.04),
+        seatsCount: 1,
+        isBus: true,
+        wsSlopeInset: Math.max(0, fBotZ - frontTopZ),
+        mats,
+        cityMode: options.cityMode,
+        animated,
+      });
+      driverCockpit.position.set(0, floorY, hl - cockpitDepth * 0.5 - 0.16);
+      interior.add(driverCockpit);
 
-      const drvSeat = new THREE.Mesh(
-        createRoundedBoxGeo(0.46, 0.76, 0.48, 0.06, 2, 8),
-        mats.interior,
-      );
-      drvSeat.position.set(-width * 0.24, floorY + 0.58, hl - 0.96);
-      interior.add(drvSeat);
+      // Driver Partition Wall + Acrylic Screen + Red Extinguisher + Torino Turnstile (Catraca)
+      if (!options.cityMode) {
+        const partZ = hl - cockpitDepth - 0.14;
+        const modesty = new THREE.Mesh(
+          createRoundedBoxGeo(width * 0.32, 0.60, 0.04, 0.015, 2, 6),
+          mats.trim,
+        );
+        modesty.position.set(-width * 0.25, floorY + 0.36, partZ);
+        const acrylic = new THREE.Mesh(
+          new THREE.PlaneGeometry(width * 0.30, 0.48),
+          mats.glass,
+        );
+        acrylic.position.set(-width * 0.25, floorY + 0.94, partZ);
+        acrylic.userData.noShadow = true;
+        acrylic.renderOrder = 2;
+        const partRail = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.017, 0.017, width * 0.34, 8),
+          mats.safetyYellow,
+        );
+        partRail.rotation.z = Math.PI / 2;
+        partRail.position.set(-width * 0.25, floorY + 0.68, partZ);
+        const modRail = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.018, 0.018, busInnerH - 0.06, 8),
+          mats.safetyYellow,
+        );
+        modRail.position.set(-width * 0.09, floorY + busInnerH * 0.48, partZ);
+        const extinguisher = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.052, 0.052, 0.34, 10),
+          mats.sirenRed,
+        );
+        extinguisher.position.set(-width * 0.38, floorY + 0.48, partZ - 0.05);
+        interior.add(modesty, acrylic, partRail, modRail, extinguisher);
 
-      const wheelMount = new THREE.Group();
-      wheelMount.position.set(-width * 0.24, floorY + 0.94, hl - 0.66);
-      wheelMount.rotation.x = Math.PI * 0.24;
-      const wheelGrp = new THREE.Group();
-      const wheelRim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.024, 6, 16), mats.trim);
-      wheelGrp.add(wheelRim);
-      for (let s = 0; s < 3; s++) {
-        const a = (s * Math.PI * 2) / 3;
-        const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.20, 0.018), mats.alloy);
-        spoke.position.set(Math.sin(a) * 0.10, Math.cos(a) * 0.10, 0);
-        spoke.rotation.z = -a;
-        wheelGrp.add(spoke);
+        if (options.hasBoardingDoors) {
+          // Authentic Brazilian CATRACA MECÂNICA 4BR (4 curved S-loop arms around upright spindle + oval card validator + 3-bar divider)
+          const turnZ = partZ - 0.38;
+          const turnX = -width * 0.02;
+
+          // Tapered trapezoidal 4BR pedestal + black rubber boot + stainless front kick shield + 5-digit odometer counter
+          const bootBase = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.145, 0.16, 0.045, 4),
+            mats.grille,
+          );
+          bootBase.rotation.y = Math.PI / 4;
+          bootBase.position.set(turnX, floorY + 0.022, turnZ);
+
+          const pedBody = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.092, 0.14, 0.42, 4),
+            mats.trim,
+          );
+          pedBody.rotation.y = Math.PI / 4;
+          pedBody.position.set(turnX, floorY + 0.24, turnZ);
+
+          const steelShield = new THREE.Mesh(
+            new THREE.BoxGeometry(0.165, 0.22, 0.02),
+            mats.chrome,
+          );
+          steelShield.position.set(turnX, floorY + 0.18, turnZ + 0.105);
+          steelShield.rotation.x = -0.11;
+
+          const counterWin = new THREE.Mesh(
+            new THREE.BoxGeometry(0.11, 0.036, 0.024),
+            mats.sirenRed,
+          );
+          counterWin.position.set(turnX, floorY + 0.35, turnZ + 0.09);
+          counterWin.rotation.x = -0.11;
+
+          const spindleBoot = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.044, 0.056, 0.06, 12),
+            mats.grille,
+          );
+          spindleBoot.position.set(turnX, floorY + 0.47, turnZ);
+
+          const spindleShaft = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.032, 0.032, 0.62, 14),
+            mats.trim,
+          );
+          spindleShaft.position.set(turnX, floorY + 0.78, turnZ);
+
+          const spindleCap = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.038, 0.038, 0.03, 12),
+            mats.chrome,
+          );
+          spindleCap.position.set(turnX, floorY + 1.09, turnZ);
+
+          interior.add(bootBase, pedBody, steelShield, counterWin, spindleBoot, spindleShaft, spindleCap);
+
+          // 4 iconic 4BR hourglass S-loop tubular arms spaced 90° around the vertical central shaft
+          const armCurve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0.025, 0.56, 0),
+            new THREE.Vector3(0.24, 0.56, 0),
+            new THREE.Vector3(0.35, 0.51, 0),
+            new THREE.Vector3(0.29, 0.32, 0),
+            new THREE.Vector3(0.32, 0.14, 0),
+            new THREE.Vector3(0.24, 0.02, 0),
+            new THREE.Vector3(0.17, 0.16, 0),
+            new THREE.Vector3(0.16, 0.34, 0),
+            new THREE.Vector3(0.025, 0.36, 0),
+          ]);
+          const armGeo = new THREE.TubeGeometry(armCurve, 24, 0.015, 8, false);
+          for (let armIdx = 0; armIdx < 4; armIdx++) {
+            const armMesh = new THREE.Mesh(armGeo, mats.safetyYellow);
+            armMesh.position.set(turnX, floorY + 0.50, turnZ);
+            armMesh.rotation.y = (armIdx * Math.PI) / 2 + 0.42;
+            interior.add(armMesh);
+          }
+
+          // Curb-side 3-rod chrome + yellow barrier rack bordering the catraca lane
+          const rackX = width * 0.22;
+          [-0.26, 0.26].forEach((gz) => {
+            const post = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.018, 0.018, busInnerH - 0.06, 8),
+              mats.safetyYellow,
+            );
+            post.position.set(rackX, floorY + busInnerH * 0.48, turnZ + gz);
+            interior.add(post);
+          });
+          [0.10, 0.94].forEach((gy) => {
+            const bar = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.015, 0.015, 0.54, 8),
+              mats.safetyYellow,
+            );
+            bar.rotation.x = Math.PI / 2;
+            bar.position.set(rackX, floorY + gy, turnZ);
+            interior.add(bar);
+          });
+          [-0.12, 0, 0.12].forEach((rz) => {
+            const rod = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.012, 0.012, 0.84, 8),
+              mats.chrome,
+            );
+            rod.position.set(rackX, floorY + 0.52, turnZ + rz);
+            interior.add(rod);
+          });
+
+          // Electronic Contactless Card Validator on yellow left stanchion (top-left reference detail)
+          const valX = -width * 0.18;
+          const validatorPost = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.019, 0.019, busInnerH - 0.06, 8),
+            mats.safetyYellow,
+          );
+          validatorPost.position.set(valX, floorY + busInnerH * 0.48, turnZ + 0.22);
+          const valCrossBar = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.015, 0.22, 8),
+            mats.safetyYellow,
+          );
+          valCrossBar.rotation.x = Math.PI / 2;
+          valCrossBar.position.set(valX, floorY + 1.06, turnZ + 0.32);
+          const validatorPod = new THREE.Mesh(
+            createRoundedBoxGeo(0.15, 0.22, 0.08, 0.035, 2, 8),
+            mats.safetyYellow,
+          );
+          validatorPod.position.set(valX + 0.04, floorY + 1.24, turnZ + 0.25);
+          const valFace = new THREE.Mesh(
+            createRoundedBoxGeo(0.12, 0.17, 0.022, 0.02, 2, 6),
+            mats.trim,
+          );
+          valFace.position.set(valX + 0.04, floorY + 1.24, turnZ + 0.295);
+          const valScreen = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.07, 0.026), mats.sirenBlue);
+          valScreen.position.set(valX + 0.04, floorY + 1.27, turnZ + 0.298);
+          interior.add(validatorPost, valCrossBar, validatorPod, valFace, valScreen);
+        }
       }
-      wheelMount.add(wheelGrp);
-      interior.add(wheelMount);
-      animated.steeringWheels.push(wheelGrp);
     }
 
     if (!options.cityMode) {
-      const seatStartZ = options.hasFrontEnd ? hl - 1.75 : hl - 0.65;
-      const seatEndZ = -hl + 0.75;
-      const rowStep = 0.88;
-      for (let sz = seatStartZ; sz >= seatEndZ; sz -= rowStep) {
-        [-1, 1].forEach((side) => {
-          const pair = new THREE.Mesh(
-            createRoundedBoxGeo(width * 0.32, 0.62, 0.42, 0.05, 2, 8),
-            mats.interior,
-          );
-          pair.position.set(side * (width * 0.28), floorY + 0.48, sz);
-          interior.add(pair);
-        });
-        if (Math.round(sz * 2) % 2 === 0) {
-          const pole = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.018, 0.018, roofY - floorY - 0.1, 8),
-            mats.accent,
-          );
-          pole.position.set(-width * 0.12, (floorY + roofY) * 0.5, sz);
-          interior.add(pole);
+      const seatStartZ = options.hasFrontEnd
+        ? options.hasBoardingDoors
+          ? hl - 2.42
+          : hl - 1.84
+        : hl - 0.58;
+      const seatEndZ = options.hasRearEnd ? -hl + 1.24 : -hl + 0.58;
+      const rowStep = 0.82;
+
+      // Interior Side Dado Trim Panels + Continuous Window Sill Ledges + Pillar Emergency Hammers
+      const dadoH = Math.max(0.24, beltY - floorY - 0.04);
+      const dadoY = floorY + dadoH * 0.5 + 0.02;
+      [-1, 1].forEach((s) => {
+        const side = s as -1 | 1;
+        const innerX = side * (width * 0.452);
+        const sillX = side * (width * 0.448);
+        const gaps = side > 0 ? doorRanges : [];
+        let zCur = -hl + 0.14;
+        const zEnd = hl - 0.14;
+        for (const [d0, d1] of gaps) {
+          const segEnd = Math.min(zEnd, d0);
+          if (segEnd - zCur > 0.12) {
+            const dado = new THREE.Mesh(
+              new THREE.BoxGeometry(0.022, dadoH, segEnd - zCur),
+              mats.alloy,
+            );
+            dado.position.set(innerX, dadoY, (zCur + segEnd) * 0.5);
+            const sill = new THREE.Mesh(
+              new THREE.BoxGeometry(0.045, 0.028, segEnd - zCur),
+              mats.trim,
+            );
+            sill.position.set(sillX, beltY - 0.01, (zCur + segEnd) * 0.5);
+            interior.add(dado, sill);
+          }
+          zCur = Math.max(zCur, d1);
         }
+        if (zEnd - zCur > 0.12) {
+          const dado = new THREE.Mesh(
+            new THREE.BoxGeometry(0.022, dadoH, zEnd - zCur),
+            mats.alloy,
+          );
+          dado.position.set(innerX, dadoY, (zCur + zEnd) * 0.5);
+          const sill = new THREE.Mesh(
+            new THREE.BoxGeometry(0.045, 0.028, zEnd - zCur),
+            mats.trim,
+          );
+          sill.position.set(sillX, beltY - 0.01, (zCur + zEnd) * 0.5);
+          interior.add(dado, sill);
+        }
+
+        // Red emergency window hammers on alternating window mullions
+        for (let b = 1; b < bayCount; b += 2) {
+          const hz = rearTopZ + 0.18 + b * bayLen;
+          if (side > 0 && (doorBayIndices.has(b) || doorBayIndices.has(b - 1))) continue;
+          const hammer = new THREE.Mesh(
+            new THREE.BoxGeometry(0.024, 0.095, 0.032),
+            mats.sirenRed,
+          );
+          hammer.position.set(side * (width * 0.448), beltY + windowH * 0.46, hz);
+          interior.add(hammer);
+        }
+      });
+
+      // Checkered alloy entry floor plate ahead of turnstile + Priority Wheelchair Box marking
+      if (options.hasFrontEnd && options.hasBoardingDoors) {
+        const entryPlate = new THREE.Mesh(
+          new THREE.BoxGeometry(width * 0.44, 0.038, 0.92),
+          mats.alloy,
+        );
+        entryPlate.position.set(width * 0.12, floorY + 0.005, hl - 1.55);
+        interior.add(entryPlate);
+      }
+
+      // Ceiling Headliner Panel + Side AC Soffits + Dual Longitudinal LED Diffusers + Emergency Roof Hatches
+      const headliner = new THREE.Mesh(
+        new THREE.BoxGeometry(width * 0.86, 0.018, Math.max(0.5, roofLen - 0.16)),
+        mats.alloy,
+      );
+      headliner.position.set(0, roofY - 0.012, roofCenterZ);
+      interior.add(headliner);
+
+      if (options.hasFrontEnd) {
+        const stopMarquee = new THREE.Mesh(
+          createRoundedBoxGeo(0.52, 0.075, 0.06, 0.012, 2, 6),
+          mats.trim,
+        );
+        stopMarquee.position.set(0, roofY - 0.075, frontTopZ - 0.18);
+        const stopLed = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.036, 0.068), mats.sirenRed);
+        stopLed.position.copy(stopMarquee.position);
+        interior.add(stopMarquee, stopLed);
+      }
+
+      [-1, 1].forEach((side) => {
+        const soffit = new THREE.Mesh(
+          new THREE.BoxGeometry(width * 0.25, 0.032, Math.max(0.5, roofLen - 0.22)),
+          mats.alloy,
+        );
+        soffit.position.set(side * (width * 0.30), roofY - 0.032, roofCenterZ);
+        const ledChannel = new THREE.Mesh(
+          new THREE.BoxGeometry(0.052, 0.022, Math.max(0.5, roofLen - 0.32)),
+          mats.headlight,
+        );
+        ledChannel.position.set(side * (width * 0.14), roofY - 0.028, roofCenterZ);
+        interior.add(soffit, ledChannel);
+
+        const railLen = Math.max(0.8, seatStartZ - seatEndZ + 0.6);
+        const railMidZ = (seatStartZ + seatEndZ) * 0.5;
+        const rail = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.017, 0.017, railLen, 8),
+          mats.safetyYellow,
+        );
+        rail.rotation.x = Math.PI / 2;
+        rail.position.set(side * (width * 0.15), roofY - 0.20, railMidZ);
+        interior.add(rail);
+
+        const strapCount = Math.max(3, Math.floor(railLen / 0.85));
+        for (let st = 0; st < strapCount; st++) {
+          const sz = seatEndZ + (st + 0.5) * (railLen / strapCount);
+          const dropMount = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.012, 0.012, 0.18, 6),
+            mats.safetyYellow,
+          );
+          dropMount.position.set(side * (width * 0.15), roofY - 0.11, sz);
+          const strapStem = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.14, 0.022), mats.trim);
+          strapStem.position.set(side * (width * 0.15), roofY - 0.27, sz);
+          const strapLoop = new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.009, 6, 12), mats.trim);
+          strapLoop.rotation.y = Math.PI / 2;
+          strapLoop.position.set(side * (width * 0.15), roofY - 0.36, sz);
+          interior.add(dropMount, strapStem, strapLoop);
+        }
+      });
+
+      const hatchCount = modLen > 7.5 ? 2 : 1;
+      for (let hIdx = 0; hIdx < hatchCount; hIdx++) {
+        const hz = hatchCount === 1 ? roofCenterZ : (hIdx === 0 ? roofCenterZ + modLen * 0.20 : roofCenterZ - modLen * 0.20);
+        const hatchFrame = new THREE.Mesh(
+          createRoundedBoxGeo(0.56, 0.032, 0.52, 0.015, 2, 6),
+          mats.trim,
+        );
+        hatchFrame.position.set(0, roofY - 0.026, hz);
+        const hatchLid = new THREE.Mesh(
+          createRoundedBoxGeo(0.46, 0.038, 0.42, 0.012, 2, 6),
+          mats.alloy,
+        );
+        hatchLid.position.set(0, roofY - 0.030, hz);
+        interior.add(hatchFrame, hatchLid);
+      }
+
+      const addErgonomicBusSeatUnit = (
+        px: number,
+        py: number,
+        pz: number,
+        seatW: number,
+        count: number,
+        isPriority: boolean,
+        aisleSide: -1 | 1 | 0,
+      ) => {
+        const unit = new THREE.Group();
+        const eachW = (seatW - (count - 1) * 0.025) / count;
+        const padMat = isPriority ? mats.safetyYellow : mats.transitBlue;
+
+        const pedLeg = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, 0.31, 0.10),
+          mats.trim,
+        );
+        pedLeg.position.set(0, 0.155, 0);
+        unit.add(pedLeg);
+
+        for (let s = 0; s < count; s++) {
+          const sx = -seatW * 0.5 + eachW * 0.5 + s * (eachW + 0.025);
+          const shellBase = new THREE.Mesh(
+            createRoundedBoxGeo(eachW * 0.94, 0.045, 0.38, 0.016, 2, 6),
+            mats.trim,
+          );
+          shellBase.position.set(sx, 0.33, 0.04);
+
+          const seatPad = new THREE.Mesh(
+            createRoundedBoxGeo(eachW * 0.84, 0.045, 0.34, 0.016, 2, 6),
+            padMat,
+          );
+          seatPad.position.set(sx, 0.36, 0.045);
+
+          const backShell = new THREE.Mesh(
+            createRoundedBoxGeo(eachW * 0.92, 0.50, 0.032, 0.016, 2, 8),
+            mats.alloy,
+          );
+          backShell.position.set(sx, 0.61, -0.148);
+          backShell.rotation.x = -0.14;
+
+          const backPad = new THREE.Mesh(
+            createRoundedBoxGeo(eachW * 0.82, 0.43, 0.034, 0.015, 2, 6),
+            padMat,
+          );
+          backPad.position.set(sx, 0.61, -0.126);
+          backPad.rotation.x = -0.14;
+
+          unit.add(shellBase, seatPad, backShell, backPad);
+        }
+
+        // Upper corner molded grab handle + slim aisle armrest
+        if (aisleSide !== 0) {
+          const cornerGrab = new THREE.Mesh(
+            createRoundedBoxGeo(0.10, 0.04, 0.036, 0.01, 2, 6),
+            isPriority ? mats.trim : mats.safetyYellow,
+          );
+          cornerGrab.position.set(-aisleSide * (seatW * 0.36), 0.87, -0.175);
+          const armrest = new THREE.Mesh(
+            createRoundedBoxGeo(0.032, 0.028, 0.24, 0.008, 2, 6),
+            mats.trim,
+          );
+          armrest.position.set(-aisleSide * (seatW * 0.48), 0.51, 0.04);
+          unit.add(cornerGrab, armrest);
+        }
+
+        unit.position.set(px, py, pz);
+        interior.add(unit);
+      };
+
+      // Recessed 2-step boarding stairwells and entry assist rails centered inside each door bay
+      for (const dbc of doorBayCenters) {
+        const stepLen = bayLen * 0.86;
+        const riserBack = new THREE.Mesh(
+          new THREE.BoxGeometry(0.03, floorY - groundClearance - 0.04, stepLen),
+          mats.trim,
+        );
+        riserBack.position.set(width * 0.335, (floorY + groundClearance) * 0.5 + 0.02, dbc);
+        const stepEdge = new THREE.Mesh(
+          new THREE.BoxGeometry(0.09, 0.032, stepLen),
+          mats.safetyYellow,
+        );
+        stepEdge.position.set(width * 0.355, floorY + 0.016, dbc);
+        const midStep = new THREE.Mesh(
+          new THREE.BoxGeometry(0.09, 0.035, stepLen),
+          mats.grille,
+        );
+        midStep.position.set(width * 0.405, groundClearance + 0.20, dbc);
+        const lowerStep = new THREE.Mesh(
+          new THREE.BoxGeometry(0.11, 0.035, stepLen),
+          mats.grille,
+        );
+        lowerStep.position.set(width * 0.455, groundClearance + 0.09, dbc);
+        const lowerStepNose = new THREE.Mesh(
+          new THREE.BoxGeometry(0.028, 0.036, stepLen),
+          mats.safetyYellow,
+        );
+        lowerStepNose.position.set(width * 0.498, groundClearance + 0.09, dbc);
+        const entryPole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.016, 0.016, busInnerH * 0.82, 8),
+          mats.safetyYellow,
+        );
+        entryPole.position.set(width * 0.34, floorY + busInnerH * 0.41, dbc + stepLen * 0.42);
+        interior.add(riserBack, stepEdge, midStep, lowerStep, lowerStepNose, entryPole);
+      }
+
+      let rowIdx = 0;
+      for (let sz = seatStartZ; sz >= seatEndZ; sz -= rowStep) {
+        [-1, 1].forEach((s) => {
+          const side = s as -1 | 1;
+          const blockedByDoor =
+            side > 0 &&
+            options.hasBoardingDoors &&
+            doorBayCenters.some((dbc) => Math.abs(dbc - sz) < bayLen * 0.56);
+          if (blockedByDoor) {
+            return;
+          }
+
+          const overWheel = sortedWheels.some((wz) => Math.abs(wz - sz) < archCutR * 0.92);
+          const seatBaseY = overWheel ? wheelBoxTopY + 0.01 : floorY;
+          const isPriority = options.hasFrontEnd && rowIdx < 2;
+          addErgonomicBusSeatUnit(
+            side * (width * 0.31),
+            seatBaseY,
+            sz,
+            width * 0.28,
+            2,
+            isPriority,
+            side,
+          );
+        });
+
+        // Alternating vertical yellow stanchions with red stop-request buttons
+        if (rowIdx % 2 === 0) {
+          const poleSide = rowIdx % 4 === 0 ? -1 : 1;
+          const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.016, 0.016, busInnerH - 0.06, 8),
+            mats.safetyYellow,
+          );
+          pole.position.set(poleSide * (width * 0.15), floorY + busInnerH * 0.48, sz);
+          const stopBtn = new THREE.Mesh(
+            new THREE.BoxGeometry(0.042, 0.062, 0.036),
+            mats.sirenRed,
+          );
+          stopBtn.position.set(poleSide * (width * 0.15), floorY + 1.18, sz);
+          interior.add(pole, stopBtn);
+        }
+        rowIdx++;
+      }
+
+      // Rearmost full-width 5-seat contoured bank + rear clock/route display (when hasRearEnd)
+      if (options.hasRearEnd) {
+        addErgonomicBusSeatUnit(0, floorY + 0.06, -hl + 0.60, width * 0.84, 5, false, 0);
       }
     }
     mod.add(interior);
@@ -930,10 +1771,15 @@ function buildSchoolBusVehicle(
 
   const stopArmPivot = new THREE.Group();
   stopArmPivot.position.set(-width * 0.505, beltY - 0.12, cowlZ - 0.35);
-  const stopSign = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.20, 0.03, 8), mats.sirenRed);
+  const stopBracket = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.18), mats.chrome);
+  stopBracket.position.set(-0.01, 0, -0.09);
+  const stopBorder = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.022, 8), mats.liveryStripe);
+  stopBorder.rotation.z = Math.PI / 2;
+  stopBorder.position.set(-0.022, 0, -0.22);
+  const stopSign = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.185, 0.028, 8), mats.taillight);
   stopSign.rotation.z = Math.PI / 2;
-  stopSign.position.set(-0.02, 0, -0.22);
-  stopArmPivot.add(stopSign);
+  stopSign.position.set(-0.024, 0, -0.22);
+  stopArmPivot.add(stopBracket, stopBorder, stopSign);
   tagPart(stopArmPivot, 'Placa PARE Articulada', -0.45, 0, 0);
   group.add(stopArmPivot);
   registerOpenable(animated, stopArmPivot, 'Placa PARE Escolar', { y: 1.45 });
@@ -971,7 +1817,6 @@ function buildSchoolBusVehicle(
   });
 
   addChassisDrivetrain(group, width, g.groundClearance + 0.18, frontWheelZ, rearWheelZ, mats, cityMode);
-  buildWheelWellLiners(group, g.wheelRadius, g.wheelWidth, width, frontWheelZ, rearWheelZ, mats, cityMode);
   addHeavyBumperAndLights(group, width, g.groundClearance, hoodFrontZ, -halfL + 0.04, mats, false, true, false, undefined, animated);
   addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'single');
   enableShadows(group);
@@ -1049,22 +1894,35 @@ export function buildBusOrArticulatedBus(
     rearMod.position.z = rearZ;
     group.add(rearMod);
 
-    // 9-rib pleated bellows + circular turntable + roof guide ribs
+    // Hollow U-arch pleated bellows + flush circular turntable walkway (open corridor from front module to rear module!)
     const bellowsGroup = new THREE.Group();
-    const belH = height - g.groundClearance - 0.18;
+    const belFloorY = g.groundClearance + 0.275;
+    const belRoofY = height - 0.14;
+    const belWallH = belRoofY - belFloorY;
     for (let i = -4; i <= 4; i++) {
-      const rib = new THREE.Mesh(
-        createRoundedBoxGeo(width * 0.94, belH, gap * 0.095, 0.04, 2, 8),
-        i % 2 === 0 ? mats.trim : mats.secondary,
+      const ribMat = i % 2 === 0 ? mats.trim : mats.secondary;
+      const rz = i * (gap * 0.105);
+      const rThick = gap * 0.095;
+      [-1, 1].forEach((side) => {
+        const wall = new THREE.Mesh(
+          createRoundedBoxGeo(0.11, belWallH, rThick, 0.025, 2, 6),
+          ribMat,
+        );
+        wall.position.set(side * (width * 0.44), belFloorY + belWallH * 0.5, rz);
+        bellowsGroup.add(wall);
+      });
+      const topArch = new THREE.Mesh(
+        createRoundedBoxGeo(width * 0.94, 0.14, rThick, 0.03, 2, 6),
+        ribMat,
       );
-      rib.position.set(0, g.groundClearance + belH * 0.5 + 0.04, i * (gap * 0.105));
-      bellowsGroup.add(rib);
+      topArch.position.set(0, belRoofY - 0.02, rz);
+      bellowsGroup.add(topArch);
     }
     const turntable = new THREE.Mesh(
-      new THREE.CylinderGeometry(width * 0.42, width * 0.42, 0.06, 20),
+      new THREE.CylinderGeometry(width * 0.42, width * 0.42, 0.045, 24),
       mats.alloy,
     );
-    turntable.position.set(0, g.groundClearance + 0.25, 0);
+    turntable.position.set(0, belFloorY, 0);
     bellowsGroup.add(turntable);
     bellowsGroup.position.z = bellowsZ;
     tagPart(bellowsGroup, 'Sanfona Articulada e Mesa Giratória', 0, 0.35, 0);
@@ -1090,7 +1948,6 @@ export function buildBusOrArticulatedBus(
     });
 
     addChassisDrivetrain(group, width, g.groundClearance + 0.18, axleZs[0], axleZs[2], mats, cityMode);
-    buildWheelWellLiners(group, g.wheelRadius, g.wheelWidth, width, axleZs[0], axleZs[1], mats, cityMode);
     addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.04, -halfL + 0.04, mats, false, false, false, undefined, animated);
     addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'dual');
     enableShadows(group);
@@ -1113,7 +1970,7 @@ export function buildBusOrArticulatedBus(
       hasRearEnd: true,
       hasDestinationSign: true,
       hasBoardingDoors: true,
-      doorPositionsZ: [length * 0.34, -length * 0.04],
+      doorPositionsZ: [length * 0.39, -length * 0.04],
       labelPrefix: 'Ônibus Urbano',
       cityMode,
       acCount: 2,
@@ -1144,7 +2001,6 @@ export function buildBusOrArticulatedBus(
   });
 
   addChassisDrivetrain(group, width, g.groundClearance + 0.18, frontWheelZ, rearWheelZ, mats, cityMode);
-  buildWheelWellLiners(group, g.wheelRadius, g.wheelWidth, width, frontWheelZ, rearWheelZ, mats, cityMode);
   addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.04, -halfL + 0.04, mats, false, false, false, undefined, animated);
   addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'single');
   enableShadows(group);
@@ -1202,18 +2058,23 @@ export function buildHeavyTruckVehicle(
   rearValance.position.set(0, g.groundClearance + 0.28, -halfL + 0.06);
   group.add(rearValance);
 
-  // 2. Sculpted Heavy Truck Cab Core with OPEN Windshield Aperture (recessed at 0.84*width in doorway so flush doors sit OUTSIDE!)
+  // 2. Hollowed Sculpted Heavy Truck Cab Core (open cockpit bay + open windshield bay!)
   const hoodTopH = cabH * (isSemi ? 0.46 : 0.42);
   const noseFrontBevel = 0.045;
   const noseLocalEnd = ch - noseFrontBevel - 0.015;
   const wsTopLocalZ = noseStartZ - cabLen * 0.14;
+  const cabFloorH = 0.14;
+  const cabWallThick = 0.14;
 
-  // 2a. Lower cab chassis + sloped engine nose (stops cleanly at hoodTopH so windshield bay above is open!)
+  // 2a. Hollowed lower cab chassis + sloped engine nose (drops to cabFloorH inside cab!)
   const cabLowerShape = new THREE.Shape();
   cabLowerShape.moveTo(-ch, 0);
   cabLowerShape.lineTo(noseLocalEnd, 0);
   cabLowerShape.lineTo(noseLocalEnd, hoodTopH * 0.82);
   cabLowerShape.lineTo(noseStartZ, hoodTopH);
+  cabLowerShape.lineTo(noseStartZ - 0.05, cabFloorH);
+  cabLowerShape.lineTo(-ch + cabWallThick, cabFloorH);
+  cabLowerShape.lineTo(-ch + cabWallThick, hoodTopH);
   cabLowerShape.lineTo(-ch, hoodTopH);
   cabLowerShape.closePath();
 
@@ -1230,16 +2091,14 @@ export function buildHeavyTruckVehicle(
   tagPart(cabLowerMesh, isFire ? 'Cabine Dupla Bombeiros' : isSemi ? 'Cabine Leito Estradeira' : 'Cabine Pesada Esculpida', 0, 0.35, 0.45);
   group.add(cabLowerMesh);
 
-  // 2b. Upper Sleeper / Cab Back Wall & Cambered Roof Shell behind windshield top edge
-  const upperStartZ = wsTopLocalZ - 0.07;
+  // 2b. Hollowed Upper Rear Bulkhead & Cambered Roof Shell (leaves cab interior AND rear cab window open!)
+  const cabInnerH = cabH - cabFloorH - 0.11;
+  const rearWallCutH = isSemi ? cabH - 0.11 : Math.max(hoodTopH + 0.10, cabFloorH + cabInnerH * 0.46);
   const cabUpperShape = new THREE.Shape();
-  cabUpperShape.moveTo(-ch, hoodTopH - 0.04);
-  cabUpperShape.lineTo(upperStartZ, hoodTopH - 0.04);
-  cabUpperShape.lineTo(upperStartZ, cabH - 0.10);
-  cabUpperShape.lineTo(wsTopLocalZ - 0.01, cabH - 0.10);
-  cabUpperShape.lineTo(wsTopLocalZ - 0.01, cabH - 0.04);
-  cabUpperShape.quadraticCurveTo(wsTopLocalZ - cabLen * 0.08, cabH, -ch + 0.12, cabH);
-  cabUpperShape.lineTo(-ch, cabH - 0.06);
+  cabUpperShape.moveTo(-ch, hoodTopH - 0.02);
+  cabUpperShape.lineTo(-ch + cabWallThick, hoodTopH - 0.02);
+  cabUpperShape.lineTo(-ch + cabWallThick, rearWallCutH);
+  cabUpperShape.lineTo(-ch, rearWallCutH);
   cabUpperShape.closePath();
 
   const cabUpperGeo = createExtrudedProfile(
@@ -1253,6 +2112,52 @@ export function buildHeavyTruckVehicle(
   const cabUpperMesh = new THREE.Mesh(cabUpperGeo, mats.body);
   cabUpperMesh.position.set(0, cabBaseY, cabZ);
   group.add(cabUpperMesh);
+
+  // Cambered Roof Slab & Rear Upper Header Beam (separates roof cleanly so rear window opening stays clear!)
+  const roofCurve = new THREE.Shape();
+  roofCurve.moveTo(wsTopLocalZ - 0.01, cabH - 0.11);
+  roofCurve.lineTo(-ch + 0.04, cabH - 0.11);
+  roofCurve.lineTo(-ch, cabH - 0.06);
+  roofCurve.lineTo(-ch + 0.12, cabH);
+  roofCurve.quadraticCurveTo(wsTopLocalZ - cabLen * 0.08, cabH, wsTopLocalZ - 0.01, cabH - 0.04);
+  roofCurve.closePath();
+
+  const cabRoofGeo = createExtrudedProfile(
+    roofCurve,
+    cityMode ? width * 0.94 : width * 0.84,
+    0.04,
+    0.04,
+    cityMode ? 2 : 4,
+    cityMode ? 10 : 18,
+  );
+  const cabRoofMesh = new THREE.Mesh(cabRoofGeo, mats.body);
+  cabRoofMesh.position.set(0, cabBaseY, cabZ);
+  group.add(cabRoofMesh);
+
+  if (!isSemi) {
+    // Upper rear cab window header beam + side corner pillars framing the open rear cab window
+    const rearHeaderH = Math.max(0.14, cabH - (cabFloorH + cabInnerH * 0.81));
+    const rearHeader = new THREE.Mesh(
+      createRoundedBoxGeo(width * 0.88, rearHeaderH, cabWallThick, 0.02, 2, 8),
+      mats.body,
+    );
+    rearHeader.position.set(0, cabBaseY + cabH - rearHeaderH * 0.5 - 0.02, cabZ - ch + cabWallThick * 0.5);
+    group.add(rearHeader);
+
+    const sidePostH = Math.max(0.24, cabH - rearWallCutH - rearHeaderH + 0.06);
+    [-1, 1].forEach((side) => {
+      const post = new THREE.Mesh(
+        createRoundedBoxGeo(width * 0.16, sidePostH, cabWallThick, 0.02, 2, 8),
+        mats.body,
+      );
+      post.position.set(
+        side * (width * 0.36),
+        cabBaseY + rearWallCutH + sidePostH * 0.5 - 0.02,
+        cabZ - ch + cabWallThick * 0.5,
+      );
+      group.add(post);
+    });
+  }
 
   // Cab roof brow header sealing cleanly above windshield
   const cabBrow = new THREE.Mesh(
@@ -1272,8 +2177,8 @@ export function buildHeavyTruckVehicle(
   const wsTopY = cabBaseY + cabH - 0.06;
 
   [-1, 1].forEach((side) => {
-    // Sloped contoured front fenders flush with hood height (zero boxy protrusion!)
-    const fenderSpan = noseLen + 0.18;
+    // Sloped contoured front fenders flush with hood height & terminating cleanly at fDoorHingeZ
+    const fenderSpan = noseLen + 0.08;
     const fFender = new THREE.Mesh(
       createRoundedBoxGeo(width * 0.22, hoodTopH * 0.56, fenderSpan, 0.035, 3, 10),
       mats.body,
@@ -1339,17 +2244,31 @@ export function buildHeavyTruckVehicle(
   const wsAngle = Math.atan2(wsBotZ - wsTopZ, wsTopY - wsBotY);
 
   const ws = new THREE.Mesh(
-    createTrapezoidGlassGeo(width * 0.78, width * 0.74, wsLen * 0.88, 0.024),
+    createTrapezoidGlassGeo(width * 0.82, width * 0.78, wsLen * 0.96, 0.024),
     mats.glass,
   );
-  ws.position.set(0, (wsBotY + wsTopY) * 0.5, (wsBotZ + wsTopZ) * 0.5 + 0.012);
+  ws.position.set(0, (wsBotY + wsTopY) * 0.5, (wsBotZ + wsTopZ) * 0.5 + 0.006);
   ws.rotation.x = -wsAngle;
   ws.userData.noShadow = true;
   ws.renderOrder = 2;
   tagPart(ws, 'Para-brisa da Cabine', 0, 0.35, 0.55);
   group.add(ws);
 
-  const wsDivider = new THREE.Mesh(new THREE.BoxGeometry(0.036, wsLen * 0.88, 0.032), mats.trim);
+  // Side & upper windshield rubber seals framing glass cleanly inside A-pillars
+  [-1, 1].forEach((side) => {
+    group.add(
+      makeStrutBetween(
+        new THREE.Vector3(side * (width * 0.415), wsBotY, wsBotZ),
+        new THREE.Vector3(side * (width * 0.395), wsTopY - 0.01, wsTopZ),
+        0.022,
+        0.022,
+        mats.trim,
+        6,
+      ),
+    );
+  });
+
+  const wsDivider = new THREE.Mesh(new THREE.BoxGeometry(0.036, wsLen * 0.94, 0.032), mats.trim);
   wsDivider.position.copy(ws.position);
   wsDivider.rotation.x = -wsAngle;
   group.add(wsDivider);
@@ -1375,42 +2294,25 @@ export function buildHeavyTruckVehicle(
     group.add(marker);
   }
 
-  // Visible Cab Interior + Spinning Steering Wheel (lightweight wheel mount in cityMode too)
-  if (!cityMode) {
-    const cabInt = buildVisibleInterior(
-      cabLen * 0.65,
-      cabH * 0.55,
-      width * 0.86,
-      isFire ? 4 : 2,
-      mats,
-      false,
-      0.14,
-      cityMode,
-      { styleId: v.id, archetype: g.archetype },
-      animated,
-    );
-    cabInt.position.set(0, cabBaseY + 0.14, cabZ - cabLen * 0.12);
-    group.add(cabInt);
-  } else {
-    const dash = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72, 0.22, 0.26), mats.trim);
-    dash.position.set(0, cabBaseY + hoodTopH * 0.78, cabZ + ch * 0.16);
-    group.add(dash);
-    const wheelMount = new THREE.Group();
-    wheelMount.position.set(-width * 0.22, cabBaseY + hoodTopH * 0.96, cabZ + ch * 0.02);
-    wheelMount.rotation.x = 0.45;
-    const wheelGrp = new THREE.Group();
-    wheelGrp.add(new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.022, 6, 14), mats.trim));
-    for (let s = 0; s < 3; s++) {
-      const a = (s * Math.PI * 2) / 3;
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.16, 0.016), mats.alloy);
-      spoke.position.set(Math.sin(a) * 0.08, Math.cos(a) * 0.08, 0);
-      spoke.rotation.z = -a;
-      wheelGrp.add(spoke);
-    }
-    wheelMount.add(wheelGrp);
-    group.add(wheelMount);
-    animated.steeringWheels.push(wheelGrp);
-  }
+  // Full Hollowed Heavy Truck Cockpit Interior (wraparound dash, gauges, air-ride seats, shifter, sleeper/crew)
+  const cabCockpitFrontZ = cabZ + noseStartZ - 0.06;
+  const cabCockpitRearZ = cabZ - ch + cabWallThick + 0.02;
+  const cabCockpitDepth = Math.max(1.0, cabCockpitFrontZ - cabCockpitRearZ);
+  const cabInt = buildHeavyCabinInterior({
+    cabWidth: width * 0.82,
+    cabDepth: cabCockpitDepth,
+    cabHeight: cabH - cabFloorH - 0.11,
+    dashTopY: hoodTopH - cabFloorH + 0.02,
+    seatsCount: isFire ? 4 : 2,
+    isSemi,
+    hasRearWindow: !isSemi,
+    wsSlopeInset: Math.max(0, wsBotZ - wsTopZ),
+    mats,
+    cityMode,
+    animated,
+  });
+  cabInt.position.set(0, cabBaseY + cabFloorH, (cabCockpitFrontZ + cabCockpitRearZ) * 0.5);
+  group.add(cabInt);
 
   // Semi-truck Aerodynamic Sleeper Deflector + Air Horns + Openable Hood Engine
   if (isSemi) {
@@ -1432,14 +2334,19 @@ export function buildHeavyTruckVehicle(
       horn.position.set(side * (width * 0.24), cabBaseY + cabH + 0.05, cabZ + ch * 0.12);
       group.add(horn);
 
+      const slpGasket = new THREE.Mesh(
+        createRoundedBoxGeo(0.026, cabH * 0.27, cabLen * 0.20, 0.02, 2, 6),
+        mats.trim,
+      );
+      slpGasket.position.set(side * (width * 0.490), cabBaseY + cabH * 0.66, cabZ - ch * 0.52);
       const slpWin = new THREE.Mesh(
-        createRoundedBoxGeo(0.032, cabH * 0.24, cabLen * 0.18, 0.02, 2, 6),
+        createRoundedBoxGeo(0.032, cabH * 0.22, cabLen * 0.17, 0.02, 2, 6),
         mats.glass,
       );
       slpWin.position.set(side * (width * 0.494), cabBaseY + cabH * 0.66, cabZ - ch * 0.52);
       slpWin.userData.noShadow = true;
       slpWin.renderOrder = 2;
-      group.add(slpWin);
+      group.add(slpGasket, slpWin);
     });
 
     if (!cityMode) {
@@ -1477,6 +2384,7 @@ export function buildHeavyTruckVehicle(
     group.add(grab);
 
     if (!cityMode) {
+      const cabTopShift = Math.max(0.065, doorHingeXAbs - width * 0.435);
       const fDoor = createSideDoorGroup(
         {
           side,
@@ -1485,10 +2393,10 @@ export function buildHeavyTruckVehicle(
           hingeZ: fDoorHingeZ,
           doorLen,
           doorHeight: hoodTopH * 0.88,
-          glassHeight: cabH * 0.38,
+          glassHeight: Math.max(0.32, wsTopY - wsBotY - 0.02),
           glassTopZInsetFront: (wsBotZ - wsTopZ) * 0.65,
           glassTopZInsetRear: 0.04,
-          topInwardShift: 0.065,
+          topInwardShift: cabTopShift,
           hasMirror: false,
           isScissor: false,
           isRearDoor: false,
@@ -1512,10 +2420,10 @@ export function buildHeavyTruckVehicle(
             hingeZ: fDoorHingeZ - doorLen - 0.05,
             doorLen: doorLen * 0.90,
             doorHeight: hoodTopH * 0.88,
-            glassHeight: cabH * 0.38,
+            glassHeight: Math.max(0.32, wsTopY - wsBotY - 0.02),
             glassTopZInsetFront: 0.04,
             glassTopZInsetRear: 0.04,
-            topInwardShift: 0.065,
+            topInwardShift: cabTopShift,
             hasMirror: false,
             isScissor: false,
             isRearDoor: true,
@@ -1964,7 +2872,9 @@ export function buildVanOrArmoredVehicle(
   const noseFrontPt = halfL - noseFrontBevel - 0.015; // extruded outer nose lands cleanly at halfL - 0.015
   const noseStartY = g.groundClearance + hoodH * 0.66;
 
-  // 1a. Lower cab chassis & sloped hood (ends cleanly at beltY so windshield above is 100% open!)
+  const cabFloorY = g.groundClearance + 0.20;
+
+  // 1a. Hollowed cab chassis floor pan + sloped engine nose (drops cleanly to cabFloorY inside cab!)
   const cabLowerShape = new THREE.Shape();
   cabLowerShape.moveTo(cabRearZ, g.groundClearance);
   const fStart = Math.max(cabRearZ + 0.06, frontWheelZ - archR);
@@ -1977,7 +2887,8 @@ export function buildVanOrArmoredVehicle(
   cabLowerShape.lineTo(noseFrontPt - 0.03, g.groundClearance + 0.06);
   cabLowerShape.lineTo(noseFrontPt, noseStartY);
   cabLowerShape.lineTo(hoodZ, beltY - 0.03);
-  cabLowerShape.lineTo(cabRearZ, beltY - 0.03);
+  cabLowerShape.lineTo(hoodZ - 0.05, cabFloorY);
+  cabLowerShape.lineTo(cabRearZ, cabFloorY);
   cabLowerShape.closePath();
 
   const cabLowerGeo = createExtrudedProfile(
@@ -2078,45 +2989,24 @@ export function buildVanOrArmoredVehicle(
   upperBrow.position.set(0, cabTopY - 0.055, wsTopZ);
   group.add(upperBrow);
 
-  // Visible Cab Dashboard, Steering Wheel & Twin Bucket Seats inside cab
-  if (!cityMode) {
-    const cabInt = buildVisibleInterior(
-      1.05,
-      windowH * 0.72,
-      width * 0.82,
-      2,
-      mats,
-      false,
-      0.14,
-      cityMode,
-      {
-        styleId: v.id,
-        archetype: g.archetype,
-      },
-      animated,
-    );
-    cabInt.position.set(0, g.groundClearance + 0.22, (hoodZ + cabRearZ) * 0.5 - 0.06);
-    group.add(cabInt);
-  } else {
-    const dash = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72, 0.20, 0.24), mats.trim);
-    dash.position.set(0, beltY - 0.02, hoodZ - 0.14);
-    group.add(dash);
-    const wheelMount = new THREE.Group();
-    wheelMount.position.set(-width * 0.20, beltY + 0.14, hoodZ - 0.28);
-    wheelMount.rotation.x = 0.42;
-    const wheelGrp = new THREE.Group();
-    wheelGrp.add(new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.02, 6, 14), mats.trim));
-    for (let s = 0; s < 3; s++) {
-      const a = (s * Math.PI * 2) / 3;
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.13, 0.015), mats.alloy);
-      spoke.position.set(Math.sin(a) * 0.065, Math.cos(a) * 0.065, 0);
-      spoke.rotation.z = -a;
-      wheelGrp.add(spoke);
-    }
-    wheelMount.add(wheelGrp);
-    group.add(wheelMount);
-    animated.steeringWheels.push(wheelGrp);
-  }
+  // Full Hollowed Van / Food Truck / Ambulance / Armored Cab Cockpit
+  const vanCabFrontZ = hoodZ - 0.05;
+  const vanCabDepth = Math.max(0.95, vanCabFrontZ - cabRearZ);
+  const cabInt = buildHeavyCabinInterior({
+    cabWidth: width * 0.82,
+    cabDepth: vanCabDepth,
+    cabHeight: cabTopY - cabFloorY - 0.08,
+    dashTopY: Math.max(0.58, beltY - cabFloorY + 0.02),
+    seatsCount: 2,
+    isVan: true,
+    hasWalkthrough: !isArmored && !isSweeper,
+    wsSlopeInset: Math.max(0, hoodZ - wsTopZ),
+    mats,
+    cityMode,
+    animated,
+  });
+  cabInt.position.set(0, cabFloorY, (vanCabFrontZ + cabRearZ) * 0.5);
+  group.add(cabInt);
 
   // Hollowed Rear Cargo / Medical / Tactical / Hopper Bay
   const cargoLen = Math.max(0.9, cabRearZ - (-halfL + 0.04));
@@ -2144,19 +3034,64 @@ export function buildVanOrArmoredVehicle(
   const doorRearEdgeZ = fDoorHingeZ - fDoorLen;
 
   [-1, 1].forEach((side) => {
-    const wall = new THREE.Mesh(
-      createRoundedBoxGeo(wallT, wallH, cargoLen + 0.06, 0.03, 2, 8),
-      mats.body,
-    );
-    wall.position.set(side * (width * 0.5 - wallT * 0.5), bayFloorY + wallH * 0.5 - 0.02, cargoCenterZ);
-    tagPart(
-      wall,
-      isArmored ? 'Blindagem Lateral Balística' : isAmbulance ? 'Parede Módulo Médico' : 'Lateral Baú Furgão',
-      side * 0.35,
-      0.15,
-      -0.2,
-    );
-    group.add(wall);
+    if (side > 0 && isFoodTruck && !cityMode) {
+      // Food Truck curb-side wall with real serving window cutout matching hinged awning hatch
+      const hatchHalfZ = length * 0.22;
+      const hatchFrontZ = Math.min(cabRearZ + 0.02, -0.2 + hatchHalfZ);
+      const hatchRearZ = Math.max(-halfL + 0.06, -0.2 - hatchHalfZ);
+      const sillTopY = beltY - 0.04;
+      const headerBotY = cabTopY - 0.22;
+      const wallX = width * 0.5 - wallT * 0.5;
+
+      const lowerSkirtH = Math.max(0.24, sillTopY - bayFloorY + 0.02);
+      const lowerSkirt = new THREE.Mesh(
+        createRoundedBoxGeo(wallT, lowerSkirtH, cargoLen + 0.06, 0.03, 2, 8),
+        mats.body,
+      );
+      lowerSkirt.position.set(wallX, bayFloorY + lowerSkirtH * 0.5 - 0.02, cargoCenterZ);
+      group.add(lowerSkirt);
+
+      const upperHeaderH = Math.max(0.14, boxRoofY - headerBotY);
+      const upperHeader = new THREE.Mesh(
+        createRoundedBoxGeo(wallT, upperHeaderH, cargoLen + 0.06, 0.03, 2, 8),
+        mats.body,
+      );
+      upperHeader.position.set(wallX, boxRoofY - upperHeaderH * 0.5, cargoCenterZ);
+      group.add(upperHeader);
+
+      const frontColLen = cabRearZ + 0.03 - hatchFrontZ;
+      if (frontColLen > 0.06) {
+        const fCol = new THREE.Mesh(
+          createRoundedBoxGeo(wallT, wallH, frontColLen, 0.03, 2, 8),
+          mats.body,
+        );
+        fCol.position.set(wallX, bayFloorY + wallH * 0.5 - 0.02, (cabRearZ + 0.03 + hatchFrontZ) * 0.5);
+        group.add(fCol);
+      }
+      const rearColLen = hatchRearZ - (-halfL + 0.01);
+      if (rearColLen > 0.06) {
+        const rCol = new THREE.Mesh(
+          createRoundedBoxGeo(wallT, wallH, rearColLen, 0.03, 2, 8),
+          mats.body,
+        );
+        rCol.position.set(wallX, bayFloorY + wallH * 0.5 - 0.02, (hatchRearZ + (-halfL + 0.01)) * 0.5);
+        group.add(rCol);
+      }
+    } else {
+      const wall = new THREE.Mesh(
+        createRoundedBoxGeo(wallT, wallH, cargoLen + 0.06, 0.03, 2, 8),
+        mats.body,
+      );
+      wall.position.set(side * (width * 0.5 - wallT * 0.5), bayFloorY + wallH * 0.5 - 0.02, cargoCenterZ);
+      tagPart(
+        wall,
+        isArmored ? 'Blindagem Lateral Balística' : isAmbulance ? 'Parede Módulo Médico' : 'Lateral Baú Furgão',
+        side * 0.35,
+        0.15,
+        -0.2,
+      );
+      group.add(wall);
+    }
 
     // Side B-pillar cheek sealing space between cab door rear edge & cargo wall
     if (doorRearEdgeZ > cabRearZ + 0.02) {
@@ -2209,9 +3144,22 @@ export function buildVanOrArmoredVehicle(
         mats.secondary,
       );
       medCabinet.position.set(width * 0.28, bayFloorY + wallH * 0.36, cargoCenterZ);
+      const monitor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.12), mats.sirenBlue);
+      monitor.position.set(width * 0.24, bayFloorY + wallH * 0.56, cargoCenterZ + 0.25);
+      const squadBench = new THREE.Mesh(
+        createRoundedBoxGeo(0.30, 0.34, cargoLen * 0.52, 0.02, 2, 6),
+        mats.interior,
+      );
+      squadBench.position.set(width * 0.24, bayFloorY + 0.17, cargoCenterZ - 0.15);
       const oxyTank = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.65, 10), mats.sirenBlue);
       oxyTank.position.set(width * 0.18, bayFloorY + 0.34, cabRearZ - 0.28);
-      group.add(stretcherFrame, mattress, medCabinet, oxyTank);
+      const grabRail = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.016, 0.016, cargoLen * 0.68, 8),
+        mats.chrome,
+      );
+      grabRail.rotation.x = Math.PI / 2;
+      grabRail.position.set(0, boxRoofY - 0.16, cargoCenterZ);
+      group.add(stretcherFrame, mattress, medCabinet, monitor, squadBench, oxyTank, grabRail);
     } else if (isArmored) {
       [-1, 1].forEach((side) => {
         const bench = new THREE.Mesh(
@@ -2219,38 +3167,94 @@ export function buildVanOrArmoredVehicle(
           mats.interior,
         );
         bench.position.set(side * (width * 0.28), bayFloorY + 0.36, cargoCenterZ);
-        group.add(bench);
+        const backPad = new THREE.Mesh(
+          createRoundedBoxGeo(0.08, 0.38, cargoLen * 0.74, 0.02, 2, 6),
+          mats.interior,
+        );
+        backPad.position.set(side * (width * 0.39), bayFloorY + 0.60, cargoCenterZ);
+        group.add(bench, backPad);
       });
+      const gearRack = new THREE.Mesh(
+        createRoundedBoxGeo(width * 0.54, wallH * 0.62, 0.14, 0.02, 2, 6),
+        mats.trim,
+      );
+      gearRack.position.set(0, bayFloorY + wallH * 0.34, cabRearZ - 0.10);
+      group.add(gearRack);
     } else if (isFoodTruck) {
-      const grill = new THREE.Mesh(createRoundedBoxGeo(0.45, 0.76, cargoLen * 0.76, 0.02, 2, 6), mats.chrome);
-      grill.position.set(-width * 0.24, bayFloorY + 0.38, cargoCenterZ);
-      const innerCounter = new THREE.Mesh(createRoundedBoxGeo(0.38, 0.72, cargoLen * 0.72, 0.02, 2, 6), mats.secondary);
-      innerCounter.position.set(width * 0.24, bayFloorY + 0.36, cargoCenterZ);
-      group.add(grill, innerCounter);
+      // Full Gourmet Kitchen Interior: Stainless Cooking Line, Exhaust Hood, Serving Counter & POS
+      const stoveBase = new THREE.Mesh(
+        createRoundedBoxGeo(0.50, 0.78, cargoLen * 0.80, 0.02, 2, 6),
+        mats.chrome,
+      );
+      stoveBase.position.set(-width * 0.24, bayFloorY + 0.39, cargoCenterZ);
+      const griddleTop = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.05, cargoLen * 0.36),
+        mats.grille,
+      );
+      griddleTop.position.set(-width * 0.23, bayFloorY + 0.80, cargoCenterZ + cargoLen * 0.14);
+      const rangeHood = new THREE.Mesh(
+        createRoundedBoxGeo(0.54, 0.20, cargoLen * 0.72, 0.02, 2, 6),
+        mats.alloy,
+      );
+      rangeHood.position.set(-width * 0.23, boxRoofY - 0.26, cargoCenterZ);
+
+      const servingCounter = new THREE.Mesh(
+        createRoundedBoxGeo(0.42, 0.76, cargoLen * 0.78, 0.02, 2, 6),
+        mats.secondary,
+      );
+      servingCounter.position.set(width * 0.25, bayFloorY + 0.38, cargoCenterZ);
+      const counterTop = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.04, cargoLen * 0.78),
+        mats.chrome,
+      );
+      counterTop.position.set(width * 0.25, bayFloorY + 0.78, cargoCenterZ);
+      const posScreen = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.18), mats.sirenBlue);
+      posScreen.position.set(width * 0.22, bayFloorY + 0.88, cargoCenterZ + 0.26);
+      const fridge = new THREE.Mesh(
+        createRoundedBoxGeo(0.44, wallH * 0.78, 0.54, 0.02, 2, 6),
+        mats.chrome,
+      );
+      fridge.position.set(-width * 0.24, bayFloorY + wallH * 0.39, -halfL + 0.36);
+      const kitchenLight = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.03, cargoLen * 0.64),
+        mats.headlight,
+      );
+      kitchenLight.position.set(0, boxRoofY - 0.12, cargoCenterZ);
+      group.add(stoveBase, griddleTop, rangeHood, servingCounter, counterTop, posScreen, fridge, kitchenLight);
     } else if (!isSweeper) {
-      [-0.22, 0.22].forEach((cx, idx) => {
+      // Courier Van Cargo Shelving Rack + Stacked Parcels + Ceiling Dome Light
+      const rack = new THREE.Mesh(
+        createRoundedBoxGeo(0.36, wallH * 0.72, cargoLen * 0.78, 0.02, 2, 6),
+        mats.alloy,
+      );
+      rack.position.set(-width * 0.28, bayFloorY + wallH * 0.36, cargoCenterZ);
+      group.add(rack);
+      [-0.18, 0.22].forEach((cx, idx) => {
         const crate = new THREE.Mesh(
-          createRoundedBoxGeo(0.54, 0.48, 0.64, 0.02, 2, 6),
+          createRoundedBoxGeo(0.48, 0.44, 0.58, 0.02, 2, 6),
           idx === 0 ? mats.secondary : mats.accent,
         );
-        crate.position.set(cx * width, bayFloorY + 0.26, cargoCenterZ - idx * 0.35);
+        crate.position.set(cx * width, bayFloorY + 0.24, cargoCenterZ - idx * 0.35);
         group.add(crate);
       });
+      const dome = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.52), mats.headlight);
+      dome.position.set(0, boxRoofY - 0.12, cargoCenterZ);
+      group.add(dome);
     }
   }
 
   // 2. Flush Trapezoidal Windshield + Gasket Frame + Wipers (100% visible outside cab!)
   const wsLen = Math.hypot(cabTopY - beltY, hoodZ - wsTopZ);
   const wsAngle = Math.atan2(hoodZ - wsTopZ, cabTopY - beltY);
-  const wsGlassH = isArmored ? wsLen * 0.46 : wsLen * 0.90;
+  const wsGlassH = isArmored ? wsLen * 0.48 : wsLen * 0.96;
   const ws = new THREE.Mesh(
-    createTrapezoidGlassGeo(width * 0.80, width * 0.76, wsGlassH, 0.024),
+    createTrapezoidGlassGeo(width * 0.86, width * 0.82, wsGlassH, 0.024),
     mats.glass,
   );
   ws.position.set(
     0,
     isArmored ? beltY + windowH * 0.56 : (beltY + cabTopY) * 0.5,
-    (hoodZ + wsTopZ) * 0.5 + 0.008,
+    (hoodZ + wsTopZ) * 0.5 + 0.004,
   );
   ws.rotation.x = -wsAngle;
   ws.userData.noShadow = true;
@@ -2258,9 +3262,23 @@ export function buildVanOrArmoredVehicle(
   tagPart(ws, isArmored ? 'Visor Blindado Dianteiro' : 'Para-brisa Amplo', 0, 0.35, 0.55);
   group.add(ws);
 
+  // Slim side rubber seals along A-pillars framing the windshield glass cleanly
+  [-1, 1].forEach((side) => {
+    group.add(
+      makeStrutBetween(
+        new THREE.Vector3(side * (width * 0.43), beltY + 0.01, hoodZ),
+        new THREE.Vector3(side * (width * 0.41), cabTopY - 0.03, wsTopZ),
+        0.022,
+        0.022,
+        mats.trim,
+        6,
+      ),
+    );
+  });
+
   [-0.18, 0.18].forEach((wx) => {
     const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.018, 0.024), mats.trim);
-    wiper.position.set(wx * width, beltY + 0.05, hoodZ + 0.02);
+    wiper.position.set(wx * width, beltY + 0.05, hoodZ + 0.018);
     wiper.rotation.z = 0.08;
     group.add(wiper);
   });
@@ -2408,10 +3426,11 @@ export function buildVanOrArmoredVehicle(
     acPod.position.set(0, boxRoofY + 0.08, cargoCenterZ);
     group.add(acPod);
   } else if (isFoodTruck) {
+    const hatchH = Math.max(0.82, cabTopY - 0.22 - (beltY - 0.04));
     const hatchPivot = new THREE.Group();
     hatchPivot.position.set(width * 0.502, cabTopY - 0.22, -0.2);
-    const awning = new THREE.Mesh(createRoundedBoxGeo(0.06, 0.82, length * 0.44, 0.02, 2, 8), mats.accent);
-    awning.position.set(0, -0.41, 0);
+    const awning = new THREE.Mesh(createRoundedBoxGeo(0.06, hatchH, length * 0.44, 0.02, 2, 8), mats.accent);
+    awning.position.set(0, -hatchH * 0.5, 0);
     hatchPivot.add(awning);
     tagPart(hatchPivot, 'Janela Balcão Gourmet Articulada', 0.6, 0.2, 0);
     group.add(hatchPivot);

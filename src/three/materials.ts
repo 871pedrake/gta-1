@@ -175,6 +175,8 @@ export interface VehicleMaterialSet {
   sirenBlue: THREE.MeshStandardMaterial;
   sirenAmber: THREE.MeshStandardMaterial;
   grille: THREE.MeshStandardMaterial;
+  safetyYellow: THREE.MeshStandardMaterial;
+  transitBlue: THREE.MeshStandardMaterial;
   dispose: () => void;
 }
 
@@ -194,6 +196,8 @@ interface CitySharedVehicleMaterials {
   sirenBlue: THREE.MeshStandardMaterial;
   sirenAmber: THREE.MeshStandardMaterial;
   grille: THREE.MeshStandardMaterial;
+  safetyYellow: THREE.MeshStandardMaterial;
+  transitBlue: THREE.MeshStandardMaterial;
 }
 
 let cachedCityVehicleMats: CitySharedVehicleMaterials | null = null;
@@ -211,11 +215,11 @@ function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMater
       roughness: 0.88,
     }),
     glass: new THREE.MeshStandardMaterial({
-      color: 0x6ea8d6,
-      metalness: 0.12,
-      roughness: 0.06,
+      color: 0x3b6e8c,
+      metalness: 0.08,
+      roughness: 0.08,
       transparent: true,
-      opacity: 0.48,
+      opacity: 0.38,
       depthWrite: false,
     }),
     mirrorGlass: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.05 }),
@@ -260,6 +264,8 @@ function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMater
       roughness: 0.22,
     }),
     grille: new THREE.MeshStandardMaterial({ color: 0x121216, metalness: 0.5, roughness: 0.55 }),
+    safetyYellow: new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.18, roughness: 0.32 }),
+    transitBlue: new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.06, roughness: 0.76 }),
   };
   return cachedCityVehicleMats;
 }
@@ -385,6 +391,8 @@ export function createVehicleMaterials(
       sirenBlue,
       sirenAmber,
       grille: shared.grille,
+      safetyYellow: shared.safetyYellow,
+      transitBlue: shared.transitBlue,
       dispose: () => {
         owned.forEach((m) => m.dispose());
       },
@@ -455,17 +463,18 @@ export function createVehicleMaterials(
   });
 
   const glass = new THREE.MeshPhysicalMaterial({
-    color: 0xaad4f5,
-    metalness: 0.04,
-    roughness: 0.04,
-    transmission: isSoftwareGl ? 0 : 0.62,
+    color: 0x1e3a4c,
+    metalness: 0.08,
+    roughness: 0.06,
+    transmission: 0,
     transparent: true,
-    opacity: isSoftwareGl ? 0.34 : 0.36,
+    opacity: 0.22,
     depthWrite: false,
-    ior: 1.5,
-    thickness: 0.14,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.04,
+    ior: 1.45,
+    reflectivity: 0.35,
+    clearcoat: 0.30,
+    clearcoatRoughness: 0.08,
+    envMapIntensity: 0.40,
     side: THREE.DoubleSide,
   });
 
@@ -566,6 +575,18 @@ export function createVehicleMaterials(
     roughness: 0.55,
   });
 
+  const safetyYellow = new THREE.MeshStandardMaterial({
+    color: 0xfacc15,
+    metalness: 0.18,
+    roughness: 0.32,
+  });
+
+  const transitBlue = new THREE.MeshStandardMaterial({
+    color: 0x2563eb,
+    metalness: 0.06,
+    roughness: 0.76,
+  });
+
   const all = [
     body,
     secondary,
@@ -590,6 +611,8 @@ export function createVehicleMaterials(
     sirenBlue,
     sirenAmber,
     grille,
+    safetyYellow,
+    transitBlue,
   ];
 
   return {
@@ -616,6 +639,8 @@ export function createVehicleMaterials(
     sirenBlue,
     sirenAmber,
     grille,
+    safetyYellow,
+    transitBlue,
     dispose: () => {
       all.forEach((m) => m.dispose());
     },

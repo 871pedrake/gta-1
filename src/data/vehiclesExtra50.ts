@@ -1616,7 +1616,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     category: 'Emergência & Polícia',
     roleInCity: 'Jet ski de salvamento e patrulhamento da praia e rio',
     conceptSummary:
-      'Moto aquática de resgate em amarelo vibrante e vermelho com barra sinalizadora traseira, prancha de salvamento acoplada e retrovisores amplos.',
+      'Moto aquática de resgate em amarelo vibrante e vermelho com barra sinalizadora frontal, prancha de salvamento acoplada e retrovisores amplos.',
     dimensions: { length: 3.38, width: 1.26, height: 1.28, wheelbase: 0 },
     unitySpec: {
       controlType: 'BarcoControle',
@@ -1653,7 +1653,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     },
     craftedParts: [
       'Casco de alta visibilidade amarelo e vermelho',
-      'Mastro com giroflex policial na popa',
+      'Barra sinalizadora policial LED na proa',
       'Para-brisa transparente e retrovisores duplos',
       'Hidrojato direcional para manobras na arrebentação',
     ],
