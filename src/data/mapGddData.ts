@@ -87,6 +87,27 @@ export const GDD_EXPLICIT_RULES: GddExplicitRule[] = [
     rule: 'A cidade integra contraste urbano legível: Morro da Esperança no maciço Norte; setor financeiro e Cidade Alta; Escola Pública E.M. Cidade Nova (-17,-85 @ +6,75m) com escada/rampa e Área Escolar; e no flanco esquerdo (-X) a Praia Oeste estilo Ponta Negra ligada pela Av. Beira-Mar (-162), grande calçadão de 9m (+0,30m) com 3 escadarias, praça semicircular com arco em onda, caminho sinuoso na areia, 7 lojas/quiosques, cadeiras/espreguiçadeiras e Ponte em Arco até a Ilha do Sol (-252,-10).',
     unityRequirement: 'Manter a muralha sul do rio contínua até X = -176,2, gerar terreno contínuo da Praia Oeste/Baía/Ilha via cityBasinTerrainY e InstancedMesh botânico nas zonas de reflorestamento.',
   },
+  {
+    code: 'REGRA-07',
+    title: 'Padrão 3D de Frota Pesada & Carga (Parabrisa Aberto, Grade Saliente & Zero Caixas)',
+    scope: 'heavyVehicles · Ônibus, BRT, Caminhões, Furgões, Ambulância & Utilitários',
+    rule: 'Todo veículo pesado ou de carga exige cabine dividida em capô inferior + parede traseira + testeira + colunas A deixando o parabrisa 100% visível com painel e bancos internos (proibido bloco sólido cobrindo o vidro), para-lamas dianteiros contornados ao ângulo do capô (zero orelhas quadradas em vans/ambulâncias) e grade frontal + faróis posicionados à frente do chanfro do nariz (frontZ >= noseMaxZ - 0.005m). Inclui chassi em longarinas com cardã/diferencial, sanfona de 9 dobras no BRT, pistão hidráulico na caçamba, funil/escada na betoneira, manômetros/escada 15 degraus nos bombeiros, teto médico/estrobos na ambulância, exaustor no food truck e ciclone na varredeira.',
+    unityRequirement: 'Espelhar exatamente heavyVehicles.ts em Fabrica50Veiculos.MontarVeiculoTerrestre com Cabine_Inferior + Teto_Cabine + Parabrisa aberto e grade/faróis salientes (+0.02f).',
+  },
+  {
+    code: 'REGRA-08',
+    title: 'Conversíveis Padrão VHC-52, Motos/ATV Cyberquad & Regra Única Anti-Bug',
+    scope: 'specialVehicles + wheeledVehicles + wheelsAndInterior · Portas, Bancos, Guidões & Retrovisores',
+    rule: 'Regra única anti-bug para todos os veículos na Web e Unity: (1) Portas 100% rentes em X = ±(larg*0.495 - 0.034) sobre núcleo recuado (0,84×larg) com soleira, para-lama e pilar B; (2) Altura mínima sobre rodas wheelRadius*2 + 0.042m; (3) Todos os carros sem teto usam banco concha multi-peça padrão VHC-52 diferenciado por modelo (styleId % 5), twin_rollbar ancorado em rearY, retrovisor interno preso na moldura superior do parabrisa e buggy em cockpit tubular aberto; (4) Motos, scooters, trike, jetski e ATV Cyberquad exigem guidão conectado por risers/clip-ons/coluna de direção à mesa superior + retrovisores presos diretamente no manete (zero peças flutuantes) e suspensão A-arm aparente no ATV.',
+    unityRequirement: 'Validar corpoH >= (raioRoda * 2 + 0.042 - vao), Bancos/Santantonio/Retrovisor_Interno ancorados, Riser_Guidao/Coluna_Direcao conectados e ATV angular em Fabrica50Veiculos.cs antes do port Unity.',
+  },
+  {
+    code: 'REGRA-09',
+    title: 'Frota Aérea pelo Mapa Mental: Helicópteros Sem Bolha Flutuante & Aviões/Jatos Únicos',
+    scope: 'airVehicles · VHC-48, VHC-49 e VHC-87..100 (Helicópteros, Aviões & Caças)',
+    rule: 'Helicópteros abandonam a esfera flutuante no nariz para adotar fuselagem vazada com para-brisa envolvente embutido em colunas A, montante central, janelas inferiores de queixo, interior visível (bancos, manche cíclico e tela MFD), turbinas gêmeas superiores com exaustores, rotor com swashplate/pitch-links, estabilizador horizontal com endplates e kits únicos: Apache (cabine tandem, radar Longbow, canhão 30mm, TADS e stub-wings recuadas com foguetes/Hellfire), Stealth (casco facetado + V-tail + Fenestron), VIP (Fenestron + degraus), Polícia (FLIR + holofote) e Resgate/Skycrane (guincho + gancho inferior). Aviões e jatos usam fuselagens esculpidas e asas afiladas distintas para Cessna, Hidroavião, Biplano radial, King Air T-Tail, Cargueiro com rampa, Lear VIP, F-22, F-16, Acrobático e Concorde.',
+    unityRequirement: 'Sincronizar MontarHelicoptero e MontarAviaoOuJato em Fabrica50Veiculos.cs garantindo zero esfera protuberante fora do contorno da fuselagem e mantendo escotilhas/portas livres das asas no Apache.',
+  },
 ];
 
 export const GDD_ZONES: GddZoneSpec[] = [
@@ -440,6 +461,16 @@ export const GDD_UNITY_CHECKLIST = [
       'Substituir árvores/arbustos simples por prefabs multi-galho (raízes + ramos + 13 clusters) e arbustos floridos',
       'Manter 4 comércios autênticos na base do Morro fora das pistas e excluir árvores/casas do leito do Córrego',
       'Bake de NavMesh Humanoid com OffMeshLinks nas escadas do Cais Baixo, Passarela (+34), Escadões e Pinguela (Z = 62)',
+    ],
+  },
+  {
+    phase: '04 · Frota 3D Pesada, Conversíveis VHC-52, Motos/ATV Cyberquad & Zero-Bug',
+    script: 'Fabrica50Veiculos.cs (MontarVeiculoTerrestre & MontarMotoOuAtv)',
+    tasks: [
+      'Validar portas 100% rentes em X = ±(larg*0.495 - 0.034), caixas de roda com clearance wheelRadius*2 + 0.042m e parabrisa aberto visível com grade/faróis salientes em todos os veículos',
+      'Verificar bancos padrão VHC-52 diferenciados nos conversíveis/roadsters/buggys, santantonio ancorado em rearY, retrovisor preso na moldura e buggy em cockpit tubular aberto',
+      'Confirmar motos (5 arquétipos), trike, jetski e ATV Cyberquad com guidões conectados por risers/coluna de direção, retrovisores presos no manete e suspensão A-arm aparente',
+      'Validar os 6 helicópteros pelo mapa mental (para-brisa embutido sem bolha flutuante, interior visível, swashplate, Fenestron/V-tail, Apache tandem/Longbow/stub-wings) e os 10 aviões/jatos com fuselagem e asas diferenciadas em MontarHelicoptero e MontarAviaoOuJato',
     ],
   },
 ];

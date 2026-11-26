@@ -365,6 +365,40 @@ export function addCarBodyDetailsAndLivery(
       tagPart(fin, 'Antena Shark-Fin', 0, 0.5, 0);
       group.add(fin);
     }
+
+    // Extra bespoke exterior details for open-top cars (side fender gills, fog lamps, rear deck garnish & sill blades)
+    if (v.geometry.archetype === 'convertible' || v.geometry.archetype === 'roadster') {
+      [-1, 1].forEach((side) => {
+        // Side front fender extractor vent/gill ahead of door
+        const gill = new THREE.Mesh(
+          createRoundedBoxGeo(0.024, 0.095, 0.24, 0.008, 2, 6),
+          mats.grille,
+        );
+        gill.position.set(side * (width * 0.494), bodyLift + hoodH * 0.66, cabCenterZ + cabLen * 0.52 + 0.18);
+        group.add(gill);
+
+        // Fog lamp pod inset into lower front bumper apron
+        const fog = new THREE.Mesh(
+          createRoundedBoxGeo(0.14, 0.055, 0.04, 0.01, 2, 6),
+          mats.amberSignal,
+        );
+        fog.position.set(side * (width * 0.31), bodyLift + 0.11, halfL + 0.042);
+        group.add(fog);
+      });
+
+      // Center rear trunk garnish / retro reflector bar + high-mount brake lamp
+      const deckBadge = new THREE.Mesh(
+        createRoundedBoxGeo(width * 0.34, 0.06, 0.032, 0.01, 2, 6),
+        v.palette.trim === 'chrome' ? mats.chrome : mats.grille,
+      );
+      deckBadge.position.set(0, bodyLift + rearH * 0.62, -halfL - 0.005);
+      const thirdBrake = new THREE.Mesh(
+        new THREE.BoxGeometry(0.32, 0.024, 0.03),
+        mats.taillight,
+      );
+      thirdBrake.position.set(0, bodyLift + rearH + 0.01, -halfL + 0.10);
+      group.add(deckBadge, thirdBrake);
+    }
   }
 
   if (livery === 'racing_stripes' || livery === 'rally') {
@@ -418,12 +452,23 @@ export function addCarBodyDetailsAndLivery(
     group.add(stripeGrp);
   } else if (livery === 'two_tone') {
     const ttGrp = new THREE.Group();
-    const wrap = new THREE.Mesh(
-      new THREE.BoxGeometry(width + 0.015, bodyH * 0.22, length * 0.92),
-      mats.secondary,
-    );
-    wrap.position.set(0, bodyLift + bodyH * 0.14, 0);
-    ttGrp.add(wrap);
+    if (skipSideTrim) {
+      [-1, 1].forEach((side) => {
+        const rocker = new THREE.Mesh(
+          new THREE.BoxGeometry(0.028, bodyH * 0.22, length * 0.92),
+          mats.secondary,
+        );
+        rocker.position.set(side * (width * 0.492), bodyLift + bodyH * 0.14, 0);
+        ttGrp.add(rocker);
+      });
+    } else {
+      const wrap = new THREE.Mesh(
+        new THREE.BoxGeometry(width + 0.015, bodyH * 0.22, length * 0.92),
+        mats.secondary,
+      );
+      wrap.position.set(0, bodyLift + bodyH * 0.14, 0);
+      ttGrp.add(wrap);
+    }
     tagPart(ttGrp, 'Pintura Bicolor com Filete', 0, 0.1, 0);
     group.add(ttGrp);
   } else if (livery === 'side_stripe' && !skipSideTrim) {
@@ -777,26 +822,67 @@ export function addVehicleAttachments(
       pod.position.y = 0.03;
       lb.add(pod);
     }
-    const barZ = v.geometry.archetype === 'helicopter' ? 0.5 : length * 0.05;
-    lb.position.set(0, roofY + 0.04, barZ);
+    const isBuggy = v.geometry.archetype === 'buggy';
+    const isOpenCar = v.geometry.archetype === 'roadster' || v.geometry.archetype === 'convertible';
+    let barY = roofY + 0.04;
+    let barZ = v.geometry.archetype === 'helicopter' ? 0.5 : length * 0.05;
+    if (isBuggy) {
+      // Anchor directly onto the buggy's overhead tubular rollcage header!
+      const cabC = -length * 0.04;
+      const cLen = length * v.geometry.cabinLengthRatio;
+      barY = roofY - 0.015;
+      barZ = cabC + cLen * 0.16;
+    } else if (isOpenCar) {
+      barY = rearY + 0.24;
+      barZ = -length * 0.18;
+    }
+    lb.position.set(0, barY, barZ);
     tagPart(lb, isPolice ? 'Giroflex LED Bipartido Polícia' : 'Barra Sinalizadora Âmbar', 0, 0.6, 0);
     group.add(lb);
   }
 
   if (atts.includes('twin_rollbar')) {
     const rbGroup = new THREE.Group();
-    const isOpen = v.geometry.archetype === 'roadster' || v.geometry.archetype === 'convertible';
+    const isOpen = v.geometry.archetype === 'roadster' || v.geometry.archetype === 'convertible' || v.geometry.archetype === 'buggy';
+    const cabC = -length * 0.05;
+    const cLen = length * v.geometry.cabinLengthRatio;
     const span = isOpen ? width * 0.24 : width * 0.36;
     if (isOpen) {
+      // Anchor firmly ON the rear tonneau deck right behind the headrests (ZERO floating!)
+      const hoopDeckZ = cabC - cLen * 0.30;
       [-1, 1].forEach((s) => {
         const hoop = new THREE.Mesh(
-          new THREE.TorusGeometry(0.16, 0.028, 12, 22, Math.PI),
+          new THREE.TorusGeometry(0.145, 0.026, 12, 22, Math.PI),
           mats.chrome,
         );
-        hoop.position.x = s * span;
+        hoop.position.set(s * span, 0.06, 0);
         rbGroup.add(hoop);
+
+        // Chrome mounting base collars + vertical leg sockets anchored down into deck
+        [-0.145, 0.145].forEach((ox) => {
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.028, 0.08, 10), mats.chrome);
+          leg.position.set(s * span + ox, 0.03, 0);
+          const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.040, 0.044, 0.022, 12), mats.trim);
+          collar.position.set(s * span + ox, 0.005, 0);
+          rbGroup.add(leg, collar);
+        });
+
+        // Diagonal rear kicker strut bracing each hoop into rear deck
+        rbGroup.add(
+          makeStrutBetween(
+            new THREE.Vector3(s * span, 0.19, -0.01),
+            new THREE.Vector3(s * span, 0.0, -0.22),
+            0.018,
+            0.022,
+            mats.chrome,
+            10,
+          ),
+        );
+        const kickPad = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.035, 0.02, 10), mats.trim);
+        kickPad.position.set(s * span, 0.004, -0.22);
+        rbGroup.add(kickPad);
       });
-      rbGroup.position.set(0, roofY + 0.02, -length * 0.14);
+      rbGroup.position.set(0, rearY + 0.01, hoopDeckZ);
     } else {
       const arch = new THREE.Mesh(
         new THREE.TorusGeometry(width * 0.4, 0.04, 12, 24, Math.PI),
@@ -811,25 +897,29 @@ export function addVehicleAttachments(
 
   if (atts.includes('rollcage')) {
     const cage = new THREE.Group();
-    const cw = width * 0.68;
-    const cl = length * 0.42;
+    const cw = width * (v.geometry.archetype === 'buggy' ? 0.72 : 0.68);
+    const cabC = v.geometry.archetype === 'buggy' ? -length * 0.04 : -length * 0.05;
+    const cl = length * v.geometry.cabinLengthRatio;
     [-1, 1].forEach((s) => {
       const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(s * cw * 0.48, hoodY - 0.05, cl * 0.45),
-        new THREE.Vector3(s * cw * 0.44, roofY - 0.04, cl * 0.18),
-        new THREE.Vector3(s * cw * 0.44, roofY - 0.04, -cl * 0.42),
-        new THREE.Vector3(s * cw * 0.48, rearY - 0.05, -cl * 0.65),
+        new THREE.Vector3(s * cw * 0.48, hoodY - 0.04, cabC + cl * 0.46),
+        new THREE.Vector3(s * cw * 0.44, roofY - 0.03, cabC + cl * 0.22),
+        new THREE.Vector3(s * cw * 0.44, roofY - 0.03, cabC - cl * 0.34),
+        new THREE.Vector3(s * cw * 0.48, rearY - 0.03, cabC - cl * 0.64),
       ]);
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 18, 0.028, 10, false), mats.accent);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 18, 0.030, 10, false), mats.accent);
       cage.add(tube);
     });
-    const cross = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.028, 0.028, cw * 0.88, 10),
-      mats.accent,
-    );
-    cross.rotation.z = Math.PI / 2;
-    cross.position.set(0, roofY - 0.04, -cl * 0.2);
-    cage.add(cross);
+    // Overhead front + rear cage crossbars (support overhead LED lightbar & frame cockpit)
+    [cabC + cl * 0.18, cabC - cl * 0.32].forEach((cz) => {
+      const cross = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.028, 0.028, cw * 0.88, 10),
+        mats.accent,
+      );
+      cross.rotation.z = Math.PI / 2;
+      cross.position.set(0, roofY - 0.03, cz);
+      cage.add(cross);
+    });
     tagPart(cage, 'Gaiola Rollcage Estrutural', 0, 0.55, 0);
     group.add(cage);
   }
@@ -1079,8 +1169,12 @@ export function buildFormulaCar(
     group.add(intake);
 
     if (!cityMode) {
+      const mirPos = new THREE.Vector3(side * width * 0.24, g.groundClearance + 0.48, 0.34);
+      const mirRoot = new THREE.Vector3(side * width * 0.22, g.groundClearance + 0.34, 0.24);
+      const stalk = makeStrutBetween(mirRoot, mirPos, 0.014, 0.014, mats.trim, 6);
+      group.add(stalk);
       const mirror = createAerodynamicMirror(side, mats, cityMode);
-      mirror.position.set(side * width * 0.24, g.groundClearance + 0.48, 0.34);
+      mirror.position.copy(mirPos);
       tagPart(mirror, 'Retrovisores Aero F1', side * 0.35, 0.2, 0);
       group.add(mirror);
     }
@@ -1269,27 +1363,36 @@ export function buildStandardWheeledVehicle(
   // C. PASSENGER CARS / SPORTS / SUPERCARS / SUV / PICKUPS / MONSTER / BUGGY
   const isPickup = g.archetype === 'pickup' || g.archetype === 'monster';
   const isMonster = g.archetype === 'monster';
-  const isOpenTop = g.archetype === 'roadster' || g.archetype === 'convertible';
+  const isBuggy = g.archetype === 'buggy';
+  const isOpenTop = g.archetype === 'roadster' || g.archetype === 'convertible' || isBuggy;
   const isSupercar = g.archetype === 'supercar';
-  const hasHollowCockpit = !cityMode && !isMonster && g.archetype !== 'buggy';
+  const hasHollowCockpit = !cityMode && !isMonster;
 
   const bodyLift = isMonster ? g.groundClearance * 0.55 : g.groundClearance;
   const bodyH = (height - bodyLift) * (1 - g.cabinHeightRatio);
-  const hoodH = bodyH * (isSupercar ? 0.68 : 0.88);
-  const rearH = isPickup
-    ? bodyH * 0.92
-    : bodyH * (g.archetype === 'hatch' || g.archetype === 'wagon' ? 0.98 : 0.94);
+  const minFenderTopY =
+    !isMonster && !isBuggy ? g.wheelRadius * 2 + 0.042 : bodyLift + bodyH * 0.7;
+  const minFenderH = Math.max(0, minFenderTopY - bodyLift);
+  const hoodH = Math.max(bodyH * (isSupercar ? 0.74 : 0.88), minFenderH - 0.01);
+  const rearH = Math.max(
+    isPickup
+      ? bodyH * 0.92
+      : bodyH * (g.archetype === 'hatch' || g.archetype === 'wagon' ? 0.98 : 0.94),
+    minFenderH,
+  );
 
-  const beltlineY = bodyLift + bodyH - 0.03;
-  const cabH = Math.max(0.34, height - beltlineY);
+  const beltlineY = Math.max(bodyLift + bodyH - 0.03, bodyLift + Math.max(hoodH, rearH) - 0.02);
+  const cabH = Math.max(0.32, height - beltlineY);
   const cabLen = length * g.cabinLengthRatio;
   const cabCenterZ = isPickup
     ? length * 0.08
-    : g.archetype === 'muscle' || g.archetype === 'classic' || isOpenTop || g.archetype === 'coupe'
-      ? -length * 0.05
-      : isSupercar
-        ? length * 0.04
-        : -length * (g.rearDeckRatio * 0.35 - 0.05);
+    : isBuggy
+      ? -length * 0.04
+      : g.archetype === 'muscle' || g.archetype === 'classic' || isOpenTop || g.archetype === 'coupe'
+        ? -length * 0.05
+        : isSupercar
+          ? length * 0.04
+          : -length * (g.rearDeckRatio * 0.35 - 0.05);
 
   const cabFrontZ = cabCenterZ + cabLen * 0.48;
   const cabRearZ = cabCenterZ - cabLen * 0.48;
@@ -1297,8 +1400,81 @@ export function buildStandardWheeledVehicle(
   const floorHeight = bodyH * 0.28;
   const interiorDropY = Math.max(0.18, beltlineY - (bodyLift + floorHeight));
 
-  if (hasHollowCockpit) {
-    // 1. Hollowed lower chassis tub (no slab overlap in cabin bay!)
+  if (hasHollowCockpit && isBuggy) {
+    // 1. Open Tubular Desert Buggy Chassis (hollowed narrow tub + exposed cut fenders + coilover struts + rear engine cage!)
+    const buggyTubShape = buildHollowedSideProfile(
+      length,
+      bodyLift,
+      floorHeight,
+      hoodH,
+      rearH,
+      cabFrontZ,
+      cabRearZ,
+      frontWheelZ,
+      rearWheelZ,
+      archR,
+      g.hoodSlope,
+      true,
+    );
+    const buggyTubGeo = createExtrudedProfile(buggyTubShape, width * 0.64, 0.04, 0.04, 3, 14);
+    const buggyTub = new THREE.Mesh(buggyTubGeo, mats.body);
+    tagPart(buggyTub, 'Chassi Tubular Buggy Aberto', 0, 0.05, 0);
+    group.add(buggyTub);
+
+    // Flared Baja cut fenders + exposed offroad coil-over shocks + tubular side nerf bars
+    [-1, 1].forEach((side) => {
+      [frontWheelZ, rearWheelZ].forEach((wz, idx) => {
+        const fenderFlare = new THREE.Mesh(
+          new THREE.TorusGeometry(g.wheelRadius * 1.14, 0.048, 8, 16, Math.PI * 0.85),
+          mats.body,
+        );
+        fenderFlare.rotation.y = Math.PI / 2;
+        fenderFlare.position.set(side * (width * 0.41), g.wheelRadius * 1.02, wz);
+        group.add(fenderFlare);
+
+        const shock = makeStrutBetween(
+          new THREE.Vector3(side * (width * 0.24), bodyLift + hoodH * 0.85, wz),
+          new THREE.Vector3(side * (width * 0.42), g.wheelRadius + 0.06, wz),
+          0.026,
+          0.022,
+          mats.accent,
+          8,
+        );
+        group.add(shock);
+        if (idx === 0) {
+          const arm = makeStrutBetween(
+            new THREE.Vector3(side * (width * 0.16), g.wheelRadius, wz),
+            new THREE.Vector3(side * (width * 0.42), g.wheelRadius, wz),
+            0.022,
+            0.022,
+            mats.trim,
+            8,
+          );
+          group.add(arm);
+        }
+      });
+
+      // Tubular side nerf bars along open buggy doorway (no solid side doors blocking the cockpit!)
+      const nerf = makeStrutBetween(
+        new THREE.Vector3(side * (width * 0.40), bodyLift + floorHeight + 0.08, cabFrontZ + 0.08),
+        new THREE.Vector3(side * (width * 0.40), bodyLift + floorHeight + 0.08, cabRearZ - 0.08),
+        0.028,
+        0.028,
+        mats.trim,
+        10,
+      );
+      group.add(nerf);
+    });
+
+    // Exposed rear desert engine block + front aluminum bash skidplate
+    const rearEng = createEngineBayAssembly(width * 0.46, Math.max(0.45, cabRearZ - (-halfL + 0.16)), mats, false);
+    rearEng.position.set(0, bodyLift + rearH * 0.52, (cabRearZ + (-halfL + 0.16)) * 0.5);
+    const skid = new THREE.Mesh(createRoundedBoxGeo(width * 0.44, 0.04, 0.36, 0.015, 2, 6), mats.alloy);
+    skid.position.set(0, bodyLift + 0.02, halfL - 0.14);
+    skid.rotation.x = -0.35;
+    group.add(rearEng, skid);
+  } else if (hasHollowCockpit) {
+    // 1. Hollowed lower chassis tub (narrowed to 0.84*width so flush doors sit OUTSIDE the structural sill!)
     const tubShape = buildHollowedSideProfile(
       length,
       bodyLift,
@@ -1313,32 +1489,48 @@ export function buildStandardWheeledVehicle(
       g.hoodSlope,
       true,
     );
-    const tubGeo = createExtrudedProfile(tubShape, width * 0.92, 0.055, 0.055, 4, 20);
+    const tubGeo = createExtrudedProfile(tubShape, width * 0.84, 0.045, 0.045, 4, 20);
     const tubMesh = new THREE.Mesh(tubGeo, mats.body);
     tagPart(tubMesh, 'Chassi Monobloco Esculpido', 0, 0.05, 0);
     group.add(tubMesh);
 
-    // 2. Sculpted outer front fenders + recessed engine bay + hinged hood
+    // 2. Sculpted outer front & rear fenders flush at +-width * 0.495 (covering tires cleanly) + recessed engine bay + hinged hood
     const hoodSpan = Math.max(0.45, halfL - 0.14 - cabFrontZ);
     const hoodCenterZ = (cabFrontZ + halfL - 0.14) * 0.5;
+    const fFenderH = Math.max(hoodH * 0.68, minFenderTopY - (bodyLift + hoodH * 0.34));
+    const fFenderBotY = bodyLift + hoodH * 0.34;
+    const rSpan = Math.max(0.4, cabRearZ - (-halfL + 0.14));
+    const rCenterZ = (cabRearZ + (-halfL + 0.14)) * 0.5;
+    const rFenderH = Math.max(rearH * 0.68, minFenderTopY - (bodyLift + rearH * 0.34));
+    const rFenderBotY = bodyLift + rearH * 0.34;
+
     [-1, 1].forEach((side) => {
       const fFender = new THREE.Mesh(
-        createRoundedBoxGeo(width * 0.22, hoodH * 0.62, hoodSpan + 0.06, 0.045, 4, 12),
+        createRoundedBoxGeo(width * 0.21, fFenderH, hoodSpan + 0.08, 0.042, 4, 12),
         mats.body,
       );
-      fFender.position.set(side * (width * 0.39), bodyLift + hoodH * 0.68, hoodCenterZ);
+      fFender.position.set(side * (width * 0.39), fFenderBotY + fFenderH * 0.5, hoodCenterZ);
       tagPart(fFender, 'Para-lama Dianteiro Esculpido', side * 0.35, 0.05, 0.2);
       group.add(fFender);
 
-      const rSpan = Math.max(0.4, cabRearZ - (-halfL + 0.14));
-      const rCenterZ = (cabRearZ + (-halfL + 0.14)) * 0.5;
       const rFender = new THREE.Mesh(
-        createRoundedBoxGeo(width * 0.22, rearH * 0.62, rSpan + 0.06, 0.045, 4, 12),
+        createRoundedBoxGeo(width * 0.21, rFenderH, rSpan + 0.08, 0.042, 4, 12),
         mats.body,
       );
-      rFender.position.set(side * (width * 0.39), bodyLift + rearH * 0.68, rCenterZ);
+      rFender.position.set(side * (width * 0.39), rFenderBotY + rFenderH * 0.5, rCenterZ);
       tagPart(rFender, 'Para-lama Traseiro Esculpido', side * 0.35, 0.05, -0.2);
       group.add(rFender);
+
+      // Sculpted wheel-arch eyebrows for clean fender clearance over front/rear tires
+      [frontWheelZ, rearWheelZ].forEach((wz) => {
+        const eyebrow = new THREE.Mesh(
+          new THREE.TorusGeometry(g.wheelRadius * 1.14, 0.036, 8, 18, Math.PI),
+          mats.body,
+        );
+        eyebrow.rotation.y = Math.PI / 2;
+        eyebrow.position.set(side * (width * 0.486), g.wheelRadius * 0.96, wz);
+        group.add(eyebrow);
+      });
     });
 
     // Recessed engine bay + hinged hood (for supercar rear engine, hood opens front frunk!)
@@ -1349,7 +1541,7 @@ export function buildStandardWheeledVehicle(
     const hoodPivot = new THREE.Group();
     hoodPivot.position.set(0, bodyLift + hoodH * 0.96, cabFrontZ + 0.04);
     const hoodLid = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.62, 0.065, hoodSpan, 0.03, 4, 12),
+      createRoundedBoxGeo(width * 0.60, 0.065, hoodSpan, 0.03, 4, 12),
       mats.body,
     );
     hoodLid.position.set(0, -0.015, hoodSpan * 0.5);
@@ -1390,7 +1582,7 @@ export function buildStandardWheeledVehicle(
       const trunkPivot = new THREE.Group();
       trunkPivot.position.set(0, bodyLift + rearH * 0.96, cabRearZ - 0.02);
       const trunkLid = new THREE.Mesh(
-        createRoundedBoxGeo(width * 0.62, 0.06, rearSpan, 0.03, 4, 12),
+        createRoundedBoxGeo(width * 0.60, 0.06, rearSpan, 0.03, 4, 12),
         mats.body,
       );
       trunkLid.position.set(0, -0.015, -rearSpan * 0.5);
@@ -1420,7 +1612,7 @@ export function buildStandardWheeledVehicle(
       registerOpenable(animated, hatchPivot, 'Tampa Traseira', { x: 0.78 });
     }
 
-    // 3. Articulated Side Doors (2 wide doors or 4 doors, scissor doors on supercars)
+    // 3. Sealed Side Rocker Sills, Door Jambs, Quarter Flanks & Flush Articulated Doors
     const wsRakeDoor = isSupercar ? 0.62 : 0.42;
     const rRakeDoor =
       g.archetype === 'hatch' || g.archetype === 'wagon' || g.archetype === 'suv'
@@ -1433,25 +1625,67 @@ export function buildStandardWheeledVehicle(
         g.archetype === 'wagon' ||
         g.archetype === 'suv' ||
         (isPickup && cabLen > 1.8));
-    const doorBaseTopY = beltlineY - 0.01;
-    const doorH = Math.max(0.28, doorBaseTopY - (bodyLift + floorHeight) + 0.02);
-    const sideGlassH = isOpenTop ? 0 : Math.max(0, cabH - 0.055);
+    const doorBaseTopY = beltlineY;
+    const sillTopY = bodyLift + floorHeight;
+    const doorH = Math.max(0.28, doorBaseTopY - sillTopY + 0.01);
+    const sideGlassH = isOpenTop ? 0 : Math.max(0, cabH - 0.05);
     const cabTopHalfX = width * (1 - g.roofTaper * 0.34) * 0.465;
-    const doorHingeXAbs = width * 0.455;
-    const topShift = Math.max(0.03, doorHingeXAbs - cabTopHalfX + 0.015);
-    const fDoorHingeZ = cabFrontZ - 0.04;
+    // Outer door skin is 0.068 thick; setting hingeX at (width*0.495 - 0.034) makes outer face 100% flush with fenders!
+    const doorHingeXAbs = width * 0.495 - 0.034;
+    const topShift = Math.max(0.025, doorHingeXAbs - cabTopHalfX * 0.98);
+    const fStopZ = Math.min(halfL - 0.15, cabFrontZ + 0.06);
+    const rStopZ = Math.max(-halfL + 0.15, cabRearZ - 0.06);
+    const fDoorHingeZ = cabFrontZ - 0.02;
     const aPillarTopZ = cabCenterZ + cabLen * 0.5 * (1 - wsRakeDoor);
     const cPillarTopZ = cabCenterZ - cabLen * 0.5 * (1 - rRakeDoor);
     const frontSlopeInset = Math.max(0.06, fDoorHingeZ - aPillarTopZ + 0.03);
 
+    const rockerH = Math.max(0.08, floorHeight + 0.015);
+    const rockerLen = Math.max(0.8, fStopZ - rStopZ + 0.12);
+    const rockerMidZ = (fStopZ + rStopZ) * 0.5;
+
+    const addSidePanelGapFiller = (side: -1 | 1, zFront: number, zRear: number, topY: number, label: string) => {
+      const span = zFront - zRear;
+      if (span <= 0.02) return;
+      const panelH = Math.max(0.18, topY - sillTopY + 0.02);
+      const panelW = width * 0.11;
+      const panel = new THREE.Mesh(
+        createRoundedBoxGeo(panelW, panelH, span + 0.02, 0.02, 2, 8),
+        mats.body,
+      );
+      panel.position.set(side * (width * 0.495 - panelW * 0.5), sillTopY + panelH * 0.5 - 0.01, (zFront + zRear) * 0.5);
+      tagPart(panel, label, side * 0.35, 0.05, 0);
+      group.add(panel);
+    };
+
     [-1, 1].forEach((s) => {
       const side = s as -1 | 1;
+
+      // Finished rocker sill threshold bar along door bottom
+      const sill = new THREE.Mesh(
+        createRoundedBoxGeo(width * 0.14, rockerH, rockerLen, 0.024, 2, 8),
+        mats.body,
+      );
+      sill.position.set(side * (width * 0.492 - width * 0.07), bodyLift + rockerH * 0.5, rockerMidZ);
+      tagPart(sill, 'Soleira Lateral da Porta', side * 0.38, -0.05, 0);
+      group.add(sill);
+
+      // Front cowl jamb cheek sealing space between front fender and door hinge
+      addSidePanelGapFiller(side, fStopZ + 0.02, fDoorHingeZ - 0.01, doorBaseTopY, 'Coluna Dianteira Lateral');
+
       if (isFourDoor) {
-        const fDoorLen = cabLen * 0.45;
-        const rDoorHingeZ = fDoorHingeZ - 0.02 - fDoorLen;
-        const rDoorLen = Math.min(cabLen * 0.41, Math.max(0.52, rDoorHingeZ - cabRearZ - 0.02));
+        const doorSpan = Math.max(1.1, fDoorHingeZ - (cabRearZ + 0.06));
+        const bGap = 0.032;
+        const fDoorLen = (doorSpan - bGap) * 0.52;
+        const rDoorHingeZ = fDoorHingeZ - fDoorLen - bGap;
+        const rDoorLen = Math.max(0.48, doorSpan - fDoorLen - bGap);
         const rDoorRearEdgeZ = rDoorHingeZ - rDoorLen;
         const rearSlopeInset = Math.max(0.04, cPillarTopZ - rDoorRearEdgeZ + 0.04);
+
+        // Lower B-pillar jamb post between front & rear doors
+        addSidePanelGapFiller(side, fDoorHingeZ - fDoorLen + 0.01, rDoorHingeZ - 0.01, doorBaseTopY, 'Coluna B Lateral');
+        // Rear quarter flank sealing space between rear door and rear fender
+        addSidePanelGapFiller(side, rDoorRearEdgeZ + 0.01, rStopZ - 0.02, Math.max(doorBaseTopY, bodyLift + rearH), 'Lateral Traseira');
 
         const fDoor = createSideDoorGroup(
           {
@@ -1499,9 +1733,14 @@ export function buildStandardWheeledVehicle(
         );
         group.add(rDoor);
       } else {
-        const dLen = Math.min(1.38, cabLen * 0.72);
+        const maxDoorSpan = Math.max(0.85, fDoorHingeZ - (cabRearZ + 0.05));
+        const dLen = Math.min(1.52, maxDoorSpan, Math.max(0.95, cabLen * 0.78));
         const doorRearEdgeZ = fDoorHingeZ - dLen;
         const rearSlopeInset = Math.max(0.06, cPillarTopZ - doorRearEdgeZ + 0.04);
+
+        // Rear quarter flank sealing space behind 2-door opening (fixes gaping hole on supercars/coupes/pickups!)
+        addSidePanelGapFiller(side, doorRearEdgeZ + 0.01, rStopZ - 0.02, Math.max(doorBaseTopY, bodyLift + rearH), 'Lateral Traseira (Quarter Panel)');
+
         const door = createSideDoorGroup(
           {
             side,
@@ -1532,12 +1771,12 @@ export function buildStandardWheeledVehicle(
         group.add(door);
       }
     });
-  } else {
-    // Monster, Buggy, or cityMode lightweight chassis
+  } else if (!hasHollowCockpit) {
+    // Monster or cityMode lightweight chassis (also respects wheel clearance!)
     const shape = buildSolidSideProfile(
       length,
       bodyLift,
-      bodyH,
+      Math.max(bodyH, minFenderH),
       hoodH,
       rearH,
       frontWheelZ,
@@ -1599,7 +1838,8 @@ export function buildStandardWheeledVehicle(
     });
   }
 
-  // Cabin / Open-Top Cockpit with Non-Clipping Interior
+  // Cabin / Open-Top Cockpit with Non-Clipping Interior & Unique Per-Car Differentiation
+  const interiorStyle = { styleId: v.id, archetype: g.archetype };
   if (isOpenTop) {
     const cockpitGroup = new THREE.Group();
     const interior = buildVisibleInterior(
@@ -1611,19 +1851,23 @@ export function buildStandardWheeledVehicle(
       true,
       hasHollowCockpit ? interiorDropY : 0.06,
       cityMode,
+      interiorStyle,
     );
     interior.position.y = hasHollowCockpit ? -interiorDropY : -0.02;
     cockpitGroup.add(interior);
 
     const wsZ = cabLen * 0.42;
-    const wsTilt = 0.52;
+    const wsTilt = isBuggy ? 0.38 : 0.52;
     const wsH = cabH * 1.05;
     const wsTopZ = wsZ - Math.sin(wsTilt) * wsH * 0.46;
     const wsBotZ = wsZ + Math.sin(wsTilt) * wsH * 0.46;
     const wsTopY = wsH * 0.44 + Math.cos(wsTilt) * wsH * 0.46;
     const wsBotY = wsH * 0.44 - Math.cos(wsTilt) * wsH * 0.46;
+    const wsWBot = width * (isBuggy ? 0.68 : 0.82);
+    const wsWTop = width * (isBuggy ? 0.62 : 0.76);
+
     const wsGlass = new THREE.Mesh(
-      createTrapezoidGlassGeo(width * 0.82, width * 0.76, wsH * 0.94, 0.02),
+      createTrapezoidGlassGeo(wsWBot, wsWTop, wsH * 0.94, 0.02),
       mats.glass,
     );
     wsGlass.position.set(0, wsH * 0.44, wsZ);
@@ -1633,33 +1877,95 @@ export function buildStandardWheeledVehicle(
     cockpitGroup.add(wsGlass);
 
     [-1, 1].forEach((side) => {
-      cockpitGroup.add(
-        makeStrutBetween(
-          new THREE.Vector3(side * (width * 0.425), wsBotY, wsBotZ),
-          new THREE.Vector3(side * (width * 0.395), wsTopY, wsTopZ),
-          0.028,
-          0.032,
-          mats.body,
-          10,
-        ),
-      );
+      const pBot = new THREE.Vector3(side * (wsWBot * 0.515), wsBotY, wsBotZ);
+      const pTop = new THREE.Vector3(side * (wsWTop * 0.515), wsTopY, wsTopZ);
+      cockpitGroup.add(makeStrutBetween(pBot, pTop, 0.028, 0.032, mats.body, 10));
+      if (isBuggy) {
+        const mir = createAerodynamicMirror(side, mats, cityMode);
+        mir.position.lerpVectors(pBot, pTop, 0.28);
+        tagPart(
+          mir,
+          side < 0 ? 'Retrovisor Externo Esquerdo' : 'Retrovisor Externo Direito',
+          side * 0.42,
+          0.12,
+          0.08,
+        );
+        cockpitGroup.add(mir);
+      }
     });
     const topRail = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.82, 0.045, 0.055, 0.015, 2, 8),
+      createRoundedBoxGeo(wsWTop * 1.06, 0.045, 0.055, 0.015, 2, 8),
       mats.trim,
     );
     topRail.position.set(0, wsTopY, wsTopZ);
     cockpitGroup.add(topRail);
 
-    const tonneau = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.86, 0.09, cabLen * 0.24, 0.03, 2, 8),
-      mats.secondary,
+    // Lower black cowl trim + windshield wipers at glass base
+    const cowlLip = new THREE.Mesh(
+      createRoundedBoxGeo(wsWBot * 0.98, 0.035, 0.075, 0.012, 2, 6),
+      mats.trim,
     );
-    tonneau.position.set(0, 0.05, -cabLen * 0.42);
-    cockpitGroup.add(tonneau);
+    cowlLip.position.set(0, wsBotY, wsBotZ);
+    cockpitGroup.add(cowlLip);
+    [-0.18, 0.16].forEach((wx) => {
+      const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.014, 0.018), mats.grille);
+      wiper.position.set(wx * width, wsBotY + 0.03, wsBotZ - 0.01);
+      wiper.rotation.z = 0.08;
+      cockpitGroup.add(wiper);
+    });
+
+    // Attached Interior Rear-View Mirror with Chrome Stem anchored directly onto topRail (ZERO floating!)
+    const mirStem = makeStrutBetween(
+      new THREE.Vector3(0, wsTopY - 0.01, wsTopZ),
+      new THREE.Vector3(0, wsTopY - 0.055, wsTopZ - 0.02),
+      0.008,
+      0.008,
+      mats.chrome,
+      8,
+    );
+    const rvMirror = new THREE.Mesh(
+      createRoundedBoxGeo(0.18, 0.046, 0.028, 0.01, 2, 8),
+      mats.grille,
+    );
+    rvMirror.position.set(0, wsTopY - 0.06, wsTopZ - 0.025);
+    cockpitGroup.add(mirStem, rvMirror);
+
+    if (!isBuggy) {
+      const tonneau = new THREE.Mesh(
+        createRoundedBoxGeo(width * 0.86, 0.09, cabLen * 0.24, 0.03, 2, 8),
+        mats.secondary,
+      );
+      tonneau.position.set(0, 0.05, -cabLen * 0.42);
+      cockpitGroup.add(tonneau);
+
+      // Unique per-car open-top deck styling (VHC-57 speedster humps vs VHC-52/VHC-67 pleated convertible boot!)
+      if (g.archetype === 'roadster' || g.attachments.includes('twin_rollbar')) {
+        [-1, 1].forEach((side) => {
+          const hump = new THREE.Mesh(
+            createRoundedBoxGeo(width * 0.24, 0.12, cabLen * 0.26, 0.045, 3, 10),
+            mats.body,
+          );
+          hump.position.set(side * (width * 0.24), 0.11, -cabLen * 0.40);
+          cockpitGroup.add(hump);
+        });
+      } else {
+        // Pleated convertible soft-top boot cover with chrome retaining strip (VHC-52 / VHC-67)
+        const bootRoll = new THREE.Mesh(
+          createRoundedBoxGeo(width * 0.84, 0.065, cabLen * 0.18, 0.028, 3, 10),
+          mats.secondary,
+        );
+        bootRoll.position.set(0, 0.095, -cabLen * 0.41);
+        const bootTrim = new THREE.Mesh(
+          new THREE.BoxGeometry(width * 0.82, 0.018, 0.024),
+          mats.chrome,
+        );
+        bootTrim.position.set(0, 0.128, -cabLen * 0.48);
+        cockpitGroup.add(bootRoll, bootTrim);
+      }
+    }
 
     cockpitGroup.position.set(0, beltlineY + 0.02, cabCenterZ);
-    tagPart(cockpitGroup, 'Cabine Conversível com Interior Visível', 0, 0.35, 0);
+    tagPart(cockpitGroup, isBuggy ? 'Cockpit Tubular Buggy Aberto' : 'Cabine Conversível com Interior Visível', 0, 0.35, 0);
     group.add(cockpitGroup);
   } else {
     const wsRake = isSupercar ? 0.62 : 0.42;
@@ -1680,6 +1986,8 @@ export function buildStandardWheeledVehicle(
       hasHollowCockpit ? interiorDropY : 0.06,
       cityMode,
       hasHollowCockpit, // Doors carry their own moving window glass when hollowed!
+      undefined,
+      interiorStyle,
     );
     cab.position.set(0, beltlineY, cabCenterZ);
     tagPart(cab, 'Cabine com Vidros Aparentes e Interior 3D', 0, 0.48, 0);
@@ -1757,7 +2065,7 @@ export function buildStandardWheeledVehicle(
     mats,
     g.attachments,
     g.archetype,
-    !hasHollowCockpit,
+    !hasHollowCockpit && !isBuggy,
     cityMode,
   );
   addExhaustSystem(group, width, halfL, bodyLift, mats, exhaustStyle);

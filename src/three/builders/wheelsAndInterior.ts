@@ -287,6 +287,11 @@ export function buildWheelWellLiners(
 // =========================================================================
 // 2. NON-CLIPPING DETAILED 3D CABIN INTERIOR + ROUNDED GREENHOUSE & DOORS
 // =========================================================================
+export interface InteriorStyleOptions {
+  styleId?: number;
+  archetype?: string;
+}
+
 export function buildVisibleInterior(
   cabLen: number,
   cabH: number,
@@ -296,11 +301,17 @@ export function buildVisibleInterior(
   isOpenTop = false,
   tubDepth = 0.26,
   cityMode = false,
+  interiorStyle: InteriorStyleOptions = {},
 ): THREE.Group {
   const interior = new THREE.Group();
   const innerW = Math.max(0.85, width * 0.8);
   const innerL = Math.max(1.0, cabLen * 0.88);
   const totalH = cabH + tubDepth;
+  const styleVariant = (interiorStyle.styleId ?? 0) % 5;
+  const arch = interiorStyle.archetype ?? '';
+  const isBuggy = arch === 'buggy';
+  const isTrackSpyder = arch === 'convertible' && styleVariant === 2; // VHC-57
+  const isLuxuryCruiser = (arch === 'convertible' || arch === 'roadster') && (styleVariant === 2 || styleVariant === 1 || styleVariant === 4);
 
   // Floor carpet sits at y = 0 inside this group (caller positions group at floorTopY!)
   const floor = new THREE.Mesh(
@@ -433,7 +444,17 @@ export function buildVisibleInterior(
   steerGroup.rotation.x = 0.38;
   interior.add(steerGroup);
 
-  // Ergonomic sculpted bucket seats (positioned strictly on floor y >= 0.04, well below roof)
+  // Passenger grab handle on dash for buggies & track roadsters
+  if (!cityMode && (isBuggy || arch === 'roadster' || styleVariant === 2)) {
+    const grabBar = new THREE.Mesh(
+      createRoundedBoxGeo(innerW * 0.26, 0.022, 0.055, 0.008, 2, 6),
+      isBuggy ? mats.accent : mats.chrome,
+    );
+    grabBar.position.set(innerW * 0.28, dashY + 0.02, dashZ - 0.14);
+    interior.add(grabBar);
+  }
+
+  // Ergonomic sculpted bucket seats (VHC-52 golden standard + unique per-vehicle differentiation!)
   const seatZ = seatsCount >= 4 ? innerL * 0.03 : -innerL * 0.05;
   const maxSeatBackH = Math.min(0.48, Math.max(0.32, totalH * 0.62));
   const seatW = Math.min(0.44, innerW * 0.34);
@@ -448,15 +469,15 @@ export function buildVisibleInterior(
     cushion.position.set(0, 0.08, 0.04);
     seatGroup.add(cushion);
 
-    // Side thigh bolsters
+    // Side thigh bolsters (sculpted wings on every car)
     if (!cityMode) {
       [-1, 1].forEach((bs) => {
         const thigh = new THREE.Mesh(
-          createRoundedBoxGeo(0.075, 0.09, 0.42, 0.025, 3, 8),
+          createRoundedBoxGeo(0.075, 0.095, 0.42, 0.025, 3, 8),
           mats.secondary,
         );
         thigh.position.set(bs * (seatW * 0.44), 0.11, 0.04);
-        thigh.rotation.z = -bs * 0.2;
+        thigh.rotation.z = -bs * 0.22;
         seatGroup.add(thigh);
       });
     }
@@ -469,6 +490,20 @@ export function buildVisibleInterior(
     backrest.rotation.x = -0.18;
     seatGroup.add(backrest);
 
+    // Contoured lumbar side wings
+    if (!cityMode) {
+      [-1, 1].forEach((ls) => {
+        const wing = new THREE.Mesh(
+          createRoundedBoxGeo(0.068, maxSeatBackH * 0.72, 0.13, 0.022, 2, 8),
+          styleVariant % 2 === 0 ? mats.secondary : mats.interior,
+        );
+        wing.position.set(ls * (seatW * 0.43), 0.11 + maxSeatBackH * 0.44, -0.12);
+        wing.rotation.x = -0.18;
+        wing.rotation.y = -ls * 0.24;
+        seatGroup.add(wing);
+      });
+    }
+
     const headrest = new THREE.Mesh(
       createRoundedBoxGeo(seatW * 0.54, 0.15, 0.095, 0.04, 3, 10),
       mats.interior,
@@ -477,13 +512,71 @@ export function buildVisibleInterior(
     headrest.rotation.x = -0.12;
     seatGroup.add(headrest);
 
-    // Shoulder racing stripe bolster
+    // Shoulder racing stripe / trim collar bolster
     const bolster = new THREE.Mesh(
       createRoundedBoxGeo(seatW * 0.96, 0.042, 0.04, 0.015, 2, 8),
       mats.accent,
     );
     bolster.position.set(0, 0.12 + maxSeatBackH * 0.72, -0.11);
     seatGroup.add(bolster);
+
+    // Per-vehicle unique seat detail layer (ribs, harness eyelets, chrome rings, stripes, carbon backs)
+    if (!cityMode) {
+      if (isBuggy || isTrackSpyder || styleVariant === 1) {
+        // Baja / Racing 4-point harness pass-through eyelets + twin contrast harness straps
+        [-0.08, 0.08].forEach((hx) => {
+          const bezel = new THREE.Mesh(
+            createRoundedBoxGeo(0.065, 0.048, 0.135, 0.012, 2, 6),
+            isBuggy ? mats.accent : mats.chrome,
+          );
+          bezel.position.set(hx, 0.13 + maxSeatBackH * 0.80, -0.20);
+          bezel.rotation.x = -0.18;
+          const strap = new THREE.Mesh(
+            createRoundedBoxGeo(0.042, maxSeatBackH * 0.74, 0.025, 0.008, 2, 6),
+            isBuggy ? mats.accent : mats.sirenRed,
+          );
+          strap.position.set(hx, 0.11 + maxSeatBackH * 0.46, -0.095);
+          strap.rotation.x = -0.18;
+          seatGroup.add(bezel, strap);
+        });
+      } else if (styleVariant === 2 || styleVariant === 4 || isLuxuryCruiser) {
+        // Classic / Retro 80s horizontal pleated ribs (VHC-52 / VHC-67 / VHC-12) + chrome headrest collar
+        for (let r = 0; r < 3; r++) {
+          const pleat = new THREE.Mesh(
+            createRoundedBoxGeo(seatW * 0.62, 0.048, 0.028, 0.012, 2, 6),
+            mats.secondary,
+          );
+          pleat.position.set(0, 0.15 + maxSeatBackH * (0.22 + r * 0.18), -0.105 - r * 0.015);
+          pleat.rotation.x = -0.18;
+          seatGroup.add(pleat);
+        }
+        [-0.075, 0.075].forEach((px) => {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.08, 8), mats.chrome);
+          post.position.set(px, 0.12 + maxSeatBackH * 0.88, -0.20);
+          seatGroup.add(post);
+        });
+      } else {
+        // Perforated GT twin center stripe + stitched rear shell trim
+        [-0.055, 0.055].forEach((sx) => {
+          const stripe = new THREE.Mesh(
+            createRoundedBoxGeo(0.036, maxSeatBackH * 0.68, 0.024, 0.008, 2, 6),
+            mats.accent,
+          );
+          stripe.position.set(sx, 0.11 + maxSeatBackH * 0.44, -0.098);
+          stripe.rotation.x = -0.18;
+          seatGroup.add(stripe);
+        });
+      }
+
+      // Sculpted rear seatback shell (visible from rear 3/4 view on all open-top cars!)
+      const shellBack = new THREE.Mesh(
+        createRoundedBoxGeo(seatW * 0.84, maxSeatBackH * 0.86, 0.035, 0.015, 2, 8),
+        styleVariant === 2 ? mats.trim : mats.secondary,
+      );
+      shellBack.position.set(0, 0.11 + maxSeatBackH * 0.46, -0.215);
+      shellBack.rotation.x = -0.18;
+      seatGroup.add(shellBack);
+    }
 
     seatGroup.position.set(side * (innerW * 0.27), 0.02, seatZ);
     interior.add(seatGroup);
@@ -518,24 +611,26 @@ export function buildVisibleInterior(
     }
   }
 
-  // Interior rear-view mirror & sun visors
-  const rvMirror = new THREE.Mesh(
-    createRoundedBoxGeo(0.18, 0.05, 0.032, 0.012, 2, 8),
-    mats.grille,
-  );
-  rvMirror.position.set(0, totalH * 0.82, innerL * 0.32);
-  interior.add(rvMirror);
+  // Interior rear-view mirror & sun visors ONLY on closed-roof cabins (open-top mounts mirror onto windshield topRail!)
+  if (!isOpenTop) {
+    const rvMirror = new THREE.Mesh(
+      createRoundedBoxGeo(0.18, 0.05, 0.032, 0.012, 2, 8),
+      mats.grille,
+    );
+    rvMirror.position.set(0, totalH * 0.82, innerL * 0.32);
+    interior.add(rvMirror);
 
-  if (!cityMode && !isOpenTop) {
-    [-0.25, 0.25].forEach((vx) => {
-      const visor = new THREE.Mesh(
-        createRoundedBoxGeo(innerW * 0.34, 0.075, 0.018, 0.01, 2, 6),
-        mats.secondary,
-      );
-      visor.position.set(vx * innerW, totalH * 0.87, innerL * 0.28);
-      visor.rotation.x = 0.22;
-      interior.add(visor);
-    });
+    if (!cityMode) {
+      [-0.25, 0.25].forEach((vx) => {
+        const visor = new THREE.Mesh(
+          createRoundedBoxGeo(innerW * 0.34, 0.075, 0.018, 0.01, 2, 6),
+          mats.secondary,
+        );
+        visor.position.set(vx * innerW, totalH * 0.94, innerL * 0.29);
+        visor.rotation.x = 0.22;
+        interior.add(visor);
+      });
+    }
   }
 
   return interior;
@@ -573,13 +668,21 @@ export function createSideDoorGroup(
     skinThick,
     spec.doorHeight,
     spec.doorLen,
-    0.025,
+    0.024,
     cityMode ? 2 : 4,
     10,
   );
   const skin = new THREE.Mesh(skinGeo, mats.body);
   skin.position.set(0, -spec.doorHeight * 0.5, -spec.doorLen * 0.5);
   pivot.add(skin);
+
+  // Upper beltline weatherstrip scraper trim
+  const beltTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(skinThick * 0.55, 0.024, spec.doorLen * 0.96),
+    mats.trim,
+  );
+  beltTrim.position.set(spec.side * 0.004, -0.008, -spec.doorLen * 0.5);
+  pivot.add(beltTrim);
 
   // Lower trim molding
   const molding = new THREE.Mesh(
@@ -619,19 +722,24 @@ export function createSideDoorGroup(
     pivot.add(speaker);
   }
 
-  // Side window glass attached to door (tapers inward at top; rotateY(-PI/2) preserves -Z along door length!)
+  // Side window glass attached to door (tapers inward at top; rotateY(-PI/2) maps +X -> +Z so negative X -> -Z along door length!)
   if (spec.glassHeight > 0.12) {
+    const fZ = -0.03;
+    const rZ = -spec.doorLen + 0.03;
+    const fTopZ = Math.max(rZ + 0.12, fZ - spec.glassTopZInsetFront);
+    const rTopZ = Math.min(fTopZ - 0.08, rZ + spec.glassTopZInsetRear);
+
     const winShape = new THREE.Shape();
-    winShape.moveTo(-spec.doorLen + 0.03, 0);
-    winShape.lineTo(-0.025, 0);
-    winShape.lineTo(-0.025 - spec.glassTopZInsetFront, spec.glassHeight);
-    winShape.lineTo(-spec.doorLen + 0.03 + spec.glassTopZInsetRear, spec.glassHeight);
+    winShape.moveTo(rZ, 0);
+    winShape.lineTo(fZ, 0);
+    winShape.lineTo(fTopZ, spec.glassHeight);
+    winShape.lineTo(rTopZ, spec.glassHeight);
     winShape.closePath();
 
     const winGeo = new THREE.ShapeGeometry(winShape);
     winGeo.rotateY(-Math.PI / 2);
     const pos = winGeo.attributes.position;
-    const baseInsetX = -spec.side * 0.022;
+    const baseInsetX = -spec.side * 0.012;
     for (let i = 0; i < pos.count; i++) {
       const py = pos.getY(i);
       const t = THREE.MathUtils.clamp(py / spec.glassHeight, 0, 1);
@@ -644,32 +752,41 @@ export function createSideDoorGroup(
     winMesh.renderOrder = 2;
     pivot.add(winMesh);
 
-    // Upper slim door frame for sedan/SUV/hatch doors (frameless on supercars/coupes)
+    // Upper & side slim door window frame for sedan/SUV/truck/van doors (frameless on supercars)
     if (!spec.isScissor) {
+      const topX = -spec.side * spec.topInwardShift;
       const topFrame = makeStrutBetween(
-        new THREE.Vector3(
-          -spec.side * spec.topInwardShift,
-          spec.glassHeight,
-          -0.025 - spec.glassTopZInsetFront,
-        ),
-        new THREE.Vector3(
-          -spec.side * spec.topInwardShift,
-          spec.glassHeight,
-          -spec.doorLen + 0.03 + spec.glassTopZInsetRear,
-        ),
-        0.017,
-        0.017,
+        new THREE.Vector3(topX, spec.glassHeight, fTopZ),
+        new THREE.Vector3(topX, spec.glassHeight, rTopZ),
+        0.016,
+        0.016,
         mats.trim,
         8,
       );
-      pivot.add(topFrame);
+      const rearSash = makeStrutBetween(
+        new THREE.Vector3(baseInsetX, 0, rZ),
+        new THREE.Vector3(topX, spec.glassHeight, rTopZ),
+        0.016,
+        0.018,
+        mats.trim,
+        8,
+      );
+      const frontSash = makeStrutBetween(
+        new THREE.Vector3(baseInsetX, 0, fZ),
+        new THREE.Vector3(topX, spec.glassHeight, fTopZ),
+        0.014,
+        0.016,
+        mats.trim,
+        8,
+      );
+      pivot.add(topFrame, rearSash, frontSash);
     }
   }
 
   // Wing mirror mounted onto front corner of front doors
   if (spec.hasMirror) {
     const mirror = createAerodynamicMirror(spec.side, mats, cityMode);
-    mirror.position.set(spec.side * 0.02, 0.04, -0.14);
+    mirror.position.set(spec.side * (skinThick * 0.45), 0.025, -0.13);
     pivot.add(mirror);
   }
 
@@ -729,6 +846,7 @@ export function buildSculptedCabin(
   cityMode = false,
   omitSideGlass = false,
   sideGlassMaxLocalZ?: number,
+  interiorStyle: InteriorStyleOptions = {},
 ): THREE.Group {
   const cabin = new THREE.Group();
   const hl = cabinLen / 2;
@@ -752,6 +870,7 @@ export function buildSculptedCabin(
     false,
     interiorDropY,
     cityMode,
+    interiorStyle,
   );
   interior.position.y = -interiorDropY;
   cabin.add(interior);

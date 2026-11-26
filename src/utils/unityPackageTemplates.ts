@@ -1846,7 +1846,7 @@ ${rows}
         if (d.tipo == TipoFisicaVeiculo50.Aviao)
             MontarAviaoOuJato(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro, cPneu, cAro);
         else if (d.tipo == TipoFisicaVeiculo50.Helicoptero)
-            MontarHelicoptero(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro);
+            MontarHelicoptero(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro, cPneu, cAro);
         else if (d.tipo == TipoFisicaVeiculo50.Hovercraft)
             MontarHovercraft(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro);
         else if (d.tipo == TipoFisicaVeiculo50.Barco)
@@ -1870,10 +1870,15 @@ ${rows}
         bool ehPicape = d.arquetipo == "pickup" || d.arquetipo == "monster";
         bool ehSuper = d.arquetipo == "supercar";
 
-        float corpoH = ehOnibus ? (d.alt - d.vao) * 0.42f : (ehFurgao ? (d.alt - d.vao) * 0.46f : Mathf.Max(0.42f, (d.alt - d.vao) * (1f - d.altCabin)));
+        // Regra GDD: Altura mínima do topo da carroceria garante clearance sobre o pneu (evita roda varando o capô)
+        float alturaMinPneu = (d.raioRoda > 0.05f && !ehOnibus) ? Mathf.Max(0.42f, (d.raioRoda * 2f + 0.042f) - d.vao) : 0.42f;
+        float corpoH = ehOnibus
+            ? (d.alt - d.vao) * 0.42f
+            : (ehFurgao ? (d.alt - d.vao) * 0.46f : Mathf.Max(alturaMinPneu, (d.alt - d.vao) * (1f - d.altCabin)));
         float beltY = d.vao + corpoH;
         float cabH = Mathf.Max(0.32f, d.alt - beltY);
         float cabL = d.comp * d.capCabin;
+        float xPortaFlush = d.larg * 0.495f - 0.028f;
 
         if (ehOnibus)
         {
@@ -1901,7 +1906,8 @@ ${rows}
                 Peca(PrimitiveType.Cube, "Teto_Frente_BRT", raiz, new Vector3(0f, d.alt - 0.08f, fZ), new Vector3(d.larg * 0.96f, 0.16f, fL), cSec, 0.72f);
                 Peca(PrimitiveType.Cube, "Base_Tras_BRT", raiz, new Vector3(0f, d.vao + corpoH * 0.5f, rZ), new Vector3(d.larg, corpoH, rL), cPrim, 0.72f);
                 Peca(PrimitiveType.Cube, "Teto_Tras_BRT", raiz, new Vector3(0f, d.alt - 0.08f, rZ), new Vector3(d.larg * 0.96f, 0.16f, rL), cSec, 0.72f);
-                Peca(PrimitiveType.Cube, "Sanfona_Articulacao", raiz, new Vector3(0f, d.vao + (d.alt - d.vao) * 0.5f, bZ), new Vector3(d.larg * 0.92f, d.alt - d.vao - 0.16f, d.comp * 0.09f), cSec, 0.25f);
+                for (int sRib = -4; sRib <= 4; sRib++)
+                    Peca(PrimitiveType.Cube, "Sanfona_Dobra_" + (sRib + 5), raiz, new Vector3(0f, d.vao + (d.alt - d.vao) * 0.5f, bZ + sRib * (d.comp * 0.01f)), new Vector3(d.larg * (sRib % 2 == 0 ? 0.94f : 0.89f), d.alt - d.vao - 0.14f, 0.08f), new Color(0.14f, 0.15f, 0.17f), 0.22f);
                 for (int s = -1; s <= 1; s += 2)
                 {
                     Peca(PrimitiveType.Cube, "Janela_Frente_BRT", raiz, new Vector3(s * d.larg * 0.47f, beltY + cabH * 0.46f, fZ), new Vector3(0.05f, cabH * 0.76f, fL * 0.92f), cVidro, 0.92f);
@@ -1925,16 +1931,26 @@ ${rows}
                 }
             }
 
-            Peca(PrimitiveType.Cube, "Parabrisa_Panoramico", raiz, new Vector3(0f, beltY + cabH * 0.44f, hl - hoodLen - 0.04f), new Vector3(d.larg * 0.88f, cabH * 0.76f, 0.06f), cVidro, 0.94f);
-            Transform letreiro = PecaEmissiva(PrimitiveType.Cube, "Letreiro_Digital", raiz, new Vector3(0f, d.alt - 0.10f, hl - hoodLen + 0.02f), new Vector3(d.larg * 0.68f, 0.16f, 0.06f));
+            // Máscara frontal fechada: parabrisa embutido entre colunas A, testeira superior e limpadores (zero vão)
+            float zFrenteMask = hl - hoodLen - 0.04f;
+            Peca(PrimitiveType.Cube, "Parabrisa_Panoramico", raiz, new Vector3(0f, beltY + cabH * 0.44f, zFrenteMask), new Vector3(d.larg * 0.88f, cabH * 0.74f, 0.06f), cVidro, 0.94f);
+            Peca(PrimitiveType.Cube, "Testeira_Superior_Onibus", raiz, new Vector3(0f, d.alt - 0.16f, zFrenteMask + 0.02f), new Vector3(d.larg * 0.98f, 0.18f, 0.14f), cPrim, 0.72f);
+            Peca(PrimitiveType.Cube, "Moldura_Cowl_Onibus", raiz, new Vector3(0f, beltY + 0.04f, zFrenteMask + 0.03f), new Vector3(d.larg * 0.98f, 0.10f, 0.12f), new Color(0.14f, 0.15f, 0.18f), 0.3f);
+            for (int s = -1; s <= 1; s += 2)
+                Peca(PrimitiveType.Cube, s < 0 ? "Coluna_A_Onibus_E" : "Coluna_A_Onibus_D", raiz, new Vector3(s * d.larg * 0.46f, beltY + cabH * 0.44f, zFrenteMask + 0.02f), new Vector3(0.10f, cabH * 0.88f, 0.12f), cSec, 0.45f);
+            Transform letreiro = PecaEmissiva(PrimitiveType.Cube, "Letreiro_Digital", raiz, new Vector3(0f, d.alt - 0.14f, zFrenteMask + 0.07f), new Vector3(d.larg * 0.68f, 0.15f, 0.05f));
             ctrl.giroflexAmbar.Add(letreiro.GetComponent<Renderer>());
 
-            // Portas de embarque articuladas no lado direito
+            // Molduras de caixa de roda e tampa traseira do motor
+            Peca(PrimitiveType.Cube, "Grade_Motor_Traseira", raiz, new Vector3(0f, d.vao + corpoH * 0.45f, -hl + 0.03f), new Vector3(d.larg * 0.66f, corpoH * 0.56f, 0.05f), new Color(0.12f, 0.13f, 0.15f), 0.35f);
+
+            // Portas de embarque alinhadas à face direita (+X)
             for (int dp = 0; dp < 2; dp++)
             {
                 float zPorta = dp == 0 ? (hl - hoodLen - 1.15f) : (bodyCenterZ - 0.6f);
-                Transform pivoEmbarque = CriarPivoArticulado(raiz, "Porta_Embarque_" + (dp + 1), new Vector3(d.larg * 0.50f, beltY, zPorta), new Vector3(0f, -78f, 0f), Vector3.zero, ctrl);
-                Peca(PrimitiveType.Cube, "Folha_Porta_Onibus", pivoEmbarque, new Vector3(0f, -corpoH * 0.10f, -0.45f), new Vector3(0.05f, d.alt * 0.66f, 0.90f), cVidro, 0.85f);
+                Transform pivoEmbarque = CriarPivoArticulado(raiz, "Porta_Embarque_" + (dp + 1), new Vector3(xPortaFlush, beltY, zPorta), new Vector3(0f, -78f, 0f), Vector3.zero, ctrl);
+                Peca(PrimitiveType.Cube, "Folha_Porta_Onibus", pivoEmbarque, new Vector3(0f, -corpoH * 0.08f, -0.45f), new Vector3(0.055f, d.alt * 0.66f, 0.90f), cVidro, 0.85f);
+                Peca(PrimitiveType.Cube, "Selo_Central_Porta", pivoEmbarque, new Vector3(0.01f, -corpoH * 0.08f, -0.45f), new Vector3(0.06f, d.alt * 0.66f, 0.05f), new Color(0.1f, 0.1f, 0.12f), 0.25f);
             }
         }
         else if (ehCaminhao)
@@ -1944,11 +1960,44 @@ ${rows}
             float cabBaseY = frameY + 0.12f;
             float cabAlt = d.alt - cabBaseY - (d.arquetipo == "semi_truck" ? 0.22f : 0.10f);
             float noseL = d.arquetipo == "semi_truck" ? cabL * 0.34f : cabL * 0.16f;
+            float cabBodyL = cabL - noseL * 0.4f;
+            float cabCenterZ = cabZ - noseL * 0.2f;
 
-            Peca(PrimitiveType.Cube, "Chassi_Longarinas", raiz, new Vector3(0f, frameY, 0f), new Vector3(d.larg * 0.58f, 0.22f, d.comp * 0.94f), Color.black, 0.35f);
-            Peca(PrimitiveType.Cube, "Cabine_Caminhao", raiz, new Vector3(0f, cabBaseY + cabAlt * 0.5f, cabZ - noseL * 0.2f), new Vector3(d.larg * 0.94f, cabAlt, cabL - noseL * 0.4f), cPrim, 0.74f);
-            Peca(PrimitiveType.Cube, "Parabrisa_Caminhao", raiz, new Vector3(0f, cabBaseY + cabAlt * 0.68f, cabZ + cabL * 0.48f - noseL * 0.62f), new Vector3(d.larg * 0.82f, cabAlt * 0.42f, 0.06f), cVidro, 0.94f);
-            Peca(PrimitiveType.Cube, "QuebraSol_Cabine", raiz, new Vector3(0f, cabBaseY + cabAlt * 0.92f, cabZ + cabL * 0.48f - noseL * 0.54f), new Vector3(d.larg * 0.86f, 0.08f, 0.22f), cCromo, 0.88f);
+            // Chassi em longarinas + eixo cardã e diferencial traseiro
+            Peca(PrimitiveType.Cube, "Chassi_Longarinas", raiz, new Vector3(0f, frameY, 0f), new Vector3(d.larg * 0.58f, 0.22f, d.comp * 0.94f), new Color(0.11f, 0.12f, 0.14f), 0.35f);
+            Peca(PrimitiveType.Cylinder, "Eixo_Carda", raiz, new Vector3(0f, d.raioRoda * 0.92f, 0f), new Vector3(0.11f, d.eixos * 0.44f, 0.11f), new Color(0.18f, 0.19f, 0.21f), 0.55f)
+                .localRotation = Quaternion.Euler(90f, 0f, 0f);
+            Peca(PrimitiveType.Sphere, "Diferencial_Traseiro", raiz, new Vector3(0f, d.raioRoda * 0.94f, -d.eixos * 0.5f), new Vector3(0.36f, 0.34f, 0.36f), new Color(0.12f, 0.13f, 0.15f), 0.4f);
+
+            // Núcleo recuado da cabine com vão real para parabrisa (zero caixa sólida tapando o vidro!)
+            float cabFrontZ = cabCenterZ + cabBodyL * 0.5f;
+            float hoodTopY = cabBaseY + cabAlt * 0.44f;
+            float wsBotZ = cabFrontZ - 0.04f;
+            float wsTopZ = wsBotZ - 0.24f;
+            float backCabL = Mathf.Max(0.36f, cabBodyL - (cabFrontZ - wsTopZ));
+            float backCabZ = (cabCenterZ - cabBodyL * 0.5f) + backCabL * 0.5f;
+
+            Peca(PrimitiveType.Cube, "Cabine_Capo_Inferior", raiz, new Vector3(0f, cabBaseY + (hoodTopY - cabBaseY) * 0.5f, cabCenterZ), new Vector3(d.larg * 0.84f, hoodTopY - cabBaseY, cabBodyL), cPrim, 0.74f);
+            Peca(PrimitiveType.Cube, "Cabine_Parede_Traseira", raiz, new Vector3(0f, hoodTopY + (cabAlt * 0.56f) * 0.5f, backCabZ), new Vector3(d.larg * 0.84f, cabAlt * 0.56f, backCabL), cPrim, 0.74f);
+            Peca(PrimitiveType.Cube, "Testeira_Parabrisa_Cam", raiz, new Vector3(0f, cabBaseY + cabAlt - 0.07f, wsTopZ + 0.04f), new Vector3(d.larg * 0.88f, 0.14f, 0.22f), cPrim, 0.74f);
+            Peca(PrimitiveType.Cube, "Painel_Cabine_Cam", raiz, new Vector3(0f, hoodTopY + 0.08f, wsBotZ - 0.18f), new Vector3(d.larg * 0.74f, 0.20f, 0.30f), new Color(0.14f, 0.15f, 0.17f), 0.35f);
+            Peca(PrimitiveType.Cube, "Soleira_Cabine", raiz, new Vector3(0f, cabBaseY + 0.08f, cabCenterZ), new Vector3(d.larg * 0.95f, 0.14f, cabBodyL * 0.98f), new Color(0.14f, 0.15f, 0.17f), 0.35f);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cube, s < 0 ? "Paralama_Frente_E" : "Paralama_Frente_D", raiz, new Vector3(s * d.larg * 0.46f, cabBaseY + cabAlt * 0.22f, cabFrontZ - (noseL + 0.18f) * 0.5f), new Vector3(d.larg * 0.08f, cabAlt * 0.44f, noseL + 0.18f), cPrim, 0.74f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Coluna_A_Cam_E" : "Coluna_A_Cam_D", raiz, new Vector3(s * d.larg * 0.43f, hoodTopY + cabAlt * 0.27f, (wsBotZ + wsTopZ) * 0.5f), new Vector3(0.09f, cabAlt * 0.54f, 0.10f), cPrim, 0.74f)
+                    .localRotation = Quaternion.Euler(-16f, 0f, 0f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Coluna_Traseira_Cab_E" : "Coluna_Traseira_Cab_D", raiz, new Vector3(s * d.larg * 0.46f, cabBaseY + cabAlt * 0.5f, cabCenterZ - cabBodyL * 0.36f), new Vector3(d.larg * 0.08f, cabAlt * 0.96f, cabBodyL * 0.28f), cPrim, 0.74f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Teto_Cabine_Lado_E" : "Teto_Cabine_Lado_D", raiz, new Vector3(s * d.larg * 0.46f, cabBaseY + cabAlt * 0.92f, cabCenterZ), new Vector3(d.larg * 0.08f, cabAlt * 0.16f, cabBodyL), cPrim, 0.74f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Banco_Cam_E" : "Banco_Cam_D", raiz, new Vector3(s * d.larg * 0.22f, hoodTopY + 0.18f, wsTopZ - 0.18f), new Vector3(0.38f, 0.42f, 0.36f), new Color(0.16f, 0.17f, 0.20f), 0.25f);
+                // Escada de 2 degraus + guarda-lamas traseiros
+                Peca(PrimitiveType.Cube, s < 0 ? "Degrau_Cab_E" : "Degrau_Cab_D", raiz, new Vector3(s * d.larg * 0.49f, frameY - 0.02f, cabZ + cabL * 0.02f), new Vector3(0.14f, 0.06f, 0.52f), cCromo, 0.85f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Paralama_Tras_E" : "Paralama_Tras_D", raiz, new Vector3(s * d.larg * 0.46f, d.raioRoda * 2.02f, -d.eixos * 0.5f), new Vector3(d.largRoda * 1.4f, 0.07f, d.raioRoda * 2.4f), new Color(0.12f, 0.13f, 0.15f), 0.3f);
+            }
+
+            Transform wsCam = Peca(PrimitiveType.Cube, "Parabrisa_Caminhao", raiz, new Vector3(0f, hoodTopY + cabAlt * 0.26f, (wsBotZ + wsTopZ) * 0.5f + 0.02f), new Vector3(d.larg * 0.80f, cabAlt * 0.48f, 0.05f), cVidro, 0.94f);
+            wsCam.localRotation = Quaternion.Euler(-16f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "QuebraSol_Cabine", raiz, new Vector3(0f, cabBaseY + cabAlt * 0.93f, wsTopZ + 0.10f), new Vector3(d.larg * 0.86f, 0.08f, 0.20f), cCromo, 0.88f);
 
             for (int s = -1; s <= 1; s += 2)
             {
@@ -1964,34 +2013,43 @@ ${rows}
             {
                 Peca(PrimitiveType.Cube, "Defletor_Aero_Teto", raiz, new Vector3(0f, cabBaseY + cabAlt + 0.22f, cabZ - cabL * 0.16f), new Vector3(d.larg * 0.88f, 0.44f, cabL * 0.56f), cPrim, 0.76f);
                 Peca(PrimitiveType.Cylinder, "Quinta_Roda", raiz, new Vector3(0f, frameY + 0.18f, rearZ), new Vector3(0.88f, 0.06f, 0.88f), Color.black, 0.4f);
-                Transform capoCam = CriarPivoArticulado(raiz, "Capo_Caminhao", new Vector3(0f, cabBaseY + cabAlt * 0.46f, cabZ + cabL * 0.5f - noseL), new Vector3(-38f, 0f, 0f), Vector3.zero, ctrl);
-                Peca(PrimitiveType.Cube, "Capo_Motor_Diesel", capoCam, new Vector3(0f, -0.14f, noseL * 0.48f), new Vector3(d.larg * 0.82f, cabAlt * 0.44f, noseL * 0.94f), cPrim, 0.75f);
+                Peca(PrimitiveType.Cube, "Passarela_Chassi", raiz, new Vector3(0f, frameY + 0.14f, rearZ + rearL * 0.35f), new Vector3(d.larg * 0.62f, 0.05f, 0.65f), cCromo, 0.75f);
+                Transform capoCam = CriarPivoArticulado(raiz, "Capo_Caminhao", new Vector3(0f, hoodTopY, cabFrontZ), new Vector3(-38f, 0f, 0f), Vector3.zero, ctrl);
+                Peca(PrimitiveType.Cube, "Capo_Motor_Diesel", capoCam, new Vector3(0f, -0.14f, noseL * 0.44f), new Vector3(d.larg * 0.82f, cabAlt * 0.42f, noseL * 0.90f), cPrim, 0.75f);
             }
             else if (d.arquetipo == "dump_truck")
             {
+                Peca(PrimitiveType.Cylinder, "Pistao_Hidraulico_Cacamba", raiz, new Vector3(0f, frameY + 0.55f, rearZ + rearL * 0.36f), new Vector3(0.18f, 0.52f, 0.18f), cCromo, 0.90f)
+                    .localRotation = Quaternion.Euler(22f, 0f, 0f);
                 Transform pivoCacamba = CriarPivoArticulado(raiz, "Cacamba_Basculante_Pivo", new Vector3(0f, frameY + 0.24f, -hl + 0.45f), new Vector3(-26f, 0f, 0f), Vector3.zero, ctrl);
                 float cH = cabAlt * 0.64f;
                 Peca(PrimitiveType.Cube, "Assoalho_Cacamba", pivoCacamba, new Vector3(0f, 0.06f, rearL * 0.5f - 0.35f), new Vector3(d.larg * 0.96f, 0.12f, rearL), cSec, 0.4f);
                 Peca(PrimitiveType.Cube, "Parede_Frontal_Cacamba", pivoCacamba, new Vector3(0f, cH * 0.5f, rearL - 0.40f), new Vector3(d.larg * 0.96f, cH, 0.12f), cSec, 0.4f);
                 Peca(PrimitiveType.Cube, "Pala_Protetora_Cabine", pivoCacamba, new Vector3(0f, cH + 0.06f, rearL - 0.08f), new Vector3(d.larg * 0.96f, 0.10f, cabL * 0.52f), cSec, 0.45f);
                 for (int s = -1; s <= 1; s += 2)
+                {
                     Peca(PrimitiveType.Cube, s < 0 ? "Lateral_Cacamba_E" : "Lateral_Cacamba_D", pivoCacamba, new Vector3(s * d.larg * 0.45f, cH * 0.5f, rearL * 0.5f - 0.35f), new Vector3(0.10f, cH, rearL), cSec, 0.4f);
+                    Peca(PrimitiveType.Cube, "Dobradica_Tampa_" + (s < 0 ? "E" : "D"), pivoCacamba, new Vector3(s * d.larg * 0.40f, cH * 0.92f, -0.30f), new Vector3(0.10f, 0.16f, 0.14f), cDest, 0.5f);
+                }
                 Peca(PrimitiveType.Cube, "Tampa_Cacamba", pivoCacamba, new Vector3(0f, cH * 0.48f, -0.32f), new Vector3(d.larg * 0.90f, cH * 0.90f, 0.09f), cDest, 0.4f);
             }
             else if (d.arquetipo == "mixer_truck")
             {
                 Peca(PrimitiveType.Cube, "Mancal_Dianteiro", raiz, new Vector3(0f, frameY + 0.56f, rearZ + rearL * 0.42f), new Vector3(d.larg * 0.44f, 1.02f, 0.36f), Color.black, 0.4f);
                 Peca(PrimitiveType.Cube, "Mancal_Traseiro", raiz, new Vector3(0f, frameY + 0.62f, rearZ - rearL * 0.38f), new Vector3(d.larg * 0.72f, 1.12f, 0.28f), Color.black, 0.4f);
+                Peca(PrimitiveType.Cube, "Funil_Concreto", raiz, new Vector3(0f, frameY + 1.24f, -hl + 0.24f), new Vector3(0.76f, 0.44f, 0.56f), cDest, 0.5f);
+                Peca(PrimitiveType.Cube, "Escada_Traseira_Betoneira", raiz, new Vector3(d.larg * 0.36f, frameY + 0.85f, -hl + 0.26f), new Vector3(0.28f, 1.45f, 0.06f), cCromo, 0.78f);
                 Transform calhaPivo = CriarPivoArticulado(raiz, "Calha_Giratoria_Concreto", new Vector3(0f, frameY + 0.84f, -hl + 0.12f), new Vector3(0f, 52f, 0f), Vector3.zero, ctrl);
                 Peca(PrimitiveType.Cube, "Calha_Descarga", calhaPivo, new Vector3(0f, -0.18f, -0.48f), new Vector3(0.32f, 0.14f, 1.05f), Color.black, 0.4f).localRotation = Quaternion.Euler(24f, 0f, 0f);
             }
             else if (d.arquetipo == "firetruck")
             {
                 Peca(PrimitiveType.Cube, "Modulo_Bombas", raiz, new Vector3(0f, frameY + 0.12f + cabAlt * 0.37f, rearZ), new Vector3(d.larg * 0.96f, cabAlt * 0.74f, rearL), cPrim, 0.65f);
+                Peca(PrimitiveType.Cube, "Painel_Manometros_Bombas", raiz, new Vector3(-d.larg * 0.49f, frameY + 0.12f + cabAlt * 0.37f, rearZ + rearL * 0.26f), new Vector3(0.06f, cabAlt * 0.36f, 0.72f), cCromo, 0.85f);
                 for (int s = -1; s <= 1; s += 2)
                 {
                     Transform persiana = CriarPivoArticulado(raiz, s < 0 ? "Persiana_E" : "Persiana_D", new Vector3(s * d.larg * 0.495f, frameY + 0.12f + cabAlt * 0.37f, rearZ), Vector3.zero, new Vector3(0f, cabAlt * 0.38f, 0f), ctrl);
-                    Peca(PrimitiveType.Cube, "Folha_Persiana", persiana, Vector3.zero, new Vector3(0.05f, cabAlt * 0.48f, rearL * 0.78f), cAro, 0.75f);
+                    Peca(PrimitiveType.Cube, "Folha_Persiana", persiana, new Vector3.zero, new Vector3(0.05f, cabAlt * 0.48f, rearL * 0.78f), cAro, 0.75f);
                 }
                 Transform escPivo = CriarPivoArticulado(raiz, "Escada_Magirus_Pivo", new Vector3(0f, frameY + 0.18f + cabAlt * 0.76f, rearZ), new Vector3(-22f, 24f, 0f), Vector3.zero, ctrl);
                 Peca(PrimitiveType.Cube, "Escada_Magirus", escPivo, new Vector3(0f, 0.18f, d.comp * 0.16f), new Vector3(0.56f, 0.18f, d.comp * 0.64f), cAro, 0.78f);
@@ -2008,14 +2066,36 @@ ${rows}
             float cabZ = hl - d.comp * 0.22f;
             float cargoL = d.comp * 0.58f;
             float cargoZ = -hl + cargoL * 0.5f + 0.04f;
-            Peca(PrimitiveType.Cube, "Cabine_Dianteira_Furgao", raiz, new Vector3(0f, d.vao + (d.alt - d.vao) * 0.46f, cabZ), new Vector3(d.larg * 0.96f, (d.alt - d.vao) * 0.88f, d.comp * 0.36f), cPrim, 0.72f);
-            Peca(PrimitiveType.Cube, "Parabrisa_Furgao", raiz, new Vector3(0f, beltY + cabH * 0.48f, hl - 0.28f), new Vector3(d.larg * 0.84f, cabH * (d.arquetipo == "armored" ? 0.42f : 0.76f), 0.06f), cVidro, 0.94f)
-                .localRotation = Quaternion.Euler(-18f, 0f, 0f);
+            float cabShellH = (d.alt - d.vao) * 0.88f;
+            float cabShellY = d.vao + (d.alt - d.vao) * 0.46f;
+            float wsTopZ = hl - d.comp * 0.16f;
+            float wsBotZ = hl - 0.24f;
+            float capTetoL = Mathf.Max(0.28f, wsTopZ - (cargoZ + cargoL * 0.5f));
+
+            // Cabine dianteira dividida: capô inferior inclinado + teto traseiro + painel + parabrisa vazado (zero orelha quadrada!)
+            Peca(PrimitiveType.Cube, "Cabine_Inferior_Furgao", raiz, new Vector3(0f, d.vao + corpoH * 0.46f, cabZ), new Vector3(d.larg * 0.84f, corpoH * 0.92f, d.comp * 0.35f), cPrim, 0.72f);
+            Peca(PrimitiveType.Cube, "Capo_Inclinado_Furgao", raiz, new Vector3(0f, beltY - 0.08f, hl - d.comp * 0.08f), new Vector3(d.larg * 0.90f, 0.16f, d.comp * 0.16f), cPrim, 0.72f)
+                .localRotation = Quaternion.Euler(14f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Teto_Cabine_Furgao", raiz, new Vector3(0f, d.alt - 0.09f, (cargoZ + cargoL * 0.5f) + capTetoL * 0.5f), new Vector3(d.larg * 0.88f, 0.16f, capTetoL), cPrim, 0.72f);
+            Peca(PrimitiveType.Cube, "Testeira_Frontal_Furgao", raiz, new Vector3(0f, d.alt - 0.11f, wsTopZ), new Vector3(d.larg * 0.86f, 0.12f, 0.14f), cPrim, 0.72f);
+            Peca(PrimitiveType.Cube, "Painel_Furgao", raiz, new Vector3(0f, beltY + 0.04f, wsBotZ - 0.18f), new Vector3(d.larg * 0.76f, 0.20f, 0.28f), new Color(0.14f, 0.15f, 0.17f), 0.35f);
+            Peca(PrimitiveType.Cube, "Soleira_Furgao", raiz, new Vector3(0f, d.vao + 0.12f, cabZ), new Vector3(d.larg * 0.96f, 0.16f, d.comp * 0.38f), new Color(0.14f, 0.15f, 0.17f), 0.35f);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cube, s < 0 ? "Paralama_Sloped_E" : "Paralama_Sloped_D", raiz, new Vector3(s * d.larg * 0.45f, d.vao + corpoH * 0.44f, hl - d.comp * 0.09f), new Vector3(d.larg * 0.08f, corpoH * 0.82f, d.comp * 0.17f), cPrim, 0.72f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Coluna_A_Furgao_E" : "Coluna_A_Furgao_D", raiz, new Vector3(s * d.larg * 0.43f, beltY + cabH * 0.44f, (wsBotZ + wsTopZ) * 0.5f), new Vector3(0.08f, cabH * 0.84f, 0.10f), cPrim, 0.72f)
+                    .localRotation = Quaternion.Euler(-16f, 0f, 0f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Coluna_B_Furgao_E" : "Coluna_B_Furgao_D", raiz, new Vector3(s * d.larg * 0.46f, cabShellY, cargoZ + cargoL * 0.5f + 0.08f), new Vector3(d.larg * 0.08f, cabShellH, 0.18f), cPrim, 0.72f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Banco_Furgao_E" : "Banco_Furgao_D", raiz, new Vector3(s * d.larg * 0.22f, beltY + 0.14f, wsTopZ - 0.16f), new Vector3(0.38f, 0.40f, 0.34f), new Color(0.16f, 0.17f, 0.20f), 0.25f);
+            }
+            Peca(PrimitiveType.Cube, "Parabrisa_Furgao", raiz, new Vector3(0f, beltY + cabH * 0.44f, (wsBotZ + wsTopZ) * 0.5f + 0.02f), new Vector3(d.larg * 0.82f, cabH * (d.arquetipo == "armored" ? 0.46f : 0.78f), 0.05f), cVidro, 0.94f)
+                .localRotation = Quaternion.Euler(-16f, 0f, 0f);
             Peca(PrimitiveType.Cube, "Assoalho_Bau", raiz, new Vector3(0f, d.vao + 0.12f, cargoZ), new Vector3(d.larg * 0.96f, 0.12f, cargoL), Color.black, 0.3f);
             Peca(PrimitiveType.Cube, "Teto_Bau", raiz, new Vector3(0f, d.alt - 0.06f, cargoZ), new Vector3(d.larg * 0.98f, 0.12f, cargoL), cPrim, 0.72f);
             for (int s = -1; s <= 1; s += 2)
             {
                 Peca(PrimitiveType.Cube, s < 0 ? "Parede_Bau_E" : "Parede_Bau_D", raiz, new Vector3(s * d.larg * 0.46f, d.vao + (d.alt - d.vao) * 0.5f, cargoZ), new Vector3(0.10f, d.alt - d.vao - 0.12f, cargoL), cPrim, 0.70f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Friso_Carga_E" : "Friso_Carga_D", raiz, new Vector3(s * d.larg * 0.495f, d.vao + (d.alt - d.vao) * 0.44f, cargoZ), new Vector3(0.03f, 0.10f, cargoL * 0.90f), cSec, 0.5f);
                 Transform ptTraseira = CriarPivoArticulado(raiz, s < 0 ? "Porta_Traseira_E" : "Porta_Traseira_D", new Vector3(s * d.larg * 0.44f, d.vao + (d.alt - d.vao) * 0.5f, -hl), new Vector3(0f, s * -98f, 0f), Vector3.zero, ctrl);
                 Peca(PrimitiveType.Cube, "Folha_Porta_Traseira", ptTraseira, new Vector3(-s * d.larg * 0.21f, 0f, 0f), new Vector3(d.larg * 0.42f, d.alt - d.vao - 0.20f, 0.06f), cPrim, 0.72f);
             }
@@ -2026,15 +2106,59 @@ ${rows}
             }
             else if (d.arquetipo == "ambulance")
             {
+                // Carenagem médica alta estilo anos 80 + estrobos frontais + maca
+                Peca(PrimitiveType.Cube, "Teto_Medico_SAMU", raiz, new Vector3(0f, d.alt + 0.08f, cargoZ), new Vector3(d.larg * 0.88f, 0.18f, cargoL * 0.92f), Color.white, 0.72f);
                 Peca(PrimitiveType.Cube, "Maca_SAMU", raiz, new Vector3(-d.larg * 0.14f, d.vao + 0.48f, cargoZ), new Vector3(0.56f, 0.14f, cargoL * 0.68f), cDest, 0.35f);
+                Transform eV = PecaEmissiva(PrimitiveType.Cube, "Estrobo_Testa_SAMU_E", raiz, new Vector3(-d.larg * 0.24f, d.alt + 0.06f, cargoZ + cargoL * 0.46f), new Vector3(0.28f, 0.09f, 0.08f));
+                Transform eA = PecaEmissiva(PrimitiveType.Cube, "Estrobo_Testa_SAMU_D", raiz, new Vector3(d.larg * 0.24f, d.alt + 0.06f, cargoZ + cargoL * 0.46f), new Vector3(0.28f, 0.09f, 0.08f));
+                ctrl.giroflexVermelho.Add(eV.GetComponent<Renderer>());
+                ctrl.giroflexAzul.Add(eA.GetComponent<Renderer>());
+            }
+        }
+        else if (d.arquetipo == "buggy")
+        {
+            // Buggy com cockpit tubular aberto e bancos concha (zero cabine fechada estilo sedan!)
+            Peca(PrimitiveType.Cube, "Assoalho_Buggy", raiz, new Vector3(0f, d.vao + 0.08f, 0f), new Vector3(d.larg * 0.64f, 0.12f, d.comp * 0.82f), cSec, 0.4f);
+            Peca(PrimitiveType.Cube, "Capo_Buggy", raiz, new Vector3(0f, d.vao + 0.28f, hl * 0.48f), new Vector3(d.larg * 0.56f, 0.22f, d.comp * 0.32f), cPrim, 0.74f)
+                .localRotation = Quaternion.Euler(14f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Gaiola_Tubular_Superior", raiz, new Vector3(0f, d.alt - 0.05f, -0.10f), new Vector3(d.larg * 0.58f, 0.06f, d.comp * 0.42f), cSec, 0.45f);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cube, s < 0 ? "Banco_Buggy_E" : "Banco_Buggy_D", raiz, new Vector3(s * d.larg * 0.17f, d.vao + 0.32f, -0.14f), new Vector3(0.32f, 0.44f, 0.36f), cSec, 0.22f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Apoio_Cabeca_Buggy_E" : "Apoio_Cabeca_Buggy_D", raiz, new Vector3(s * d.larg * 0.17f, d.vao + 0.58f, -0.24f), new Vector3(0.18f, 0.14f, 0.09f), cDest, 0.25f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Pilar_Gaiola_F_E" : "Pilar_Gaiola_F_D", raiz, new Vector3(s * d.larg * 0.27f, d.vao + (d.alt - d.vao) * 0.52f, 0.32f), new Vector3(0.055f, (d.alt - d.vao) * 0.44f, 0.055f), cSec, 0.45f)
+                    .localRotation = Quaternion.Euler(-24f, 0f, 0f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Pilar_Gaiola_T_E" : "Pilar_Gaiola_T_D", raiz, new Vector3(s * d.larg * 0.27f, d.vao + (d.alt - d.vao) * 0.52f, -0.46f), new Vector3(0.055f, (d.alt - d.vao) * 0.44f, 0.055f), cSec, 0.45f)
+                    .localRotation = Quaternion.Euler(18f, 0f, 0f);
             }
         }
         else
         {
-            // 1. Carroceria base para passeio, esportivos, picapes
-            Peca(PrimitiveType.Cube, "Carroceria_Base", raiz,
+            // Regra GDD: Carroceria com zona das portas selada (núcleo 0.84*larg + para-lamas + coluna traseira + soleira)
+            // Garante zero buraco lateral e zero porta faltando ou afundada!
+            float meioComp = d.comp * 0.96f;
+            float zPortaDiant = 0.48f;
+            float compPortaPass = 0.96f;
+            float zFimPorta = zPortaDiant - compPortaPass;
+            float compFrente = Mathf.Max(0.45f, (meioComp * 0.5f) - zPortaDiant);
+            float compTras = Mathf.Max(0.45f, zFimPorta - (-meioComp * 0.5f));
+
+            Peca(PrimitiveType.Cube, "Carroceria_Nucleo", raiz,
                 new Vector3(0f, d.vao + corpoH * 0.5f, 0f),
-                new Vector3(d.larg, corpoH, d.comp * 0.96f), cPrim, 0.72f);
+                new Vector3(d.larg * 0.84f, corpoH, meioComp), cPrim, 0.72f);
+            Peca(PrimitiveType.Cube, "Soleira_Inferior", raiz,
+                new Vector3(0f, d.vao + 0.08f, 0f),
+                new Vector3(d.larg * 0.97f, 0.14f, meioComp * 0.96f), cSec, 0.38f);
+
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cube, s < 0 ? "Paralama_F_E" : "Paralama_F_D", raiz,
+                    new Vector3(s * d.larg * 0.46f, d.vao + corpoH * 0.5f, zPortaDiant + compFrente * 0.5f),
+                    new Vector3(d.larg * 0.08f, corpoH * 0.96f, compFrente), cPrim, 0.72f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Lateral_Traseira_E" : "Lateral_Traseira_D", raiz,
+                    new Vector3(s * d.larg * 0.46f, d.vao + corpoH * 0.5f, -meioComp * 0.5f + compTras * 0.5f),
+                    new Vector3(d.larg * 0.08f, corpoH * 0.96f, compTras), cPrim, 0.72f);
+            }
 
             Peca(PrimitiveType.Cube, "Saias_Laterais", raiz,
                 new Vector3(0f, d.vao + 0.06f, 0f),
@@ -2042,12 +2166,30 @@ ${rows}
 
             if (d.arquetipo == "roadster" || d.arquetipo == "convertible" || d.arquetipo == "formula")
             {
+                float wsCenterZ = cabL * 0.36f;
+                float wsTopY = beltY + 0.30f;
                 Transform pb = Peca(PrimitiveType.Cube, "Parabrisa_Aberto", raiz,
-                    new Vector3(0f, beltY + 0.16f, cabL * 0.36f),
-                    new Vector3(d.larg * 0.80f, 0.32f, 0.05f), cVidro, 0.95f);
+                    new Vector3(0f, beltY + 0.16f, wsCenterZ),
+                    new Vector3(d.larg * 0.80f, 0.32f, 0.045f), cVidro, 0.95f);
                 pb.localRotation = Quaternion.Euler(-38f, 0f, 0f);
-                Peca(PrimitiveType.Cube, "Banco_E", raiz, new Vector3(-d.larg * 0.20f, beltY + 0.15f, -0.15f), new Vector3(0.38f, 0.38f, 0.38f), cSec, 0.2f);
-                Peca(PrimitiveType.Cube, "Banco_D", raiz, new Vector3(d.larg * 0.20f, beltY + 0.15f, -0.15f), new Vector3(0.38f, 0.38f, 0.38f), cSec, 0.2f);
+                // Moldura superior do parabrisa + retrovisor preso por haste (zero flutuação)
+                Peca(PrimitiveType.Cube, "Moldura_Superior_PB", raiz, new Vector3(0f, wsTopY, wsCenterZ - 0.10f), new Vector3(d.larg * 0.82f, 0.04f, 0.05f), cCromo, 0.88f);
+                Peca(PrimitiveType.Cylinder, "Haste_Retrovisor_Interno", raiz, new Vector3(0f, wsTopY - 0.03f, wsCenterZ - 0.11f), new Vector3(0.014f, 0.03f, 0.014f), cCromo, 0.88f);
+                Peca(PrimitiveType.Cube, "Retrovisor_Interno", raiz, new Vector3(0f, wsTopY - 0.05f, wsCenterZ - 0.12f), new Vector3(0.16f, 0.045f, 0.03f), new Color(0.10f, 0.11f, 0.13f), 0.3f);
+
+                // Bancos concha esculpidos padrão VHC-52 (assento + encosto + apoio de cabeça + abas laterais)
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    float sx = s * d.larg * 0.21f;
+                    Peca(PrimitiveType.Cube, s < 0 ? "Banco_Assento_E" : "Banco_Assento_D", raiz, new Vector3(sx, beltY + 0.04f, -0.06f), new Vector3(0.34f, 0.10f, 0.38f), cSec, 0.24f);
+                    Peca(PrimitiveType.Cube, s < 0 ? "Banco_Encosto_E" : "Banco_Encosto_D", raiz, new Vector3(sx, beltY + 0.24f, -0.22f), new Vector3(0.32f, 0.38f, 0.10f), cSec, 0.24f)
+                        .localRotation = Quaternion.Euler(-14f, 0f, 0f);
+                    Peca(PrimitiveType.Cube, s < 0 ? "Banco_Cabeca_E" : "Banco_Cabeca_D", raiz, new Vector3(sx, beltY + 0.45f, -0.27f), new Vector3(0.18f, 0.14f, 0.08f), cDest, 0.28f);
+                    if (d.extras.Contains("twin_rollbar"))
+                    {
+                        Peca(PrimitiveType.Cylinder, s < 0 ? "Santantonio_E" : "Santantonio_D", raiz, new Vector3(sx, beltY + 0.22f, -0.44f), new Vector3(0.28f, 0.22f, 0.06f), cCromo, 0.88f);
+                    }
+                }
             }
             else if (ehPicape)
             {
@@ -2077,19 +2219,20 @@ ${rows}
             }
         }
 
-        // 3. Grade, Para-choques, Faróis, Lanternas e Retrovisores
+        // 3. Grade, Para-choques, Faróis, Lanternas e Portas Flush (100% rentes à lataria e salientes)
+        float frontMaskZ = hl - 0.005f;
         Peca(PrimitiveType.Cube, "Grade_Frontal", raiz,
-            new Vector3(0f, d.vao + corpoH * 0.52f, hl - 0.01f),
+            new Vector3(0f, d.vao + corpoH * 0.52f, frontMaskZ + 0.015f),
             new Vector3(d.larg * 0.48f, corpoH * 0.35f, 0.06f), new Color(0.08f, 0.08f, 0.1f), 0.4f);
 
         Color corPara = d.extras.Contains("chrome_bumpers") ? cCromo : cSec;
-        Peca(PrimitiveType.Cube, "Parachoque_F", raiz, new Vector3(0f, d.vao + 0.10f, hl + 0.03f), new Vector3(d.larg * 0.98f, 0.14f, 0.12f), corPara, 0.5f);
+        Peca(PrimitiveType.Cube, "Parachoque_F", raiz, new Vector3(0f, d.vao + 0.10f, hl + 0.035f), new Vector3(d.larg * 0.98f, 0.14f, 0.12f), corPara, 0.5f);
         Peca(PrimitiveType.Cube, "Parachoque_T", raiz, new Vector3(0f, d.vao + 0.10f, -hl - 0.03f), new Vector3(d.larg * 0.98f, 0.14f, 0.12f), corPara, 0.5f);
 
         for (int s = -1; s <= 1; s += 2)
         {
             Transform f = PecaEmissiva(PrimitiveType.Cube, s < 0 ? "Farol_E" : "Farol_D", raiz,
-                new Vector3(s * d.larg * 0.35f, d.vao + corpoH * 0.62f, hl - 0.01f),
+                new Vector3(s * d.larg * 0.35f, d.vao + corpoH * 0.62f, frontMaskZ + 0.015f),
                 new Vector3(d.larg * 0.18f, 0.10f, 0.07f));
             ctrl.farois.Add(f.GetComponent<Renderer>());
 
@@ -2103,16 +2246,20 @@ ${rows}
                 float zDobradica = (ehCaminhao || ehFurgao) ? (hl - cabL * 0.12f) : 0.48f;
                 float compPorta = (ehCaminhao || ehFurgao) ? 0.78f : 0.96f;
                 Transform pivoPorta = CriarPivoArticulado(raiz, s < 0 ? "Porta_E" : "Porta_D",
-                    new Vector3(s * (d.larg * 0.50f + 0.01f), d.vao + corpoH * 0.52f, zDobradica),
+                    new Vector3(s * xPortaFlush, d.vao + corpoH * 0.52f, zDobradica),
                     ehSuper ? new Vector3(-56f, s * 14f, s * 16f) : new Vector3(0f, s * -64f, 0f),
                     Vector3.zero, ctrl);
-                Peca(PrimitiveType.Cube, "Folha_Porta", pivoPorta, new Vector3(0f, 0f, -compPorta * 0.5f), new Vector3(0.05f, corpoH * 0.74f, compPorta), cPrim, 0.75f);
+                Peca(PrimitiveType.Cube, "Folha_Porta", pivoPorta, new Vector3(0f, 0f, -compPorta * 0.5f), new Vector3(0.056f, corpoH * 0.80f, compPorta), cPrim, 0.75f);
+                Peca(PrimitiveType.Cube, "Friso_Porta", pivoPorta, new Vector3(s * 0.025f, corpoH * 0.36f, -compPorta * 0.5f), new Vector3(0.015f, 0.03f, compPorta * 0.96f), new Color(0.12f, 0.13f, 0.15f), 0.35f);
                 Peca(PrimitiveType.Cube, "Retrovisor", pivoPorta, new Vector3(s * 0.09f, corpoH * 0.42f, -0.14f), new Vector3(0.14f, 0.08f, 0.10f), cPrim, 0.7f);
             }
             else
             {
+                float xEsp = d.arquetipo == "buggy" ? (d.larg * 0.27f + 0.06f) : d.larg * 0.54f;
+                float yEsp = d.arquetipo == "buggy" ? d.vao + (d.alt - d.vao) * 0.46f : beltY + 0.08f;
+                float zEsp = d.arquetipo == "buggy" ? 0.32f : hl * 0.28f;
                 Peca(PrimitiveType.Cube, "Retrovisor", raiz,
-                    new Vector3(s * d.larg * 0.54f, beltY + 0.08f, hl * 0.28f),
+                    new Vector3(s * xEsp, yEsp, zEsp),
                     new Vector3(0.14f, 0.08f, 0.10f), cPrim, 0.7f);
             }
         }
@@ -2191,15 +2338,52 @@ ${rows}
     {
         float zF = d.eixos * 0.5f;
         float zT = -d.eixos * 0.5f;
+        Color cEscuro = new Color(0.11f, 0.12f, 0.14f);
 
         if (d.arquetipo == "atv")
         {
-            float xR = d.larg * 0.40f;
+            // ATV Cyberquad angular multifacetado com suspensão aparente e guidão conectado por coluna
+            float xR = d.larg * 0.41f;
+            float chY = d.vao + 0.06f;
             ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_FE", new Vector3(-xR, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
             ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_FD", new Vector3(xR, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
             ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_TE", new Vector3(-xR, d.raioRoda, zT), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
             ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_TD", new Vector3(xR, d.raioRoda, zT), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
-            Peca(PrimitiveType.Cube, "Carenagem_ATV", raiz, new Vector3(0f, d.vao + 0.34f, 0f), new Vector3(d.larg * 0.62f, 0.34f, d.comp * 0.72f), cPrim, 0.65f);
+
+            Peca(PrimitiveType.Cube, "Chassi_Tubular_ATV", raiz, new Vector3(0f, chY + 0.14f, 0f), new Vector3(d.larg * 0.34f, 0.22f, d.comp * 0.66f), cEscuro, 0.35f);
+            Peca(PrimitiveType.Cube, "Carenagem_Angular_ATV", raiz, new Vector3(0f, chY + 0.34f, 0.04f), new Vector3(d.larg * 0.46f, 0.24f, d.comp * 0.68f), cPrim, 0.72f);
+            Peca(PrimitiveType.Cube, "Capo_Facetado_ATV", raiz, new Vector3(0f, chY + 0.44f, zF * 0.72f), new Vector3(d.larg * 0.48f, 0.16f, d.comp * 0.28f), cPrim, 0.72f)
+                .localRotation = Quaternion.Euler(20f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Motor_Bloco", raiz, new Vector3(0f, chY + 0.16f, 0.02f), new Vector3(d.larg * 0.30f, 0.24f, 0.42f), cAro, 0.75f);
+            Peca(PrimitiveType.Cube, "Assento", raiz, new Vector3(0f, chY + 0.52f, -0.14f), new Vector3(d.larg * 0.28f, 0.12f, d.comp * 0.40f), cSec, 0.25f);
+            Peca(PrimitiveType.Cube, "Bagageiro_Tras_ATV", raiz, new Vector3(0f, chY + 0.56f, zT * 0.84f), new Vector3(d.larg * 0.58f, 0.05f, 0.38f), cEscuro, 0.4f);
+
+            float atvBarY = Mathf.Max(d.alt * 0.88f, chY + 0.72f);
+            float atvBarZ = zF * 0.34f;
+            Peca(PrimitiveType.Cylinder, "Coluna_Direcao_ATV", raiz, new Vector3(0f, (chY + 0.52f + atvBarY) * 0.5f, (zF * 0.44f + atvBarZ) * 0.5f), new Vector3(0.045f, 0.16f, 0.045f), cEscuro, 0.45f)
+                .localRotation = Quaternion.Euler(-22f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Mesa_Guidao_ATV", raiz, new Vector3(0f, atvBarY - 0.01f, atvBarZ), new Vector3(0.11f, 0.04f, 0.06f), cAro, 0.8f);
+            Transform guidaoAtv = Peca(PrimitiveType.Cylinder, "Guidao", raiz, new Vector3(0f, atvBarY, atvBarZ), new Vector3(0.036f, d.larg * 0.37f, 0.036f), cEscuro, 0.65f);
+            guidaoAtv.localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cube, s < 0 ? "Paralama_F_ATV_E" : "Paralama_F_ATV_D", raiz, new Vector3(s * d.larg * 0.32f, chY + 0.40f, zF * 0.76f), new Vector3(d.larg * 0.24f, 0.06f, d.comp * 0.32f), cPrim, 0.72f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Paralama_T_ATV_E" : "Paralama_T_ATV_D", raiz, new Vector3(s * d.larg * 0.31f, chY + 0.44f, zT * 0.78f), new Vector3(d.larg * 0.24f, 0.06f, d.comp * 0.32f), cPrim, 0.72f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Braco_Susp_ATV_E" : "Braco_Susp_ATV_D", raiz, new Vector3(s * d.larg * 0.25f, d.raioRoda + 0.04f, zF), new Vector3(0.035f, d.larg * 0.14f, 0.035f), cAro, 0.8f)
+                    .localRotation = Quaternion.Euler(0f, 0f, 90f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Amortecedor_ATV_E" : "Amortecedor_ATV_D", raiz, new Vector3(s * d.larg * 0.22f, chY + 0.22f, zF - 0.02f), new Vector3(0.055f, 0.16f, 0.055f), cDest, 0.85f)
+                    .localRotation = Quaternion.Euler(0f, 0f, s * 22f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Manopla_ATV_E" : "Manopla_ATV_D", raiz, new Vector3(s * d.larg * 0.31f, atvBarY, atvBarZ), new Vector3(0.046f, 0.07f, 0.046f), cPneu, 0.2f)
+                    .localRotation = Quaternion.Euler(0f, 0f, 90f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Haste_Retrovisor_ATV_E" : "Haste_Retrovisor_ATV_D", raiz, new Vector3(s * d.larg * 0.26f, atvBarY + 0.06f, atvBarZ), new Vector3(0.018f, 0.06f, 0.018f), cCromo, 0.88f)
+                    .localRotation = Quaternion.Euler(0f, 0f, s * -16f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Retrovisor_Guidao_E" : "Retrovisor_Guidao_D", raiz, new Vector3(s * d.larg * 0.29f, atvBarY + 0.12f, atvBarZ - 0.01f), new Vector3(0.11f, 0.055f, 0.03f), cEscuro, 0.45f);
+            }
+
+            Transform fAtv = PecaEmissiva(PrimitiveType.Cube, "Farol_LED_ATV", raiz, new Vector3(0f, chY + 0.38f, d.comp * 0.45f), new Vector3(d.larg * 0.42f, 0.055f, 0.05f));
+            ctrl.farois.Add(fAtv.GetComponent<Renderer>());
+            return;
         }
         else if (d.arquetipo == "trike")
         {
@@ -2207,22 +2391,164 @@ ${rows}
             ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_FE", new Vector3(-xR, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
             ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_FD", new Vector3(xR, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
             ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_Traseira", new Vector3(0f, d.raioRoda, zT), d.raioRoda, d.largRoda * 1.45f, cPneu, cAro, cDest));
-            Peca(PrimitiveType.Cube, "Carenagem_Trike", raiz, new Vector3(0f, d.vao + 0.34f, 0.1f), new Vector3(d.larg * 0.56f, 0.36f, d.comp * 0.68f), cPrim, 0.75f);
+            Peca(PrimitiveType.Cube, "Carenagem_Trike", raiz, new Vector3(0f, d.vao + 0.34f, 0.1f), new Vector3(d.larg * 0.44f, 0.36f, d.comp * 0.68f), cPrim, 0.75f);
+            Peca(PrimitiveType.Cube, "Motor_Bloco", raiz, new Vector3(0f, d.vao + 0.22f, 0f), new Vector3(0.28f, 0.30f, 0.38f), cAro, 0.75f);
+            Peca(PrimitiveType.Cube, "Assento", raiz, new Vector3(0f, d.vao + 0.50f, -0.22f), new Vector3(0.40f, 0.16f, 0.72f), cSec, 0.25f);
+
+            float trBarY = d.vao + 0.68f;
+            float trBarZ = d.comp * 0.04f;
+            Peca(PrimitiveType.Cylinder, "Coluna_Direcao_Trike", raiz, new Vector3(0f, d.vao + 0.56f, d.comp * 0.07f), new Vector3(0.045f, 0.14f, 0.045f), cEscuro, 0.5f)
+                .localRotation = Quaternion.Euler(-22f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Mesa_Guidao_Trike", raiz, new Vector3(0f, trBarY - 0.01f, trBarZ), new Vector3(0.11f, 0.04f, 0.06f), cAro, 0.8f);
+            Transform guidaoTr = Peca(PrimitiveType.Cylinder, "Guidao", raiz, new Vector3(0f, trBarY, trBarZ), new Vector3(0.036f, d.larg * 0.24f, 0.036f), cCromo, 0.85f);
+            guidaoTr.localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Braco_Trike_E" : "Braco_Trike_D", raiz, new Vector3(s * d.larg * 0.28f, d.raioRoda + 0.02f, zF), new Vector3(0.04f, d.larg * 0.16f, 0.04f), cEscuro, 0.4f)
+                    .localRotation = Quaternion.Euler(0f, 0f, 90f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Manopla_Trike_E" : "Manopla_Trike_D", raiz, new Vector3(s * d.larg * 0.20f, trBarY, trBarZ), new Vector3(0.046f, 0.07f, 0.046f), cPneu, 0.2f)
+                    .localRotation = Quaternion.Euler(0f, 0f, 90f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Haste_Retrovisor_Trike_E" : "Haste_Retrovisor_Trike_D", raiz, new Vector3(s * d.larg * 0.16f, trBarY + 0.06f, trBarZ), new Vector3(0.018f, 0.06f, 0.018f), cCromo, 0.88f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Retrovisor_Guidao_E" : "Retrovisor_Guidao_D", raiz, new Vector3(s * d.larg * 0.18f, trBarY + 0.12f, trBarZ - 0.01f), new Vector3(0.11f, 0.055f, 0.03f), cEscuro, 0.45f);
+            }
+            Transform fTr = PecaEmissiva(PrimitiveType.Sphere, "Farol_Trike", raiz, new Vector3(0f, d.vao + 0.56f, zF * 0.72f), new Vector3(0.18f, 0.16f, 0.16f));
+            ctrl.farois.Add(fTr.GetComponent<Renderer>());
+            return;
+        }
+
+        // Moto 2 rodas de alto detalhe (5 arquétipos: Scooter, Cruiser, Dirt, Naked/Streetfighter, Superbike Carenada)
+        bool ehScooter = d.arquetipo == "scooter";
+        bool ehCruiser = d.arquetipo == "cruiser";
+        bool ehDirt = d.arquetipo == "dirtbike";
+        bool ehNaked = d.arquetipo == "sportbike" && (d.codigo == "VHC-71" || d.codigo == "VHC-72");
+        bool ehSport = d.arquetipo == "sportbike" && !ehNaked;
+
+        ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_Dianteira", new Vector3(0f, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+        ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_Traseira", new Vector3(0f, d.raioRoda, zT), d.raioRoda, d.largRoda * (ehSport || ehCruiser ? 1.32f : 1.22f), cPneu, cAro, cDest));
+
+        float headZ = ehCruiser ? zF * 0.52f : zF * 0.64f;
+        float headY = d.vao + (ehDirt ? 0.78f : 0.70f);
+        float forkSpan = ehScooter ? 0.085f : 0.105f;
+        Vector3 mesaTop = new Vector3(0f, headY, headZ - 0.01f);
+
+        // Mesa superior/inferior + bengalas duplas ligando mesa ao eixo dianteiro
+        Peca(PrimitiveType.Cube, "Mesa_Superior", raiz, mesaTop, new Vector3(forkSpan * 2.5f, 0.032f, 0.085f), cAro, 0.8f);
+        Peca(PrimitiveType.Cube, "Mesa_Inferior", raiz, new Vector3(0f, headY - 0.14f, headZ + 0.04f), new Vector3(forkSpan * 2.4f, 0.032f, 0.08f), cAro, 0.8f);
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Vector3 pEixo = new Vector3(s * forkSpan, d.raioRoda, zF);
+            Vector3 pMesa = new Vector3(s * forkSpan, headY + 0.03f, headZ - 0.01f);
+            Vector3 mid = Vector3.Lerp(pEixo, pMesa, 0.5f);
+            float compGarfo = Vector3.Distance(pEixo, pMesa);
+            Transform garfo = Peca(PrimitiveType.Cylinder, s < 0 ? "Garfo_E" : "Garfo_D", raiz, mid, new Vector3(0.052f, compGarfo * 0.5f, 0.052f), (ehSport || ehDirt) ? cDest : cCromo, 0.86f);
+            garfo.rotation = Quaternion.FromToRotation(Vector3.up, (pMesa - pEixo).normalized);
+
+            // Quadro tubular / treliça + balança traseira + amortecedor coil-over
+            Peca(PrimitiveType.Cube, s < 0 ? "Quadro_Berco_E" : "Quadro_Berco_D", raiz, new Vector3(s * 0.11f, d.vao + 0.38f, 0.04f), new Vector3(0.036f, 0.042f, d.eixos * 0.62f), ehNaked ? cDest : cEscuro, 0.45f)
+                .localRotation = Quaternion.Euler(-20f, 0f, 0f);
+            Peca(PrimitiveType.Cube, s < 0 ? "Balanca_Tras_E" : "Balanca_Tras_D", raiz, new Vector3(s * 0.11f, d.raioRoda + 0.03f, zT * 0.58f), new Vector3(0.042f, 0.055f, Mathf.Abs(zT) * 0.72f), cAro, 0.75f);
+            Peca(PrimitiveType.Cylinder, s < 0 ? "Amortecedor_E" : "Amortecedor_D", raiz, new Vector3(s * 0.125f, d.vao + 0.38f, zT + 0.18f), new Vector3(0.065f, 0.16f, 0.065f), ehSport ? cDest : cCromo, 0.85f)
+                .localRotation = Quaternion.Euler(-22f, 0f, 0f);
+        }
+
+        // Disco de freio dianteiro + coroa traseira
+        if (!ehScooter)
+        {
+            Peca(PrimitiveType.Cylinder, "Disco_Freio_F", raiz, new Vector3(d.largRoda * 0.56f, d.raioRoda, zF), new Vector3(d.raioRoda * 1.12f, 0.015f, d.raioRoda * 1.12f), cAro, 0.82f)
+                .localRotation = Quaternion.Euler(0f, 0f, 90f);
+        }
+
+        // Motor aletado (ou V-Twin nas cruisers) + cárter
+        Peca(PrimitiveType.Cube, "Motor_Carter", raiz, new Vector3(0f, d.vao + 0.18f, -0.02f), new Vector3(0.27f, 0.20f, 0.36f), cAro, 0.78f);
+        if (ehCruiser)
+        {
+            for (int v = -1; v <= 1; v += 2)
+                Peca(PrimitiveType.Cylinder, v < 0 ? "Cilindro_V_Tras" : "Cilindro_V_Frente", raiz, new Vector3(0f, d.vao + 0.36f, v * 0.10f), new Vector3(0.18f, 0.12f, 0.18f), cEscuro, 0.5f)
+                    .localRotation = Quaternion.Euler(v * 22f, 0f, 0f);
+        }
+        else if (!ehScooter)
+        {
+            Peca(PrimitiveType.Cube, "Cilindros_Aletados", raiz, new Vector3(0f, d.vao + 0.36f, 0.08f), new Vector3(0.25f, 0.22f, 0.24f), cEscuro, 0.45f)
+                .localRotation = Quaternion.Euler(14f, 0f, 0f);
+        }
+
+        // Carenagens & Tanque esculpido por arquétipo
+        if (ehScooter)
+        {
+            Peca(PrimitiveType.Cube, "Escudo_Frontal_Scooter", raiz, new Vector3(0f, d.vao + 0.44f, zF * 0.54f), new Vector3(0.42f, 0.58f, 0.22f), cPrim, 0.78f)
+                .localRotation = Quaternion.Euler(-16f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Assoalho_Scooter", raiz, new Vector3(0f, d.vao + 0.10f, 0.08f), new Vector3(0.40f, 0.08f, 0.52f), cEscuro, 0.3f);
+            Peca(PrimitiveType.Cube, "Carenagem_Traseira_Scooter", raiz, new Vector3(0f, d.vao + 0.33f, zT + 0.22f), new Vector3(0.44f, 0.34f, 0.76f), cPrim, 0.78f);
         }
         else
         {
-            ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Roda_Dianteira", new Vector3(0f, d.raioRoda, zF), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
-            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_Traseira", new Vector3(0f, d.raioRoda, zT), d.raioRoda, d.largRoda * 1.25f, cPneu, cAro, cDest));
-            Peca(PrimitiveType.Sphere, "Tanque_Moto", raiz, new Vector3(0f, d.vao + 0.58f, 0.22f), new Vector3(0.32f, 0.28f, 0.55f), cPrim, 0.8f);
+            Peca(PrimitiveType.Cube, "Tanque_Esculpido", raiz, new Vector3(0f, d.vao + (ehCruiser ? 0.58f : 0.64f), 0.20f), new Vector3(ehDirt ? 0.24f : 0.35f, 0.24f, 0.54f), cPrim, 0.82f)
+                .localRotation = Quaternion.Euler(-10f, 0f, 0f);
+            if (ehSport)
+            {
+                Peca(PrimitiveType.Cube, "Carenagem_Frontal_Sport", raiz, new Vector3(0f, d.vao + 0.64f, zF * 0.62f), new Vector3(0.40f, 0.32f, 0.48f), cPrim, 0.82f);
+                Peca(PrimitiveType.Cube, "Quilha_Inferior_Sport", raiz, new Vector3(0f, d.vao + 0.16f, 0.04f), new Vector3(0.30f, 0.18f, 0.62f), cSec, 0.72f);
+                Peca(PrimitiveType.Cube, "Bolha_Esportiva", raiz, new Vector3(0f, d.vao + 0.88f, zF * 0.56f), new Vector3(0.30f, 0.24f, 0.03f), new Color(0.25f, 0.32f, 0.40f, 0.65f), 0.94f)
+                    .localRotation = Quaternion.Euler(-38f, 0f, 0f);
+            }
+            if (ehDirt)
+                Peca(PrimitiveType.Cube, "Paralama_Bico_Cross", raiz, new Vector3(0f, headY - 0.12f, zF * 0.82f), new Vector3(0.16f, 0.04f, 0.44f), cPrim, 0.72f)
+                    .localRotation = Quaternion.Euler(-8f, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Rabeta_Moto", raiz, new Vector3(0f, d.vao + (ehCruiser ? 0.50f : 0.66f), zT + 0.04f), new Vector3(0.26f, 0.11f, 0.44f), cPrim, 0.8f)
+                .localRotation = Quaternion.Euler(ehCruiser ? -4f : 12f, 0f, 0f);
         }
 
-        Peca(PrimitiveType.Cube, "Motor_Bloco", raiz, new Vector3(0f, d.vao + 0.22f, 0f), new Vector3(0.28f, 0.30f, 0.38f), cAro, 0.75f);
-        Peca(PrimitiveType.Cube, "Assento", raiz, new Vector3(0f, d.vao + 0.50f, -0.25f), new Vector3(0.28f, 0.12f, 0.62f), cSec, 0.25f);
-        Transform guidao = Peca(PrimitiveType.Cylinder, "Guidao", raiz, new Vector3(0f, d.alt * 0.82f, zF * 0.45f), new Vector3(0.04f, d.larg * 0.44f, 0.04f), cCromo, 0.85f);
+        Peca(PrimitiveType.Cube, "Assento", raiz, new Vector3(0f, d.vao + (ehCruiser ? 0.46f : 0.56f), -0.26f), new Vector3(ehCruiser ? 0.34f : 0.28f, 0.12f, 0.62f), cSec, 0.25f);
+        float motoBarY = ehSport ? headY + 0.04f : (ehCruiser ? headY + 0.14f : headY + 0.10f);
+        float motoBarZ = headZ - 0.05f;
+        float barHalfW = d.larg * (ehSport ? 0.38f : 0.44f);
+        Transform guidao = Peca(PrimitiveType.Cylinder, "Guidao", raiz, new Vector3(0f, motoBarY, motoBarZ), new Vector3(0.032f, barHalfW, 0.032f), cCromo, 0.85f);
         guidao.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        for (int s = -1; s <= 1; s += 2)
+        {
+            if (ehSport)
+            {
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Colar_ClipOn_E" : "Colar_ClipOn_D", raiz, new Vector3(s * forkSpan, headY + 0.02f, headZ - 0.01f), new Vector3(0.072f, 0.022f, 0.072f), cAro, 0.85f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Braco_ClipOn_E" : "Braco_ClipOn_D", raiz, new Vector3(s * (forkSpan + 0.06f), motoBarY, motoBarZ + 0.02f), new Vector3(0.14f, 0.028f, 0.04f), cAro, 0.82f);
+            }
+            else
+            {
+                float riserX = s * 0.055f;
+                Vector3 pMesaBar = new Vector3(riserX, headY + 0.015f, headZ - 0.01f);
+                Vector3 pBarClamp = new Vector3(riserX, motoBarY, motoBarZ);
+                Transform riser = Peca(PrimitiveType.Cylinder, s < 0 ? "Riser_Guidao_E" : "Riser_Guidao_D", raiz, Vector3.Lerp(pMesaBar, pBarClamp, 0.5f), new Vector3(0.038f, Vector3.Distance(pMesaBar, pBarClamp) * 0.52f, 0.038f), cAro, 0.86f);
+                riser.rotation = Quaternion.FromToRotation(Vector3.up, (pBarClamp - pMesaBar).normalized);
+            }
+            Peca(PrimitiveType.Cylinder, s < 0 ? "Manopla_E" : "Manopla_D", raiz, new Vector3(s * barHalfW * 0.84f, motoBarY, motoBarZ), new Vector3(0.044f, 0.065f, 0.044f), cPneu, 0.2f)
+                .localRotation = Quaternion.Euler(0f, 0f, 90f);
+            Peca(PrimitiveType.Cylinder, s < 0 ? "Haste_Retrovisor_Moto_E" : "Haste_Retrovisor_Moto_D", raiz, new Vector3(s * barHalfW * 0.64f, motoBarY + 0.06f, motoBarZ), new Vector3(0.018f, 0.06f, 0.018f), cCromo, 0.88f)
+                .localRotation = Quaternion.Euler(0f, 0f, s * -16f);
+            Peca(PrimitiveType.Cube, s < 0 ? "Retrovisor_Guidao_E" : "Retrovisor_Guidao_D", raiz, new Vector3(s * barHalfW * 0.72f, motoBarY + 0.12f, motoBarZ - 0.01f), new Vector3(0.105f, 0.055f, 0.03f), cEscuro, 0.45f);
+        }
 
-        Transform f = PecaEmissiva(PrimitiveType.Sphere, "Farol_Moto", raiz, new Vector3(0f, d.vao + 0.62f, zF * 0.72f), new Vector3(0.18f, 0.18f, 0.18f));
-        ctrl.farois.Add(f.GetComponent<Renderer>());
+        if (ehSport)
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Transform fProj = PecaEmissiva(PrimitiveType.Cylinder, s < 0 ? "Farol_Projetor_E" : "Farol_Projetor_D", raiz, new Vector3(s * 0.105f, d.vao + 0.65f, zF * 0.80f), new Vector3(0.065f, 0.04f, 0.065f));
+                fProj.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                ctrl.farois.Add(fProj.GetComponent<Renderer>());
+            }
+        }
+        else
+        {
+            Transform f = PecaEmissiva(PrimitiveType.Cylinder, "Farol_Moto", raiz, new Vector3(0f, headY - 0.02f, headZ + 0.14f), new Vector3(0.19f, 0.05f, 0.19f));
+            f.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            ctrl.farois.Add(f.GetComponent<Renderer>());
+        }
+
+        // Escapamento com ponteira (exceto elétrica)
+        if (!d.extras.Contains("electric") && d.codigo != "VHC-76")
+        {
+            Peca(PrimitiveType.Cylinder, "Escapamento_Ponteira", raiz, new Vector3(0.20f, d.vao + (ehDirt ? 0.46f : 0.24f), zT + 0.10f), new Vector3(0.095f, 0.22f, 0.095f), ehCruiser ? cCromo : cAro, 0.86f)
+                .localRotation = Quaternion.Euler(ehCruiser ? 88f : 74f, 0f, 0f);
+        }
 
         if (d.extras.Contains("moto_box"))
             Peca(PrimitiveType.Cube, "Bau_Entregas", raiz, new Vector3(0f, d.vao + 0.78f, zT - 0.04f), new Vector3(0.48f, 0.44f, 0.48f), cDest, 0.5f);
@@ -2261,10 +2587,12 @@ ${rows}
             Transform pivoBanco = CriarPivoArticulado(raiz, "Banco_Motor_Jetski", new Vector3(0f, hullH * 0.90f, -d.comp * 0.04f), new Vector3(-48f, 0f, 0f), Vector3.zero, ctrl);
             Peca(PrimitiveType.Cube, "Assento_Jetski", pivoBanco, new Vector3(0f, 0.08f, -d.comp * 0.16f), new Vector3(d.larg * 0.34f, 0.18f, d.comp * 0.36f), cSec, 0.32f);
 
-            // Defletor de acrílico + guidão + painel
+            // Defletor de acrílico + coluna de direção + guidão conectado + retrovisores
             Transform defl = Peca(PrimitiveType.Cube, "Parabrisa_Jetski", raiz, new Vector3(0f, hullH * 1.12f, d.comp * 0.15f), new Vector3(d.larg * 0.44f, 0.22f, 0.04f), cVidro, 0.92f);
             defl.localRotation = Quaternion.Euler(-38f, 0f, 0f);
-            Transform guidao = Peca(PrimitiveType.Cylinder, "Guidao_Jetski", raiz, new Vector3(0f, hullH * 1.18f, d.comp * 0.06f), new Vector3(0.04f, d.larg * 0.34f, 0.04f), cCromo, 0.88f);
+            Peca(PrimitiveType.Cylinder, "Coluna_Guidao_Jetski", raiz, new Vector3(0f, hullH * 1.05f, d.comp * 0.09f), new Vector3(0.045f, 0.14f, 0.045f), cEscuro, 0.45f)
+                .localRotation = Quaternion.Euler(-22f, 0f, 0f);
+            Transform guidao = Peca(PrimitiveType.Cylinder, "Guidao_Jetski", raiz, new Vector3(0f, hullH * 1.18f, d.comp * 0.06f), new Vector3(0.036f, d.larg * 0.34f, 0.036f), cCromo, 0.88f);
             guidao.localRotation = Quaternion.Euler(0f, 0f, 90f);
 
             Transform jato = Peca(PrimitiveType.Cylinder, "Turbina_Hidrojato", raiz, new Vector3(0f, hullH * 0.36f, -hl - 0.08f), new Vector3(0.22f, 0.14f, 0.22f), cEscuro, 0.75f);
@@ -2491,34 +2819,231 @@ ${rows}
 
     private static void MontarHelicoptero(
         Transform raiz, DefVeiculo d, ControleVeiculo50 ctrl,
-        Color cPrim, Color cSec, Color cDest, Color cVidro)
+        Color cPrim, Color cSec, Color cDest, Color cVidro, Color cPneu, Color cAro)
     {
-        float fy = d.vao + 0.75f;
-        Peca(PrimitiveType.Sphere, "Fuselagem", raiz, new Vector3(0f, fy, 0.4f), new Vector3(d.larg * 0.78f, d.alt * 0.48f, d.comp * 0.45f), cPrim, 0.75f);
-        Peca(PrimitiveType.Sphere, "Bolha_Cockpit", raiz, new Vector3(0f, fy + 0.06f, 1.35f), new Vector3(d.larg * 0.68f, d.alt * 0.38f, d.comp * 0.25f), cVidro, 0.95f);
-        Peca(PrimitiveType.Cylinder, "Cone_Cauda", raiz, new Vector3(0f, fy + 0.16f, -d.comp * 0.26f), new Vector3(0.35f, d.comp * 0.24f, 0.35f), cPrim, 0.75f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+        bool ehApache = d.codigo == "VHC-98";
+        bool ehStealth = d.codigo == "VHC-99";
+        bool ehSkycrane = d.codigo == "VHC-100";
+        bool ehVIP = d.codigo == "VHC-97";
+        bool ehResgate = d.codigo == "VHC-49";
+        bool ehPolicia = d.codigo == "VHC-48";
 
+        float fuseW = ehApache ? Mathf.Min(1.36f, d.larg * 0.36f) : (ehSkycrane ? Mathf.Min(1.96f, d.larg * 0.64f) : Mathf.Min(2.08f, d.larg * 0.72f));
+        float cabBaseY = ehSkycrane ? d.vao + 0.84f : d.vao + 0.24f;
+        float cabH = ehApache ? d.alt * 0.38f : (ehSkycrane ? d.alt * 0.36f : d.alt * 0.46f);
+        float fuseLen = d.comp * (ehApache ? 0.50f : (ehSkycrane ? 0.42f : 0.48f));
+        float cabCenterZ = d.comp * (ehSkycrane ? 0.14f : 0.08f);
+        float cabFrontZ = cabCenterZ + fuseLen * 0.5f;
+        float cabRearZ = cabCenterZ - fuseLen * 0.5f;
+        float cowlY = cabBaseY + cabH * (ehApache ? 0.42f : 0.40f);
+        float roofY = cabBaseY + cabH;
+        float hl = d.comp * 0.5f;
+        Color cEscuro = new Color(0.14f, 0.15f, 0.18f);
+        Color cCouro = new Color(0.24f, 0.22f, 0.21f);
+        Color cCromo = new Color(0.88f, 0.90f, 0.92f);
+
+        // 1. Fuselagem esculpida com cabine aberta e vão real de parabrisa (zero esfera gigante flutuando!)
+        float cf = fuseLen * 0.5f;
+        float floorH = Mathf.Max(0.14f, cabH * 0.13f);
+        float cowlH = cowlY - cabBaseY;
+        float wsBotZ = cabCenterZ + cf * (ehStealth || ehApache ? 0.78f : 0.72f);
+        float wsTopZ = cabCenterZ + (ehApache ? -cf * 0.18f : cf * 0.20f);
+
+        // Assoalho + bico frontal + parede traseira + teto estrutural
+        Peca(PrimitiveType.Cube, "Assoalho_Cabine_Heli", raiz, new Vector3(0f, cabBaseY + floorH * 0.5f, cabCenterZ), new Vector3(fuseW * 0.86f, floorH, fuseLen * 0.94f), cPrim, 0.75f);
+        Peca(PrimitiveType.Cube, "Bico_Aerodinamico_Heli", raiz, new Vector3(0f, cabBaseY + cowlH * 0.5f, cabFrontZ - fuseLen * 0.14f), new Vector3(fuseW * 0.82f, cowlH, fuseLen * 0.28f), cPrim, 0.76f);
+        Peca(PrimitiveType.Cube, "Parede_Traseira_Cabine", raiz, new Vector3(0f, cabBaseY + cabH * 0.52f, cabRearZ + fuseLen * 0.18f), new Vector3(fuseW * 0.86f, cabH * 0.92f, fuseLen * 0.34f), cPrim, 0.75f);
+        float roofSpineL = Mathf.Max(0.6f, wsTopZ - cabRearZ);
+        Peca(PrimitiveType.Cube, "Teto_Estrutural_Heli", raiz, new Vector3(0f, roofY - 0.04f, (wsTopZ + cabRearZ) * 0.5f), new Vector3(fuseW * 0.78f, 0.12f, roofSpineL), cPrim, 0.75f);
+
+        // Bochechas laterais e colunas traseiras + faixas
         for (int s = -1; s <= 1; s += 2)
         {
-            Peca(PrimitiveType.Cylinder, "Esqui_Pouso", raiz, new Vector3(s * d.larg * 0.36f, 0.08f, 0.2f), new Vector3(0.08f, d.comp * 0.20f, 0.08f), cSec, 0.4f).localRotation = Quaternion.Euler(90f, 0f, 0f);
-            Transform portaHeli = CriarPivoArticulado(raiz, s < 0 ? "Porta_Corredica_E" : "Porta_Corredica_D",
-                new Vector3(s * d.larg * 0.40f, fy, 0.2f), Vector3.zero, new Vector3(s * 0.05f, 0f, -0.78f), ctrl);
-            Peca(PrimitiveType.Cube, "Folha_Porta_Heli", portaHeli, Vector3.zero, new Vector3(0.05f, d.alt * 0.34f, 0.88f), cSec, 0.65f);
-            Peca(PrimitiveType.Cube, "Janela_Porta_Heli", portaHeli, new Vector3(s * 0.01f, 0.12f, 0f), new Vector3(0.05f, d.alt * 0.16f, 0.62f), cVidro, 0.92f);
+            Peca(PrimitiveType.Cube, s < 0 ? "Bochecha_E" : "Bochecha_D", raiz, new Vector3(s * fuseW * 0.435f, cabBaseY + cowlH * 0.48f, cabFrontZ - fuseLen * 0.16f), new Vector3(fuseW * 0.13f, cowlH * 0.92f, fuseLen * 0.32f), cPrim, 0.75f);
+            Peca(PrimitiveType.Cube, s < 0 ? "Coluna_Traseira_Heli_E" : "Coluna_Traseira_Heli_D", raiz, new Vector3(s * fuseW * 0.435f, cabBaseY + cabH * 0.48f, cabRearZ + fuseLen * 0.17f), new Vector3(fuseW * 0.13f, cabH * 0.92f, fuseLen * 0.30f), cPrim, 0.75f);
+            Peca(PrimitiveType.Cube, s < 0 ? "Faixa_Heli_E" : "Faixa_Heli_D", raiz, new Vector3(s * fuseW * 0.495f, cabBaseY + cowlH * 0.56f, cabCenterZ - fuseLen * 0.05f), new Vector3(0.03f, 0.08f, fuseLen * 0.72f), cDest, 0.7f);
         }
 
+        // 2. Para-brisa embutido entre colunas A + montante central + janelas inferiores de queixo
+        float wsTopY = roofY - 0.04f;
+        float wsBotY = cowlY;
+        float wsSpanZ = wsBotZ - wsTopZ;
+        float wsSpanY = wsTopY - wsBotY;
+        float wsLen = Mathf.Sqrt(wsSpanZ * wsSpanZ + wsSpanY * wsSpanY);
+        float wsDeg = Mathf.Atan2(wsSpanZ, wsSpanY) * Mathf.Rad2Deg;
+
+        Transform wsHeli = Peca(PrimitiveType.Cube, "Parabrisa_Panoramico_Heli", raiz, new Vector3(0f, (wsBotY + wsTopY) * 0.5f, (wsBotZ + wsTopZ) * 0.5f), new Vector3(fuseW * 0.78f, wsLen * 0.94f, 0.04f), cVidro, 0.95f);
+        wsHeli.localRotation = Quaternion.Euler(-wsDeg, 0f, 0f);
+        Transform mCentral = Peca(PrimitiveType.Cube, "Montante_Central_Parabrisa", raiz, new Vector3(0f, (wsBotY + wsTopY) * 0.5f, (wsBotZ + wsTopZ) * 0.5f + 0.01f), new Vector3(0.045f, wsLen * 0.96f, 0.05f), cEscuro, 0.45f);
+        mCentral.localRotation = Quaternion.Euler(-wsDeg, 0f, 0f);
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Transform colA = Peca(PrimitiveType.Cube, s < 0 ? "Coluna_A_Heli_E" : "Coluna_A_Heli_D", raiz, new Vector3(s * fuseW * 0.40f, (wsBotY + wsTopY) * 0.5f, (wsBotZ + wsTopZ) * 0.5f), new Vector3(0.07f, wsLen, 0.08f), cPrim, 0.74f);
+            colA.localRotation = Quaternion.Euler(-wsDeg, 0f, 0f);
+            if (!ehApache && !ehStealth)
+            {
+                Transform chinW = Peca(PrimitiveType.Cube, s < 0 ? "Visor_Inferior_E" : "Visor_Inferior_D", raiz, new Vector3(s * fuseW * 0.22f, cabBaseY + cowlH * 0.54f, cabFrontZ - 0.02f), new Vector3(fuseW * 0.26f, cowlH * 0.42f, 0.04f), cVidro, 0.92f);
+                chinW.localRotation = Quaternion.Euler(-40f, 0f, 0f);
+            }
+        }
+
+        // 3. Interior visível (Bancos anatômicos, manche cíclico e console MFD)
+        float seatFloorY = cabBaseY + floorH + 0.02f;
+        float frontSeatZ = ehApache ? cabCenterZ + cf * 0.34f : cabCenterZ + cf * 0.22f;
+        if (ehApache)
+        {
+            Peca(PrimitiveType.Cube, "Banco_Artilheiro", raiz, new Vector3(0f, seatFloorY + 0.24f, frontSeatZ + 0.35f), new Vector3(0.38f, 0.46f, 0.38f), cCouro, 0.35f);
+            Peca(PrimitiveType.Cube, "Banco_Piloto_Elevado", raiz, new Vector3(0f, seatFloorY + 0.40f, frontSeatZ - 0.45f), new Vector3(0.38f, 0.46f, 0.38f), cCouro, 0.35f);
+        }
+        else
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                float sx = s * fuseW * 0.22f;
+                Peca(PrimitiveType.Cube, s < 0 ? "Banco_Piloto_E" : "Banco_Piloto_D", raiz, new Vector3(sx, seatFloorY + 0.24f, frontSeatZ), new Vector3(0.36f, 0.46f, 0.38f), cCouro, 0.35f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Manche_E" : "Manche_D", raiz, new Vector3(sx, seatFloorY + 0.18f, frontSeatZ + 0.22f), new Vector3(0.03f, 0.18f, 0.03f), cEscuro, 0.4f);
+            }
+        }
+        Peca(PrimitiveType.Cube, "Console_Avionica", raiz, new Vector3(0f, seatFloorY + 0.28f, wsBotZ - 0.16f), new Vector3(fuseW * 0.54f, 0.22f, 0.30f), cEscuro, 0.4f);
+        Transform mfd = PecaEmissiva(PrimitiveType.Cube, "Tela_MFD_Heli", raiz, new Vector3(0f, seatFloorY + 0.31f, wsBotZ - 0.28f), new Vector3(fuseW * 0.40f, 0.11f, 0.04f));
+        ctrl.farois.Add(mfd.GetComponent<Renderer>());
+
+        // 4. Portas laterais articuladas (Apache com escotilhas à frente das asas)
+        for (int s = -1; s <= 1; s += 2)
+        {
+            float dLen = fuseLen * (ehApache ? 0.28f : 0.34f);
+            float dH = cabH * (ehApache ? 0.42f : 0.68f);
+            Transform portaHeli = CriarPivoArticulado(
+                raiz,
+                ehApache ? (s < 0 ? "Escotilha_Apache_E" : "Escotilha_Apache_D") : (s < 0 ? "Porta_Corredica_E" : "Porta_Corredica_D"),
+                new Vector3(s * fuseW * 0.46f, cabBaseY + floorH + dH * 0.52f, cabCenterZ + (ehApache ? 0.68f : 0.02f)),
+                ehApache ? new Vector3(0f, -s * 42f, 0f) : Vector3.zero,
+                ehApache ? new Vector3(s * 0.10f, 0f, 0f) : new Vector3(s * 0.12f, 0f, -dLen * 0.88f),
+                ctrl);
+            Peca(PrimitiveType.Cube, "Folha_Porta_Heli", portaHeli, new Vector3(0f, -dH * 0.22f, 0f), new Vector3(0.055f, dH * 0.52f, dLen), cPrim, 0.72f);
+            Peca(PrimitiveType.Cube, "Janela_Porta_Heli", portaHeli, new Vector3(0f, dH * 0.24f, 0f), new Vector3(0.035f, dH * 0.42f, dLen * 0.82f), cVidro, 0.92f);
+        }
+
+        // 5. Conjunto turboeixo duplo superior
+        float turbDeckY = roofY + 0.08f;
+        float turbLen = fuseLen * (ehSkycrane ? 0.68f : 0.52f);
+        float turbZ = cabCenterZ - fuseLen * 0.14f;
+        Peca(PrimitiveType.Cube, "Bloco_Turbinas_Superior", raiz, new Vector3(0f, turbDeckY + 0.08f, turbZ), new Vector3(fuseW * 0.64f, 0.34f, turbLen), cSec, 0.68f);
+        for (int s = -1; s <= 1; s += 2)
+        {
+            float podX = s * (ehApache || ehSkycrane ? fuseW * 0.54f : fuseW * 0.24f);
+            float podY = ehApache ? turbDeckY - 0.02f : turbDeckY + 0.10f;
+            Peca(PrimitiveType.Cylinder, s < 0 ? "Turbina_E" : "Turbina_D", raiz, new Vector3(podX, podY, turbZ), new Vector3(ehApache ? 0.44f : 0.32f, turbLen * 0.44f, ehApache ? 0.44f : 0.32f), cSec, 0.65f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+            Peca(PrimitiveType.Cylinder, s < 0 ? "Exaustor_E" : "Exaustor_D", raiz, new Vector3(podX + s * 0.05f, podY, turbZ - turbLen * 0.48f), new Vector3(0.24f, 0.14f, 0.24f), cCromo, 0.85f).localRotation = Quaternion.Euler(90f, s * 12f, 0f);
+        }
+
+        // 6. Cone de cauda, estabilizador horizontal com endplates, deriva/V-tail e rotor antipar / Fenestron
+        float boomStartZ = cabRearZ + 0.35f;
+        float boomEndZ = -hl + 0.42f;
+        float boomLen = Mathf.Max(2.2f, boomStartZ - boomEndZ);
+        float boomY = cabBaseY + cabH * (ehSkycrane ? 0.78f : 0.72f);
+        Peca(PrimitiveType.Cylinder, "Cone_Cauda", raiz, new Vector3(0f, boomY, (boomStartZ + boomEndZ) * 0.5f), new Vector3(0.42f, boomLen * 0.5f, 0.42f), cPrim, 0.75f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+        float hStabZ = boomEndZ + boomLen * 0.28f;
+        Peca(PrimitiveType.Cube, "Estabilizador_Horizontal_Cauda", raiz, new Vector3(0f, boomY, hStabZ), new Vector3(fuseW * 0.92f, 0.06f, 0.42f), cPrim, 0.72f);
+        for (int s = -1; s <= 1; s += 2)
+            Peca(PrimitiveType.Cube, s < 0 ? "Endplate_E" : "Endplate_D", raiz, new Vector3(s * fuseW * 0.46f, boomY + 0.04f, hStabZ), new Vector3(0.04f, 0.32f, 0.36f), cDest, 0.72f);
+
+        if (ehStealth)
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Transform sFin = Peca(PrimitiveType.Cube, s < 0 ? "Deriva_VTail_E" : "Deriva_VTail_D", raiz, new Vector3(s * 0.24f, boomY + 0.46f, boomEndZ + 0.14f), new Vector3(0.06f, 0.92f, 0.52f), cPrim, 0.65f);
+                sFin.localRotation = Quaternion.Euler(22f, 0f, -s * 20f);
+            }
+        }
+        else
+        {
+            Transform vFin = Peca(PrimitiveType.Cube, "Deriva_Vertical_Cauda", raiz, new Vector3(0f, boomY + d.alt * 0.18f, boomEndZ + 0.16f), new Vector3(0.08f, d.alt * 0.36f, 0.56f), cDest, 0.72f);
+            vFin.localRotation = Quaternion.Euler(22f, 0f, 0f);
+        }
+
+        GameObject rotorCauda = new GameObject((ehVIP || ehStealth) ? "Rotor_Fenestron" : "Rotor_Cauda");
+        rotorCauda.transform.SetParent(raiz, false);
+        rotorCauda.transform.localPosition = new Vector3((ehVIP || ehStealth) ? 0f : 0.12f, boomY + ((ehVIP || ehStealth) ? 0.42f : d.alt * 0.30f), boomEndZ + 0.06f);
+        Peca(PrimitiveType.Cube, "Pa_Cauda_1", rotorCauda.transform, Vector3.zero, new Vector3(0.03f, 1.05f, 0.12f), cDest, 0.55f);
+        Peca(PrimitiveType.Cube, "Pa_Cauda_2", rotorCauda.transform, Vector3.zero, new Vector3(0.03f, 0.12f, 1.05f), cDest, 0.55f);
+        ctrl.rotores.Add(rotorCauda.transform);
+
+        // 7. Trem de pouso (Apache rodas de cauda, Skycrane 4 rodas altas ou Esquis tubulares + degraus)
+        if (ehApache)
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                ctrl.rodasDianteiras.Add(CriarRoda(raiz, s < 0 ? "Roda_Apache_E" : "Roda_Apache_D", new Vector3(s * fuseW * 0.72f, 0.28f, cabFrontZ - 0.55f), 0.28f, 0.16f, cPneu, cAro, cDest));
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Haste_Pouso_E" : "Haste_Pouso_D", raiz, new Vector3(s * fuseW * 0.54f, cabBaseY * 0.65f, cabFrontZ - 0.58f), new Vector3(0.07f, 0.35f, 0.07f), cEscuro, 0.5f).localRotation = Quaternion.Euler(0f, 0f, s * 28f);
+            }
+            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Roda_Cauda_Apache", new Vector3(0f, 0.16f, boomEndZ + 0.20f), 0.16f, 0.10f, cPneu, cAro, cDest));
+        }
+        else if (ehSkycrane)
+        {
+            float zF = cabCenterZ + 0.45f;
+            float zR = cabRearZ - 0.45f;
+            Peca(PrimitiveType.Cube, "Outrigger_Traseiro_Crane", raiz, new Vector3(0f, boomY - 0.06f, zR), new Vector3(fuseW * 1.12f, 0.14f, 0.18f), cSec, 0.55f);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                ctrl.rodasDianteiras.Add(CriarRoda(raiz, s < 0 ? "Roda_Crane_FE" : "Roda_Crane_FD", new Vector3(s * fuseW * 0.68f, 0.30f, zF), 0.30f, 0.18f, cPneu, cAro, cDest));
+                ctrl.rodasTraseiras.Add(CriarRoda(raiz, s < 0 ? "Roda_Crane_TE" : "Roda_Crane_TD", new Vector3(s * fuseW * 0.68f, 0.30f, zR), 0.30f, 0.18f, cPneu, cAro, cDest));
+                Peca(PrimitiveType.Cylinder, "Pilar_Crane_F", raiz, new Vector3(s * fuseW * 0.54f, cabBaseY * 0.65f, zF), new Vector3(0.09f, cabBaseY * 0.58f, 0.09f), cSec, 0.55f).localRotation = Quaternion.Euler(0f, 0f, s * 16f);
+                Peca(PrimitiveType.Cylinder, "Pilar_Crane_T", raiz, new Vector3(s * fuseW * 0.60f, (boomY + 0.24f) * 0.5f, zR), new Vector3(0.09f, (boomY - 0.28f) * 0.52f, 0.09f), cSec, 0.55f).localRotation = Quaternion.Euler(0f, 0f, s * 8f);
+            }
+        }
+        else
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Esqui_Pouso_E" : "Esqui_Pouso_D", raiz, new Vector3(s * fuseW * 0.50f, 0.06f, cabCenterZ), new Vector3(0.085f, fuseLen * 0.42f, 0.085f), cEscuro, 0.4f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+                Peca(PrimitiveType.Cylinder, "Suporte_Esqui_F", raiz, new Vector3(s * fuseW * 0.39f, (cabBaseY + 0.10f) * 0.5f, cabCenterZ + fuseLen * 0.22f), new Vector3(0.06f, cabBaseY * 0.55f, 0.06f), cEscuro, 0.4f).localRotation = Quaternion.Euler(0f, 0f, s * 24f);
+                Peca(PrimitiveType.Cylinder, "Suporte_Esqui_T", raiz, new Vector3(s * fuseW * 0.39f, (cabBaseY + 0.10f) * 0.5f, cabCenterZ - fuseLen * 0.22f), new Vector3(0.06f, cabBaseY * 0.55f, 0.06f), cEscuro, 0.4f).localRotation = Quaternion.Euler(0f, 0f, s * 24f);
+                if (ehVIP || ehPolicia || ehResgate)
+                    Peca(PrimitiveType.Cube, s < 0 ? "Degrau_Esqui_E" : "Degrau_Esqui_D", raiz, new Vector3(s * (fuseW * 0.52f), 0.18f, cabCenterZ), new Vector3(0.11f, 0.03f, fuseLen * 0.34f), ehVIP ? cCromo : cAro, 0.85f);
+            }
+        }
+
+        // 8. Rotor Principal com Mastro + Swashplate + 4/5 pás (+ Radar Longbow no Apache)
         GameObject rotorPivo = new GameObject("Rotor_Principal");
         rotorPivo.transform.SetParent(raiz, false);
-        rotorPivo.transform.localPosition = new Vector3(0f, fy + d.alt * 0.34f, 0.25f);
-        Peca(PrimitiveType.Cube, "Pa_1", rotorPivo.transform, Vector3.zero, new Vector3(d.comp * 0.80f, 0.04f, 0.20f), cSec, 0.4f);
-        Peca(PrimitiveType.Cube, "Pa_2", rotorPivo.transform, Vector3.zero, new Vector3(0.20f, 0.04f, d.comp * 0.80f), cSec, 0.4f);
+        rotorPivo.transform.localPosition = new Vector3(0f, turbDeckY + 0.26f, cabCenterZ - fuseLen * 0.06f);
+        Peca(PrimitiveType.Cylinder, "Mastro_Rotor", rotorPivo.transform, new Vector3(0f, -0.05f, 0f), new Vector3(0.20f, 0.24f, 0.20f), cEscuro, 0.5f);
+        Peca(PrimitiveType.Cylinder, "Swashplate", rotorPivo.transform, new Vector3(0f, 0.04f, 0f), new Vector3(0.40f, 0.04f, 0.40f), cCromo, 0.85f);
+        Peca(PrimitiveType.Cube, "Pa_1", rotorPivo.transform, new Vector3(0f, 0.17f, 0f), new Vector3(d.comp * 0.86f, 0.03f, 0.19f), cEscuro, 0.45f);
+        Peca(PrimitiveType.Cube, "Pa_2", rotorPivo.transform, new Vector3(0f, 0.17f, 0f), new Vector3(0.19f, 0.03f, d.comp * 0.86f), cEscuro, 0.45f);
+        if (ehApache)
+            Peca(PrimitiveType.Sphere, "Radar_Longbow", rotorPivo.transform, new Vector3(0f, 0.45f, 0f), new Vector3(0.75f, 0.28f, 0.75f), cSec, 0.55f);
         ctrl.rotores.Add(rotorPivo.transform);
 
-        GameObject rotorCauda = new GameObject("Rotor_Cauda");
-        rotorCauda.transform.SetParent(raiz, false);
-        rotorCauda.transform.localPosition = new Vector3(0.20f, fy + 0.55f, -d.comp * 0.48f);
-        Peca(PrimitiveType.Cube, "Pa_Cauda", rotorCauda.transform, Vector3.zero, new Vector3(0.04f, 1.1f, 0.14f), cDest, 0.5f);
-        ctrl.rotores.Add(rotorCauda.transform);
+        // 9. Kits específicos (Apache asas/foguetes/canhão, Polícia FLIR/holofote, Resgate/Skycrane guincho)
+        if (ehApache)
+        {
+            float wBaseZ = cabCenterZ - 0.85f;
+            Peca(PrimitiveType.Cube, "Canhao_30mm_Apache", raiz, new Vector3(0f, cabBaseY - 0.08f, cabFrontZ + 0.10f), new Vector3(0.06f, 0.06f, 0.95f), cEscuro, 0.5f);
+            Peca(PrimitiveType.Cube, "Asas_Stub_Apache", raiz, new Vector3(0f, cabBaseY + cabH * 0.44f, wBaseZ), new Vector3(d.larg * 0.94f, 0.09f, 0.72f), cPrim, 0.6f);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cube, s < 0 ? "Pilone_Hydra_E" : "Pilone_Hydra_D", raiz, new Vector3(s * d.larg * 0.26f, cabBaseY + cabH * 0.35f, wBaseZ), new Vector3(0.08f, cabH * 0.20f, 0.48f), cEscuro, 0.5f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Foguetes_Hydra_E" : "Foguetes_Hydra_D", raiz, new Vector3(s * d.larg * 0.26f, cabBaseY + cabH * 0.26f, wBaseZ), new Vector3(0.30f, 0.52f, 0.30f), cSec, 0.5f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Pilone_Hellfire_E" : "Pilone_Hellfire_D", raiz, new Vector3(s * d.larg * 0.39f, cabBaseY + cabH * 0.35f, wBaseZ), new Vector3(0.08f, cabH * 0.20f, 0.42f), cEscuro, 0.5f);
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Missil_Hellfire_E" : "Missil_Hellfire_D", raiz, new Vector3(s * d.larg * 0.39f, cabBaseY + cabH * 0.26f, wBaseZ + 0.04f), new Vector3(0.10f, 0.58f, 0.10f), cEscuro, 0.5f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+        }
+        else if (ehPolicia)
+        {
+            Peca(PrimitiveType.Sphere, "Camera_FLIR_Policia", raiz, new Vector3(0f, cabBaseY + 0.04f, cabFrontZ - 0.05f), new Vector3(0.34f, 0.28f, 0.34f), cEscuro, 0.6f);
+            Peca(PrimitiveType.Cylinder, "Holofote_Nightsun", raiz, new Vector3(-fuseW * 0.44f, cabBaseY + 0.14f, cabFrontZ - 0.16f), new Vector3(0.22f, 0.14f, 0.22f), cCromo, 0.85f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+            Transform gPol = PecaEmissiva(PrimitiveType.Cube, "Giroflex_Heli_Policia", raiz, new Vector3(0f, turbDeckY + 0.26f, turbZ + turbLen * 0.38f), new Vector3(fuseW * 0.54f, 0.08f, 0.16f));
+            ctrl.giroflexVermelho.Add(gPol.GetComponent<Renderer>());
+        }
+        if (ehResgate || d.extras.Contains("heli_winch"))
+        {
+            Peca(PrimitiveType.Cube, "Guincho_Resgate", raiz, new Vector3(fuseW * 0.56f, roofY - 0.04f, cabCenterZ + 0.15f), new Vector3(0.24f, 0.22f, 0.36f), cDest, 0.7f);
+            if (ehSkycrane)
+                Peca(PrimitiveType.Cylinder, "Cabo_Carga_Skycrane", raiz, new Vector3(0f, cabBaseY + cabH * 0.20f, cabCenterZ - fuseLen * 0.28f), new Vector3(0.04f, 0.48f, 0.04f), cCromo, 0.85f);
+        }
     }
 
     private static void MontarAviaoOuJato(
@@ -2526,38 +3051,164 @@ ${rows}
         Color cPrim, Color cSec, Color cDest, Color cVidro, Color cPneu, Color cAro)
     {
         bool ehJato = d.arquetipo == "jet";
-        float fy = d.vao + 0.65f;
-        float fuseR = ehJato ? 0.62f : 0.72f;
+        bool ehCessna = d.codigo == "VHC-87";
+        bool ehHidro = d.extras.Contains("seaplane_floats");
+        bool ehBiplano = d.extras.Contains("biplane_wings");
+        bool ehKingAir = d.codigo == "VHC-90";
+        bool ehCargueiro = d.codigo == "VHC-91";
+        bool ehLear = d.codigo == "VHC-92";
+        bool ehF22 = d.codigo == "VHC-93";
+        bool ehF16 = d.codigo == "VHC-94";
+        bool ehAcro = d.codigo == "VHC-95";
+        bool ehConcorde = d.codigo == "VHC-96";
+        bool ehCaca = ehF22 || ehF16 || ehAcro;
+        bool ehBimotor = ehKingAir || ehCargueiro || d.extras.Contains("twin_prop_nacelles");
 
-        Transform fus = Peca(PrimitiveType.Cylinder, "Fuselagem", raiz, new Vector3(0f, fy, 0f), new Vector3(fuseR * 2f, d.comp * 0.42f, fuseR * 2f), cPrim, 0.78f);
-        fus.localRotation = Quaternion.Euler(90f, 0f, 0f);
-        Transform pivoCanopi = CriarPivoArticulado(raiz, "Canopi_Articulado",
-            new Vector3(0f, fy + fuseR * 0.72f, d.comp * 0.02f),
-            ehJato ? new Vector3(-42f, 0f, 0f) : new Vector3(0f, -68f, 0f),
-            ehJato ? Vector3.zero : new Vector3(-0.22f, 0f, 0f), ctrl);
-        Peca(PrimitiveType.Sphere, "Canopi_Cockpit", pivoCanopi, new Vector3(0f, 0f, d.comp * 0.10f), new Vector3(fuseR * 1.15f, fuseR * 0.9f, d.comp * 0.28f), cVidro, 0.95f);
+        float hl = d.comp * 0.5f;
+        float fuseW = ehCaca ? Mathf.Min(1.42f, d.larg * 0.16f) : (ehConcorde ? 1.32f : (ehCargueiro ? 1.92f : Mathf.Min(1.48f, d.larg * 0.14f)));
+        float fuseH = ehCargueiro ? d.alt * 0.42f : d.alt * 0.36f;
+        float fy = ehHidro ? d.vao + 0.88f : d.vao + fuseH * 0.58f;
+        Color cEscuro = new Color(0.14f, 0.15f, 0.18f);
+        Color cCromo = new Color(0.88f, 0.90f, 0.92f);
 
-        float asaY = ehJato ? fy - 0.05f : fy + fuseR * 0.72f;
-        Peca(PrimitiveType.Cube, "Asa_Principal", raiz, new Vector3(0f, asaY, d.comp * 0.02f), new Vector3(d.larg, 0.10f, d.comp * 0.22f), cPrim, 0.75f);
-        Peca(PrimitiveType.Cube, "Estabilizador_H", raiz, new Vector3(0f, fy + 0.15f, -d.comp * 0.42f), new Vector3(d.larg * 0.34f, 0.07f, d.comp * 0.10f), cSec, 0.7f);
-        Peca(PrimitiveType.Cube, "Deriva_Vertical", raiz, new Vector3(0f, fy + 0.85f, -d.comp * 0.40f), new Vector3(0.10f, 1.35f, d.comp * 0.16f), cDest, 0.72f);
+        // 1. Fuselagem escalonada por tipo (sem esfera gigante flutuando!)
+        Peca(PrimitiveType.Cube, "Fuselagem_Central", raiz, new Vector3(0f, fy, -d.comp * 0.04f), new Vector3(fuseW * 0.92f, fuseH * 0.78f, d.comp * 0.62f), cPrim, 0.78f);
+        Transform coneNariz = Peca(PrimitiveType.Cylinder, "Cone_Nariz", raiz, new Vector3(0f, fy - (ehConcorde ? fuseH * 0.12f : 0f), hl * 0.72f), new Vector3(fuseW * (ehConcorde ? 0.56f : 0.78f), d.comp * 0.18f, fuseH * (ehConcorde ? 0.54f : 0.74f)), cPrim, 0.78f);
+        coneNariz.localRotation = Quaternion.Euler(ehConcorde ? 98f : 90f, 0f, 0f);
+        Transform coneCauda = Peca(PrimitiveType.Cylinder, "Cone_Cauda_Aviao", raiz, new Vector3(0f, fy + fuseH * 0.06f, -hl * 0.72f), new Vector3(fuseW * 0.66f, d.comp * 0.20f, fuseH * 0.64f), cPrim, 0.78f);
+        coneCauda.localRotation = Quaternion.Euler(90f, 0f, 0f);
 
-        if (!ehJato)
+        if (ehF16)
         {
-            Transform hel = Peca(PrimitiveType.Cube, "Helice_Frontal", raiz, new Vector3(0f, fy, d.comp * 0.48f), new Vector3(1.85f, 0.14f, 0.05f), cSec, 0.8f);
-            ctrl.helices.Add(hel);
+            Peca(PrimitiveType.Cube, "Tomada_Ar_Ventral_F16", raiz, new Vector3(0f, fy - fuseH * 0.48f, d.comp * 0.14f), new Vector3(fuseW * 0.62f, 0.32f, d.comp * 0.24f), cEscuro, 0.55f);
+        }
+        else if (ehBiplano)
+        {
+            Peca(PrimitiveType.Cylinder, "Capo_Radial_Biplano", raiz, new Vector3(0f, fy, hl * 0.78f), new Vector3(fuseW * 0.96f, 0.28f, fuseW * 0.96f), cSec, 0.75f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+        }
+
+        // 2. Cabine interna + Para-brisa emoldurado OU Canopi com trilho em titânio
+        if (ehCaca)
+        {
+            Transform pivoCanopi = CriarPivoArticulado(raiz, "Canopi_Caca_Articulado", new Vector3(0f, fy + fuseH * 0.28f, -hl * 0.06f), new Vector3(-38f, 0f, 0f), Vector3.zero, ctrl);
+            float cLen = d.comp * (ehAcro ? 0.28f : 0.22f);
+            Peca(PrimitiveType.Cube, "Moldura_Canopi", pivoCanopi, new Vector3(0f, 0.02f, cLen * 0.5f), new Vector3(fuseW * 0.56f, 0.07f, cLen), cEscuro, 0.5f);
+            Peca(PrimitiveType.Sphere, "Vidro_Canopi_Caca", pivoCanopi, new Vector3(0f, 0.14f, cLen * 0.5f), new Vector3(fuseW * 0.54f, fuseH * 0.68f, cLen * 0.94f), cVidro, 0.95f);
         }
         else
         {
-            Transform ex = Peca(PrimitiveType.Cylinder, "Pos_Combustor", raiz, new Vector3(0f, fy, -d.comp * 0.46f), new Vector3(0.65f, 0.28f, 0.65f), cDest, 0.85f);
-            ex.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            float wsBotZ = ehConcorde ? hl * 0.68f : ((ehCargueiro || ehLear) ? hl * 0.56f : hl * 0.44f);
+            float wsTopZ = ehConcorde ? hl * 0.50f : ((ehCargueiro || ehLear) ? hl * 0.40f : hl * 0.22f);
+            float wsBotY = fy + fuseH * 0.20f;
+            float wsTopY = fy + fuseH * (ehConcorde ? 0.46f : 0.56f);
+            float wsLen = Mathf.Sqrt((wsBotZ - wsTopZ) * (wsBotZ - wsTopZ) + (wsTopY - wsBotY) * (wsTopY - wsBotY));
+            float wsDeg = Mathf.Atan2(wsBotZ - wsTopZ, wsTopY - wsBotY) * Mathf.Rad2Deg;
+            Transform wsAv = Peca(PrimitiveType.Cube, "Parabrisa_Aviao", raiz, new Vector3(0f, (wsBotY + wsTopY) * 0.5f, (wsBotZ + wsTopZ) * 0.5f), new Vector3(fuseW * 0.78f, wsLen * 0.92f, 0.04f), cVidro, 0.95f);
+            wsAv.localRotation = Quaternion.Euler(-wsDeg, 0f, 0f);
+            Peca(PrimitiveType.Cube, "Teto_Cabine_Aviao", raiz, new Vector3(0f, wsTopY - 0.03f, (wsTopZ - hl * 0.46f) * 0.5f), new Vector3(fuseW * 0.80f, 0.12f, wsTopZ + hl * 0.46f), cPrim, 0.76f);
         }
 
-        if (d.raioRoda > 0.05f)
+        if (ehCargueiro)
         {
-            ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Trem_Dianteiro", new Vector3(0f, d.raioRoda, d.comp * 0.26f), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
-            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Trem_E", new Vector3(-d.larg * 0.14f, d.raioRoda, -d.comp * 0.06f), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
-            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Trem_D", new Vector3(d.larg * 0.14f, d.raioRoda, -d.comp * 0.06f), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            Transform rampa = CriarPivoArticulado(raiz, "Rampa_Carga_Aviao", new Vector3(0f, fy - fuseH * 0.22f, -hl * 0.56f), new Vector3(-25f, 0f, 0f), Vector3.zero, ctrl);
+            Peca(PrimitiveType.Cube, "Folha_Rampa", rampa, new Vector3(0f, 0f, -d.comp * 0.08f), new Vector3(fuseW * 0.68f, 0.09f, d.comp * 0.16f), cSec, 0.65f);
+        }
+
+        // 3. Asas principais (+ asa superior biplano ou mísseis/tanques subalares)
+        float asaY = ehConcorde ? fy - fuseH * 0.18f : ((ehCaca || ehLear || ehKingAir) ? fy - fuseH * 0.10f : (ehBiplano ? fy - fuseH * 0.26f : fy + fuseH * 0.44f));
+        float asaZ = ehConcorde ? -d.comp * 0.08f : (ehCaca ? -0.35f : 0.25f);
+        Peca(PrimitiveType.Cube, "Asa_Principal", raiz, new Vector3(0f, asaY, asaZ), new Vector3(d.larg * 0.94f, ehCargueiro ? 0.14f : 0.10f, d.comp * (ehConcorde ? 0.46f : (ehCaca ? 0.28f : 0.16f))), cPrim, 0.76f);
+        if (ehBiplano)
+        {
+            Peca(PrimitiveType.Cube, "Asa_Superior_Biplano", raiz, new Vector3(0f, fy + fuseH * 0.92f, asaZ + 0.22f), new Vector3(d.larg * 0.92f, 0.09f, d.comp * 0.16f), cPrim, 0.76f);
+            for (int s = -1; s <= 1; s += 2)
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Montante_Asa_E" : "Montante_Asa_D", raiz, new Vector3(s * d.larg * 0.32f, (asaY + fy + fuseH * 0.92f) * 0.5f, asaZ + 0.12f), new Vector3(0.05f, fuseH * 0.62f, 0.05f), cEscuro, 0.5f);
+        }
+        else if (!ehJato && !ehBimotor)
+        {
+            for (int s = -1; s <= 1; s += 2)
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Tirante_Asa_E" : "Tirante_Asa_D", raiz, new Vector3(s * d.larg * 0.18f, (fy + asaY) * 0.5f, asaZ), new Vector3(0.05f, fuseH * 0.45f, 0.05f), cEscuro, 0.5f).localRotation = Quaternion.Euler(0f, 0f, -s * 42f);
+        }
+        if (d.extras.Contains("wingtip_missiles") || d.extras.Contains("drop_tanks"))
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                if (d.extras.Contains("wingtip_missiles"))
+                {
+                    Peca(PrimitiveType.Cube, s < 0 ? "Trilho_Ponta_Asa_E" : "Trilho_Ponta_Asa_D", raiz, new Vector3(s * (d.larg * 0.47f + 0.03f), asaY, asaZ), new Vector3(0.14f, 0.07f, 1.35f), cEscuro, 0.5f);
+                    Peca(PrimitiveType.Cylinder, s < 0 ? "Missil_Asa_E" : "Missil_Asa_D", raiz, new Vector3(s * (d.larg * 0.47f + 0.10f), asaY, asaZ + 0.10f), new Vector3(0.11f, 0.96f, 0.11f), cDest, 0.6f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+                }
+                if (d.extras.Contains("drop_tanks"))
+                {
+                    Peca(PrimitiveType.Cube, s < 0 ? "Pilone_Tanque_E" : "Pilone_Tanque_D", raiz, new Vector3(s * d.larg * 0.26f, asaY - 0.12f, asaZ - 0.12f), new Vector3(0.06f, 0.22f, 0.72f), cEscuro, 0.5f);
+                    Peca(PrimitiveType.Cylinder, s < 0 ? "Tanque_Subalar_E" : "Tanque_Subalar_D", raiz, new Vector3(s * d.larg * 0.26f, asaY - 0.28f, asaZ - 0.08f), new Vector3(0.32f, 0.95f, 0.32f), cSec, 0.65f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+                }
+            }
+        }
+
+        // 4. Empenagem (T-Tail King Air & LearJet, Dupla F-22, Delta Concorde)
+        float tailZ = -hl + d.comp * 0.12f;
+        bool ehTTail = ehKingAir || ehLear;
+        float vFinH = d.alt * 0.44f;
+        if (ehF22)
+        {
+            for (int s = -1; s <= 1; s += 2)
+                Peca(PrimitiveType.Cube, s < 0 ? "Deriva_F22_E" : "Deriva_F22_D", raiz, new Vector3(s * fuseW * 0.52f, fy + vFinH * 0.5f, tailZ + 0.10f), new Vector3(0.08f, vFinH, d.comp * 0.15f), cPrim, 0.72f).localRotation = Quaternion.Euler(18f, 0f, -s * 18f);
+        }
+        else
+        {
+            Peca(PrimitiveType.Cube, "Deriva_Vertical", raiz, new Vector3(0f, fy + vFinH * 0.55f, tailZ + 0.08f), new Vector3(0.09f, vFinH, d.comp * 0.14f), cDest, 0.72f).localRotation = Quaternion.Euler(18f, 0f, 0f);
+        }
+        if (!ehConcorde)
+            Peca(PrimitiveType.Cube, ehTTail ? "Empenagem_TTail" : "Estabilizador_H", raiz, new Vector3(0f, ehTTail ? fy + vFinH : fy + fuseH * 0.16f, ehTTail ? tailZ - 0.16f : tailZ), new Vector3(d.larg * (ehCaca ? 0.48f : 0.34f), 0.06f, d.comp * 0.10f), cSec, 0.72f);
+
+        // 5. Propulsão
+        if (ehLear)
+        {
+            for (int s = -1; s <= 1; s += 2)
+                Peca(PrimitiveType.Cylinder, s < 0 ? "Turbofan_Traseiro_E" : "Turbofan_Traseiro_D", raiz, new Vector3(s * fuseW * 0.78f, fy + fuseH * 0.26f, -hl * 0.44f), new Vector3(0.48f, 0.75f, 0.48f), cSec, 0.72f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+        }
+        else if (ehConcorde)
+        {
+            for (int s = -1; s <= 1; s += 2)
+                Peca(PrimitiveType.Cube, s < 0 ? "Turbinas_Olympus_E" : "Turbinas_Olympus_D", raiz, new Vector3(s * d.larg * 0.20f, asaY - 0.20f, asaZ - 0.45f), new Vector3(0.76f, 0.36f, 2.20f), cSec, 0.65f);
+        }
+        else if (ehJato)
+        {
+            int nNoz = (ehF22 || ehAcro) ? 2 : 1;
+            for (int i = 0; i < nNoz; i++)
+            {
+                float nx = nNoz == 2 ? (i == 0 ? -fuseW * 0.28f : fuseW * 0.28f) : 0f;
+                Peca(PrimitiveType.Cylinder, "Pos_Combustor_" + i, raiz, new Vector3(nx, fy, -hl + 0.22f), new Vector3(0.56f, 0.32f, 0.56f), cDest, 0.85f).localRotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+        }
+        else if (ehBimotor)
+        {
+            for (int s = -1; s <= 1; s += 2)
+            {
+                float nx = s * d.larg * 0.22f;
+                Peca(PrimitiveType.Cube, s < 0 ? "Nacele_Turbo_E" : "Nacele_Turbo_D", raiz, new Vector3(nx, asaY - 0.05f, asaZ + 0.35f), new Vector3(0.46f, 0.48f, 1.50f), cSec, 0.7f);
+                Transform hel = Peca(PrimitiveType.Cube, s < 0 ? "Helice_Asa_E" : "Helice_Asa_D", raiz, new Vector3(nx, asaY, asaZ + 1.18f), new Vector3(1.65f, 0.12f, 0.05f), cEscuro, 0.75f);
+                ctrl.helices.Add(hel);
+            }
+        }
+        else
+        {
+            Transform hel = Peca(PrimitiveType.Cube, "Helice_Frontal", raiz, new Vector3(0f, fy, hl - 0.02f), new Vector3(1.85f, 0.14f, 0.05f), cEscuro, 0.75f);
+            ctrl.helices.Add(hel);
+        }
+
+        // 6. Trem de pouso ou Flutuadores Anfíbios
+        if (ehHidro)
+        {
+            for (int s = -1; s <= 1; s += 2)
+                Peca(PrimitiveType.Cube, s < 0 ? "Flutuador_E" : "Flutuador_D", raiz, new Vector3(s * 1.15f, 0.22f, 0.30f), new Vector3(0.46f, 0.36f, d.comp * 0.54f), cSec, 0.7f);
+        }
+        else if (d.raioRoda > 0.05f)
+        {
+            ctrl.rodasDianteiras.Add(CriarRoda(raiz, "Trem_Dianteiro", new Vector3(0f, d.raioRoda * 0.82f, ehBiplano ? -hl + 0.45f : d.comp * 0.28f), d.raioRoda * 0.82f, d.largRoda * 0.8f, cPneu, cAro, cDest));
+            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Trem_E", new Vector3(-fuseW * 0.85f, d.raioRoda, ehBiplano ? d.comp * 0.18f : -0.35f), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
+            ctrl.rodasTraseiras.Add(CriarRoda(raiz, "Trem_D", new Vector3(fuseW * 0.85f, d.raioRoda, ehBiplano ? d.comp * 0.18f : -0.35f), d.raioRoda, d.largRoda, cPneu, cAro, cDest));
         }
     }
 
