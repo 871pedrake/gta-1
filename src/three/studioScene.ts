@@ -290,12 +290,9 @@ export class VehicleStudioController {
     if (finish) {
       const isMatte = finish === 'matte';
       const isMetallic = finish === 'metallic' || finish === 'pearl';
-      mat.metalness = isMatte ? 0.15 : isMetallic ? 0.68 : 0.25;
-      mat.roughness = isMatte ? 0.58 : isMetallic ? 0.22 : 0.16;
-      if (mat instanceof THREE.MeshPhysicalMaterial) {
-        mat.clearcoat = isMatte ? 0.08 : 1.0;
-        mat.iridescence = finish === 'pearl' ? 0.32 : 0;
-      }
+      mat.metalness = isMatte ? 0.22 : isMetallic ? 0.65 : 0.38;
+      mat.roughness = isMatte ? 0.39 : finish === 'pearl' ? 0.25 : isMetallic ? 0.27 : 0.30;
+      mat.envMapIntensity = 1.32;
       mat.needsUpdate = true;
     }
     if (stripeHex) {

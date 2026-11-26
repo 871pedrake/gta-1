@@ -5,6 +5,7 @@ import {
   BuiltVehicle,
   createAerodynamicMirror,
   createRoundedBoxGeo,
+  createSculptedPanelGeo,
   enableShadows,
   makeBeamBetween,
   makeStrutBetween,
@@ -1173,41 +1174,57 @@ export function createSideDoorGroup(
   pivot.position.set(spec.hingeX, spec.hingeY, spec.hingeZ);
 
   const skinThick = 0.068;
-  // Door extends along -Z from front hinge (hingeZ)
-  const skinGeo = createRoundedBoxGeo(
+  // Door extends along -Z from front hinge (hingeZ), sculpted with convex barrel curvature,
+  // upper shoulder character crease, lower rocker tumble-under, and tumblehome lean
+  const skinGeo = createSculptedPanelGeo(
     skinThick,
     spec.doorHeight,
     spec.doorLen,
-    0.024,
     cityMode ? 2 : 4,
-    10,
+    cityMode ? 4 : 10,
+    cityMode ? 4 : 10,
+    0.022,
+    (pos, idx, hx, hy) => {
+      const x = pos.getX(idx);
+      const y = pos.getY(idx);
+      const tY = THREE.MathUtils.clamp((y + hy) / Math.max(0.05, hy * 2), 0, 1);
+      if (x * spec.side > -hx * 0.25) {
+        const belly = Math.sin(tY * Math.PI) * 0.022;
+        const lowerTuck = -Math.pow(1 - tY, 2.2) * 0.018;
+        const upperLean = -Math.pow(Math.max(0, (tY - 0.52) / 0.48), 1.35) * 0.022;
+        const crease = 0.008 * Math.exp(-Math.pow((tY - 0.80) / 0.10, 2));
+        pos.setX(idx, x + spec.side * (belly + lowerTuck + upperLean + crease));
+      } else if (tY > 0.52) {
+        pos.setX(idx, x - spec.side * Math.pow((tY - 0.52) / 0.48, 1.35) * 0.014);
+      }
+    },
   );
   const skin = new THREE.Mesh(skinGeo, mats.body);
   skin.position.set(0, -spec.doorHeight * 0.5, -spec.doorLen * 0.5);
   pivot.add(skin);
 
-  // Upper beltline weatherstrip scraper trim
+  // Upper beltline weatherstrip scraper trim seated on tumblehome shoulder
   const beltTrim = new THREE.Mesh(
-    new THREE.BoxGeometry(skinThick * 0.42, 0.018, spec.doorLen * 0.96),
+    new THREE.BoxGeometry(skinThick * 0.38, 0.016, spec.doorLen * 0.96),
     mats.trim,
   );
-  beltTrim.position.set(spec.side * 0.004, -0.006, -spec.doorLen * 0.5);
+  beltTrim.position.set(-spec.side * 0.014, -0.006, -spec.doorLen * 0.5);
   pivot.add(beltTrim);
 
-  // Subtle lower character molding
+  // Subtle lower character molding following convex curve
   const molding = new THREE.Mesh(
-    createRoundedBoxGeo(0.014, 0.024, spec.doorLen * 0.90, 0.006, 2, 6),
+    createRoundedBoxGeo(0.012, 0.020, spec.doorLen * 0.90, 0.005, 2, 6),
     mats.trim,
   );
-  molding.position.set(spec.side * (skinThick * 0.44), -spec.doorHeight * 0.56, -spec.doorLen * 0.5);
+  molding.position.set(spec.side * (skinThick * 0.50), -spec.doorHeight * 0.56, -spec.doorLen * 0.5);
   pivot.add(molding);
 
-  // Sleek outer flush-pull handle
+  // Sleek outer flush-pull handle aligned with upper shoulder crease
   const handle = new THREE.Mesh(
-    createRoundedBoxGeo(0.022, 0.024, 0.13, 0.009, 2, 6),
+    createRoundedBoxGeo(0.020, 0.022, 0.13, 0.009, 2, 6),
     mats.chrome,
   );
-  handle.position.set(spec.side * (skinThick * 0.48), -0.085, -spec.doorLen * 0.78);
+  handle.position.set(spec.side * (skinThick * 0.42), -spec.doorHeight * 0.22, -spec.doorLen * 0.78);
   pivot.add(handle);
 
   // Finished interior door card (quilted upper insert, metallic inlay strip, armrest, chrome latch & speaker ring)
@@ -1343,22 +1360,24 @@ export function createTrapezoidGlassGeo(
   topW: number,
   slantLen: number,
   thickness = 0.02,
+  convexBow = 0.026,
 ): THREE.BufferGeometry {
+  const geo = new THREE.PlaneGeometry(1, 1, 10, 6);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
   const hh = Math.max(0.05, slantLen) * 0.5;
   const hb = Math.max(0.05, botW) * 0.5;
   const ht = Math.max(0.05, topW) * 0.5;
-  const shape = new THREE.Shape();
-  shape.moveTo(-hb, -hh);
-  shape.lineTo(hb, -hh);
-  shape.lineTo(ht, hh);
-  shape.lineTo(-ht, hh);
-  shape.closePath();
-
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: thickness,
-    bevelEnabled: false,
-  });
-  geo.translate(0, 0, -thickness * 0.5);
+  for (let i = 0; i < pos.count; i++) {
+    const ux = pos.getX(i); // -0.5 .. +0.5
+    const uy = pos.getY(i); // -0.5 .. +0.5
+    const tY = uy + 0.5; // 0 (bottom) .. 1 (top)
+    const halfW = THREE.MathUtils.lerp(hb, ht, tY);
+    const x = ux * 2 * halfW;
+    const y = uy * 2 * hh;
+    const zBow = convexBow * Math.cos(ux * Math.PI) * (0.45 + 0.55 * Math.sin(tY * Math.PI));
+    pos.setXYZ(i, x, y, zBow + thickness * 0.15);
+  }
+  pos.needsUpdate = true;
   geo.computeVertexNormals();
   return geo;
 }
@@ -1382,8 +1401,9 @@ export function buildSculptedCabin(
 ): THREE.Group {
   const cabin = new THREE.Group();
   const hl = cabinLen / 2;
-  const baseW = width * 0.92;
-  const topW = width * (1 - taper * 0.34);
+  const effectiveTaper = Math.max(taper, 0.28);
+  const baseW = width * 0.89;
+  const topW = width * (1 - effectiveTaper * 0.42);
 
   const fBotZ = hl;
   const rBotZ = -hl;
@@ -1408,25 +1428,39 @@ export function buildSculptedCabin(
   interior.position.y = -interiorDropY;
   cabin.add(interior);
 
-  // 2. Sleek Cambered Beveled Roof Shell (low-crown automotive curve blended into cantrails)
+  // 2. Double-Curved Beveled Roof Shell (ExtrudeGeometry longitudinal camber + lateral convex dome)
   const roofCurve = new THREE.Shape();
   const rh = roofLen * 0.5 + 0.04;
   roofCurve.moveTo(-rh, 0);
-  roofCurve.quadraticCurveTo(0, 0.042, rh, 0);
+  roofCurve.bezierCurveTo(-rh * 0.45, 0.036, rh * 0.45, 0.036, rh, 0);
   roofCurve.lineTo(rh - 0.02, -0.036);
   roofCurve.quadraticCurveTo(0, 0.004, -rh + 0.02, -0.036);
   roofCurve.closePath();
 
+  const roofSpanW = Math.max(0.2, topW - 0.07);
   const roofGeo = new THREE.ExtrudeGeometry(roofCurve, {
-    depth: Math.max(0.2, topW - 0.075),
+    depth: roofSpanW,
+    steps: cityMode ? 2 : 8,
     bevelEnabled: true,
     bevelSize: 0.034,
     bevelThickness: 0.034,
     bevelSegments: cityMode ? 2 : 5,
     curveSegments: cityMode ? 8 : 20,
   });
-  roofGeo.translate(0, 0, -(topW - 0.075) / 2);
+  roofGeo.translate(0, 0, -roofSpanW / 2);
   roofGeo.rotateY(-Math.PI / 2);
+
+  // Sculpt lateral convex roof dome across X so studio light wraps across both axes
+  const roofPos = roofGeo.attributes.position as THREE.BufferAttribute;
+  const halfRoofW = Math.max(0.15, topW * 0.5);
+  for (let i = 0; i < roofPos.count; i++) {
+    const rx = roofPos.getX(i);
+    const ry = roofPos.getY(i);
+    const nx = THREE.MathUtils.clamp(Math.abs(rx) / halfRoofW, 0, 1);
+    const latDome = 0.032 * Math.cos(nx * Math.PI * 0.5);
+    roofPos.setY(i, ry + latDome);
+  }
+  roofPos.needsUpdate = true;
   roofGeo.computeVertexNormals();
 
   const roofMesh = new THREE.Mesh(roofGeo, mats.body);
@@ -1435,13 +1469,19 @@ export function buildSculptedCabin(
 
   if (panoramic) {
     const panBezel = new THREE.Mesh(
-      createRoundedBoxGeo(topW * 0.78, 0.032, roofLen * 0.74, 0.022, 2, 10),
+      createSculptedPanelGeo(topW * 0.78, 0.032, roofLen * 0.74, 8, 2, 8, 0.016, (p, idx, hx) => {
+        const nx = THREE.MathUtils.clamp(Math.abs(p.getX(idx)) / Math.max(0.1, hx), 0, 1);
+        p.setY(idx, p.getY(idx) + 0.024 * Math.cos(nx * Math.PI * 0.5));
+      }),
       mats.grille,
     );
-    panBezel.position.set(0, cabinHeight + 0.003, roofCenterZ);
-    const panGeo = createRoundedBoxGeo(topW * 0.72, 0.036, roofLen * 0.68, 0.02, 2, 10);
+    panBezel.position.set(0, cabinHeight + 0.008, roofCenterZ);
+    const panGeo = createSculptedPanelGeo(topW * 0.72, 0.034, roofLen * 0.68, 8, 2, 8, 0.014, (p, idx, hx) => {
+      const nx = THREE.MathUtils.clamp(Math.abs(p.getX(idx)) / Math.max(0.1, hx), 0, 1);
+      p.setY(idx, p.getY(idx) + 0.026 * Math.cos(nx * Math.PI * 0.5));
+    });
     const pan = new THREE.Mesh(panGeo, mats.glass);
-    pan.position.set(0, cabinHeight + 0.006, roofCenterZ);
+    pan.position.set(0, cabinHeight + 0.011, roofCenterZ);
     pan.userData.noShadow = true;
     pan.renderOrder = 2;
     cabin.add(panBezel, pan);

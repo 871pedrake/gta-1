@@ -20,6 +20,8 @@ let cachedCarbonTex: THREE.CanvasTexture | null = null;
 let cachedTreadTex: THREE.CanvasTexture | null = null;
 let cachedFloorTex: THREE.CanvasTexture | null = null;
 let cachedShadowTex: THREE.CanvasTexture | null = null;
+let cachedCarPlateTex: THREE.CanvasTexture | null = null;
+let cachedMotoPlateTex: THREE.CanvasTexture | null = null;
 
 export function getCarbonTexture(maxAniso = 4): THREE.CanvasTexture {
   if (cachedCarbonTex) return cachedCarbonTex;
@@ -151,8 +153,140 @@ export function getContactShadowTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+export function getLicensePlateTexture(maxAniso = 4): THREE.CanvasTexture {
+  if (cachedCarPlateTex) return cachedCarPlateTex;
+  const w = 256;
+  const h = 72;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d')!;
+
+  // White brushed aluminum base
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, w, h);
+
+  // Subtle horizontal metallic sheen
+  const grad = ctx.createLinearGradient(0, 18, 0, h);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.55, '#f1f5f9');
+  grad.addColorStop(1, '#e2e8f0');
+  ctx.fillStyle = grad;
+  ctx.fillRect(2, 20, w - 4, h - 22);
+
+  // Mercosul top blue bar
+  ctx.fillStyle = '#003399';
+  ctx.fillRect(0, 0, w, 20);
+
+  // Outer perimeter & Mercosul badge accent
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('BRASIL', w * 0.5, 10.5);
+
+  // Tiny left emblem ring + right flag badge
+  ctx.strokeStyle = '#93c5fd';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(18, 10, 5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(w - 26, 4, 18, 12);
+  ctx.fillStyle = '#facc15';
+  ctx.beginPath();
+  ctx.moveTo(w - 17, 5);
+  ctx.lineTo(w - 10, 10);
+  ctx.lineTo(w - 17, 15);
+  ctx.lineTo(w - 24, 10);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bold Mercosul characters
+  ctx.fillStyle = '#09090b';
+  ctx.font = 'bold 34px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GC5E026', w * 0.5, 47);
+
+  // Mounting screw dots
+  ctx.fillStyle = '#64748b';
+  [12, w - 12].forEach((sx) => {
+    ctx.beginPath();
+    ctx.arc(sx, 28, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAniso;
+  cachedCarPlateTex = tex;
+  return tex;
+}
+
+export function getMotoPlateTexture(maxAniso = 4): THREE.CanvasTexture {
+  if (cachedMotoPlateTex) return cachedMotoPlateTex;
+  const w = 192;
+  const h = 136;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d')!;
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, w, h);
+
+  const grad = ctx.createLinearGradient(0, 28, 0, h);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(1, '#e2e8f0');
+  ctx.fillStyle = grad;
+  ctx.fillRect(3, 28, w - 6, h - 31);
+
+  ctx.fillStyle = '#003399';
+  ctx.fillRect(0, 0, w, 28);
+
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, w - 4, h - 4);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('BRASIL', w * 0.5, 14.5);
+
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(w - 28, 6, 20, 14);
+  ctx.fillStyle = '#facc15';
+  ctx.beginPath();
+  ctx.moveTo(w - 18, 7.5);
+  ctx.lineTo(w - 10, 13);
+  ctx.lineTo(w - 18, 18.5);
+  ctx.lineTo(w - 26, 13);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#09090b';
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GC5', w * 0.5, 58);
+  ctx.fillText('0E26', w * 0.5, 104);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAniso;
+  cachedMotoPlateTex = tex;
+  return tex;
+}
+
 export interface VehicleMaterialSet {
-  body: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
+  body: THREE.MeshStandardMaterial;
   secondary: THREE.MeshStandardMaterial;
   accent: THREE.MeshStandardMaterial;
   interior: THREE.MeshStandardMaterial;
@@ -170,7 +304,10 @@ export interface VehicleMaterialSet {
   brakeDisc: THREE.MeshStandardMaterial;
   caliper: THREE.MeshStandardMaterial;
   headlight: THREE.MeshStandardMaterial;
+  headlightLens: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
   taillight: THREE.MeshStandardMaterial;
+  licensePlate: THREE.MeshStandardMaterial;
+  motoPlate: THREE.MeshStandardMaterial;
   sirenRed: THREE.MeshStandardMaterial;
   sirenBlue: THREE.MeshStandardMaterial;
   sirenAmber: THREE.MeshStandardMaterial;
@@ -186,6 +323,9 @@ interface CitySharedVehicleMaterials {
   alloy: THREE.MeshStandardMaterial;
   rubber: THREE.MeshStandardMaterial;
   glass: THREE.MeshStandardMaterial;
+  headlightLens: THREE.MeshStandardMaterial;
+  licensePlate: THREE.MeshStandardMaterial;
+  motoPlate: THREE.MeshStandardMaterial;
   mirrorGlass: THREE.MeshStandardMaterial;
   exhaustBore: THREE.MeshStandardMaterial;
   amberSignal: THREE.MeshStandardMaterial;
@@ -221,6 +361,25 @@ function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMater
       transparent: true,
       opacity: 0.38,
       depthWrite: false,
+    }),
+    headlightLens: new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      metalness: 0.14,
+      roughness: 0.06,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+    licensePlate: new THREE.MeshStandardMaterial({
+      map: getLicensePlateTexture(maxAniso),
+      metalness: 0.16,
+      roughness: 0.38,
+    }),
+    motoPlate: new THREE.MeshStandardMaterial({
+      map: getMotoPlateTexture(maxAniso),
+      metalness: 0.16,
+      roughness: 0.38,
     }),
     mirrorGlass: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.05 }),
     exhaustBore: new THREE.MeshStandardMaterial({ color: 0x09090b, metalness: 0.1, roughness: 0.95 }),
@@ -287,8 +446,9 @@ export function createVehicleMaterials(
     const shared = getCitySharedVehicleMaterials(maxAniso);
     const body = new THREE.MeshStandardMaterial({
       color: new THREE.Color(primaryColor),
-      metalness: isMatte ? 0.15 : isMetallic ? 0.72 : 0.32,
-      roughness: isMatte ? 0.58 : isMetallic ? 0.2 : 0.18,
+      metalness: isMatte ? 0.22 : isMetallic ? 0.65 : 0.38,
+      roughness: isMatte ? 0.39 : finish === 'pearl' ? 0.25 : isMetallic ? 0.27 : 0.30,
+      envMapIntensity: 1.25,
     });
     const secondary = new THREE.MeshStandardMaterial({
       color: new THREE.Color(secondaryColor),
@@ -386,7 +546,10 @@ export function createVehicleMaterials(
       brakeDisc: shared.brakeDisc,
       caliper: accent,
       headlight,
+      headlightLens: shared.headlightLens,
       taillight: shared.taillight,
+      licensePlate: shared.licensePlate,
+      motoPlate: shared.motoPlate,
       sirenRed,
       sirenBlue,
       sirenAmber,
@@ -399,14 +562,11 @@ export function createVehicleMaterials(
     };
   }
 
-  const body = new THREE.MeshPhysicalMaterial({
+  const body = new THREE.MeshStandardMaterial({
     color: new THREE.Color(primaryColor),
-    metalness: isMatte ? 0.15 : isMetallic ? 0.68 : 0.25,
-    roughness: isMatte ? 0.58 : isMetallic ? 0.22 : 0.16,
-    clearcoat: isMatte ? 0.08 : 1.0,
-    clearcoatRoughness: isMatte ? 0.5 : finish === 'pearl' ? 0.06 : 0.1,
-    iridescence: finish === 'pearl' ? 0.32 : 0,
-    iridescenceIOR: 1.35,
+    metalness: isMatte ? 0.22 : isMetallic ? 0.65 : 0.38,
+    roughness: isMatte ? 0.39 : finish === 'pearl' ? 0.25 : isMetallic ? 0.27 : 0.30,
+    envMapIntensity: 1.32,
   });
 
   const secondary = new THREE.MeshStandardMaterial({
@@ -540,6 +700,34 @@ export function createVehicleMaterials(
     metalness: 0.1,
   });
 
+  const headlightLens = new THREE.MeshPhysicalMaterial({
+    color: 0xf8fafc,
+    metalness: 0.04,
+    roughness: 0.05,
+    transmission: 0,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+    ior: 1.5,
+    reflectivity: 0.78,
+    clearcoat: 0.9,
+    clearcoatRoughness: 0.04,
+    envMapIntensity: 1.3,
+    side: THREE.DoubleSide,
+  });
+
+  const licensePlate = new THREE.MeshStandardMaterial({
+    map: getLicensePlateTexture(maxAniso),
+    metalness: 0.18,
+    roughness: 0.34,
+  });
+
+  const motoPlate = new THREE.MeshStandardMaterial({
+    map: getMotoPlateTexture(maxAniso),
+    metalness: 0.18,
+    roughness: 0.34,
+  });
+
   const taillight = new THREE.MeshStandardMaterial({
     color: 0xdc2626,
     emissive: 0xef4444,
@@ -606,7 +794,10 @@ export function createVehicleMaterials(
     brakeDisc,
     caliper,
     headlight,
+    headlightLens,
     taillight,
+    licensePlate,
+    motoPlate,
     sirenRed,
     sirenBlue,
     sirenAmber,
@@ -634,7 +825,10 @@ export function createVehicleMaterials(
     brakeDisc,
     caliper,
     headlight,
+    headlightLens,
     taillight,
+    licensePlate,
+    motoPlate,
     sirenRed,
     sirenBlue,
     sirenAmber,

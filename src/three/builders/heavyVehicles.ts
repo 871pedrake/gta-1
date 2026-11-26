@@ -3,9 +3,12 @@ import { ExhaustStyle, VehicleConcept, WheelStyle } from '../../types/vehicle';
 import { VehicleMaterialSet } from '../materials';
 import {
   BuiltVehicle,
+  createBeveledHeadlightAssembly,
+  createBeveledRoundHeadlightUnit,
   createEngineBayAssembly,
   createExtrudedProfile,
   createHeadlightBeamMesh,
+  createLicensePlateGroup,
   createRoundedBoxGeo,
   enableShadows,
   makeStrutBetween,
@@ -145,6 +148,8 @@ function addHeavyBumperAndLights(
   isArmored = false,
   grilleCenterY?: number,
   animated?: BuiltVehicle['animatedParts'],
+  cityMode = false,
+  hasRearBodyWall = true,
 ) {
   const bumperMat = isArmored ? mats.trim : useChrome ? mats.chrome : mats.secondary;
 
@@ -164,8 +169,13 @@ function addHeavyBumperAndLights(
   lowerValance.position.set(0, groundClearance - 0.01, frontZ + 0.04);
   group.add(lowerValance);
 
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.12, 0.02), mats.liveryStripe);
-  plate.position.set(0, groundClearance + 0.10, frontZ + 0.155);
+  const plate = createLicensePlateGroup(
+    { variant: 'car', width: 0.45, height: 0.12 },
+    mats,
+    cityMode,
+  );
+  plate.position.set(0, groundClearance + 0.105, frontZ + 0.162);
+  tagPart(plate, 'Placa Dianteira', 0, -0.1, 0.58);
   group.add(plate);
 
   // Twin front tow shackles
@@ -227,44 +237,45 @@ function addHeavyBumperAndLights(
 
   [-1, 1].forEach((side) => {
     const sigMat = side < 0 ? mats.signalLeft : mats.signalRight;
-    const hlGroup = new THREE.Group();
-    const bezel = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.19, 0.18, 0.06, 0.02, 2, 8),
-      mats.grille,
-    );
-    hlGroup.add(bezel);
+    let hlGroup: THREE.Group;
     if (isSchoolBus) {
-      const roundHl = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 0.075, 16), mats.headlight);
-      roundHl.rotation.x = Math.PI / 2;
-      roundHl.position.x = -side * 0.04;
+      hlGroup = new THREE.Group();
+      const housing = new THREE.Mesh(
+        createRoundedBoxGeo(width * 0.19, 0.18, 0.055, 0.022, 2, 8),
+        mats.grille,
+      );
+      hlGroup.add(housing);
+      const roundHl = createBeveledRoundHeadlightUnit(0.068, 0.082, mats, mats.chrome, cityMode);
+      roundHl.position.set(-side * 0.04, 0, 0.022);
       hlGroup.add(roundHl);
       const amber = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.075, 12), sigMat);
       amber.rotation.x = Math.PI / 2;
       amber.position.x = side * 0.095;
       hlGroup.add(amber);
     } else {
-      const lamp = new THREE.Mesh(
-        createRoundedBoxGeo(width * 0.15, 0.11, 0.075, 0.018, 2, 8),
-        mats.headlight,
+      hlGroup = createBeveledHeadlightAssembly(
+        {
+          width: width * 0.19,
+          height: 0.18,
+          depth: 0.068,
+          style: 'truck_pod',
+          side: side as -1 | 1,
+          signalMat: sigMat,
+          frameMat: useChrome ? mats.chrome : mats.grille,
+        },
+        mats,
+        cityMode,
       );
-      lamp.position.y = 0.022;
-      hlGroup.add(lamp);
-      const turn = new THREE.Mesh(
-        createRoundedBoxGeo(width * 0.15, 0.048, 0.078, 0.01, 2, 6),
-        sigMat,
-      );
-      turn.position.y = -0.056;
-      hlGroup.add(turn);
-      const sideAmber = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.09, 0.078), sigMat);
-      sideAmber.position.set(side * (width * 0.088), 0, -0.01);
+      const sideAmber = new THREE.Mesh(new THREE.BoxGeometry(0.030, 0.10, 0.068), sigMat);
+      sideAmber.position.set(side * (width * 0.094), 0, -0.012);
       hlGroup.add(sideAmber);
     }
     if (isArmored) {
-      const guard = new THREE.Mesh(new THREE.BoxGeometry(width * 0.19, 0.02, 0.09), mats.trim);
-      guard.position.z = 0.01;
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(width * 0.195, 0.02, 0.092), mats.trim);
+      guard.position.z = 0.016;
       hlGroup.add(guard);
     }
-    hlGroup.position.set(side * (width * 0.375), grilleY - 0.02, frontZ + 0.016);
+    hlGroup.position.set(side * (width * 0.375), grilleY - 0.02, frontZ + 0.018);
     tagPart(hlGroup, side < 0 ? 'Farol Dianteiro Esquerdo' : 'Farol Dianteiro Direito', side * 0.25, 0, 0.45);
     group.add(hlGroup);
 
@@ -273,8 +284,13 @@ function addHeavyBumperAndLights(
     group.add(beam);
     animated?.headlightBeams.push(beam);
 
-    const fog = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.044, 0.04, 12), mats.headlight);
-    fog.rotation.x = Math.PI / 2;
+    const fog = createBeveledRoundHeadlightUnit(
+      0.045,
+      0.048,
+      mats,
+      useChrome ? mats.chrome : mats.trim,
+      cityMode,
+    );
     fog.position.set(side * (width * 0.36), groundClearance + 0.09, frontZ + 0.135);
     group.add(fog);
 
@@ -301,14 +317,38 @@ function addHeavyBumperAndLights(
   tagPart(rBump, 'Para-choque Traseiro Pesado', 0, -0.1, -0.55);
   group.add(rBump);
 
-  // Reflective safety chevron bar on rear bumper
-  const safetyBar = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72, 0.045, 0.02), mats.amberSignal);
-  safetyBar.position.set(0, groundClearance + 0.08, rearZ - 0.12);
-  group.add(safetyBar);
+  if (hasRearBodyWall) {
+    const safetyBar = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72, 0.045, 0.02), mats.amberSignal);
+    safetyBar.position.set(0, groundClearance + 0.08, rearZ - 0.12);
+    group.add(safetyBar);
 
-  const rPlate = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.11, 0.02), mats.liveryStripe);
-  rPlate.position.set(0, groundClearance + 0.28, rearZ - 0.02);
-  group.add(rPlate);
+    const rPlate = createLicensePlateGroup(
+      { variant: 'car', isRear: true, width: 0.45, height: 0.12 },
+      mats,
+      cityMode,
+    );
+    rPlate.position.set(0, groundClearance + 0.34, rearZ - 0.068);
+    tagPart(rPlate, 'Placa Traseira', 0, -0.1, -0.56);
+    group.add(rPlate);
+  } else {
+    [-1, 1].forEach((side) => {
+      const safetySeg = new THREE.Mesh(
+        new THREE.BoxGeometry(width * 0.22, 0.045, 0.02),
+        mats.amberSignal,
+      );
+      safetySeg.position.set(side * (width * 0.34), groundClearance + 0.08, rearZ - 0.122);
+      group.add(safetySeg);
+    });
+
+    const rPlate = createLicensePlateGroup(
+      { variant: 'car', isRear: true, width: 0.45, height: 0.12 },
+      mats,
+      cityMode,
+    );
+    rPlate.position.set(0, groundClearance + 0.09, rearZ - 0.130);
+    tagPart(rPlate, 'Placa Traseira', 0, -0.1, -0.58);
+    group.add(rPlate);
+  }
 }
 
 function addDualRearFendersAndMudflaps(
@@ -1817,7 +1857,7 @@ function buildSchoolBusVehicle(
   });
 
   addChassisDrivetrain(group, width, g.groundClearance + 0.18, frontWheelZ, rearWheelZ, mats, cityMode);
-  addHeavyBumperAndLights(group, width, g.groundClearance, hoodFrontZ, -halfL + 0.04, mats, false, true, false, undefined, animated);
+  addHeavyBumperAndLights(group, width, g.groundClearance, hoodFrontZ, -halfL + 0.04, mats, false, true, false, undefined, animated, cityMode, true);
   addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'single');
   enableShadows(group);
   return group;
@@ -1948,7 +1988,7 @@ export function buildBusOrArticulatedBus(
     });
 
     addChassisDrivetrain(group, width, g.groundClearance + 0.18, axleZs[0], axleZs[2], mats, cityMode);
-    addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.04, -halfL + 0.04, mats, false, false, false, undefined, animated);
+    addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.04, -halfL + 0.04, mats, false, false, false, undefined, animated, cityMode, true);
     addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'dual');
     enableShadows(group);
     return group;
@@ -2001,7 +2041,7 @@ export function buildBusOrArticulatedBus(
   });
 
   addChassisDrivetrain(group, width, g.groundClearance + 0.18, frontWheelZ, rearWheelZ, mats, cityMode);
-  addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.04, -halfL + 0.04, mats, false, false, false, undefined, animated);
+  addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.04, -halfL + 0.04, mats, false, false, false, undefined, animated, cityMode, true);
   addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'single');
   enableShadows(group);
   return group;
@@ -2809,7 +2849,7 @@ export function buildHeavyTruckVehicle(
   addChassisDrivetrain(group, width, frameY, frontAxleZ, rearAxleZs[0], mats, cityMode);
   addDualRearFendersAndMudflaps(group, width, g.wheelRadius, rearAxleZs, mats, cityMode);
   // Front face of cab sits at cabZ + noseLocalEnd + noseFrontBevel = halfL - 0.08 - 0.015 = halfL - 0.095 -> place fascia clearly proud!
-  addHeavyBumperAndLights(group, width, g.groundClearance, cabZ + ch - 0.01, -halfL + 0.04, mats, useChrome, false, false, cabBaseY + hoodTopH * 0.45, animated);
+  addHeavyBumperAndLights(group, width, g.groundClearance, cabZ + ch - 0.01, -halfL + 0.04, mats, useChrome, false, false, cabBaseY + hoodTopH * 0.45, animated, cityMode, false);
 
   if (g.attachments.includes('lightbar_police') || g.attachments.includes('lightbar_amber')) {
     const isPolice = g.attachments.includes('lightbar_police');
@@ -3585,7 +3625,7 @@ export function buildVanOrArmoredVehicle(
   addChassisDrivetrain(group, width, g.groundClearance + 0.12, frontWheelZ, rearWheelZ, mats, cityMode);
   buildWheelWellLiners(group, g.wheelRadius, g.wheelWidth, width, frontWheelZ, rearWheelZ, mats, cityMode);
   // Front face of cab sits cleanly at halfL - 0.015; frontZ = halfL - 0.01 places grille & headlights 100% PROUD and visible!
-  addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.01, -halfL + 0.04, mats, useChrome, false, isArmored, g.groundClearance + hoodH * 0.44, animated);
+  addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.01, -halfL + 0.04, mats, useChrome, false, isArmored, g.groundClearance + hoodH * 0.44, animated, cityMode, true);
   addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'single');
   enableShadows(group);
   return group;

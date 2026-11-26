@@ -3,9 +3,12 @@ import { VehicleConcept, WheelStyle } from '../../types/vehicle';
 import { VehicleMaterialSet } from '../materials';
 import {
   BuiltVehicle,
+  createBeveledHeadlightAssembly,
+  createBeveledRoundHeadlightUnit,
   createEngineBayAssembly,
   createExtrudedProfile,
   createHeadlightBeamMesh,
+  createLicensePlateGroup,
   createRoundedBoxGeo,
   enableShadows,
   makeStrutBetween,
@@ -455,11 +458,20 @@ export function buildMotorcycleOrAtv(
       animated.steeringPivots.push(steerPivot);
       animated.wheels.push(fw);
 
-      const hl = new THREE.Mesh(
-        createRoundedBoxGeo(0.14, 0.07, 0.06, 0.02, 2, 8),
-        mats.headlight,
+      const hl = createBeveledHeadlightAssembly(
+        {
+          width: 0.155,
+          height: 0.078,
+          depth: 0.056,
+          style: 'twin_projector',
+          side: side as -1 | 1,
+          frameMat: mats.grille,
+        },
+        mats,
+        cityMode,
       );
-      hl.position.set(side * width * 0.16, g.groundClearance + 0.36, length * 0.44);
+      hl.position.set(side * width * 0.16, g.groundClearance + 0.36, length * 0.445);
+      tagPart(hl, side < 0 ? 'Farol Dianteiro Esquerdo' : 'Farol Dianteiro Direito', side * 0.15, 0.08, 0.35);
       const blinkF = new THREE.Mesh(
         createRoundedBoxGeo(0.055, 0.032, 0.035, 0.01, 2, 6),
         side < 0 ? mats.signalLeft : mats.signalRight,
@@ -499,6 +511,26 @@ export function buildMotorcycleOrAtv(
       blinkR.position.set(side * 0.17, g.groundClearance + 0.48, -length * 0.43);
       group.add(blinkR);
     });
+
+    const trikePlateY = g.groundClearance + 0.34;
+    const trikePlateZ = -length * 0.455;
+    const trikeBracket = makeStrutBetween(
+      new THREE.Vector3(0, g.groundClearance + 0.46, -length * 0.42),
+      new THREE.Vector3(0, trikePlateY + 0.03, trikePlateZ + 0.012),
+      0.016,
+      0.016,
+      mats.trim,
+      6,
+    );
+    const trikePlate = createLicensePlateGroup(
+      { variant: 'moto', isRear: true, width: 0.21, height: 0.145 },
+      mats,
+      cityMode,
+    );
+    trikePlate.position.set(0, trikePlateY, trikePlateZ);
+    trikePlate.rotation.x = -0.18;
+    tagPart(trikePlate, 'Placa Traseira Triciclo', 0, -0.05, -0.42);
+    group.add(trikeBracket, trikePlate);
 
     addExhaustSystem(group, width * 0.5, length * 0.48, g.groundClearance + 0.05, mats, 'dual');
     enableShadows(group);
@@ -676,19 +708,48 @@ export function buildMotorcycleOrAtv(
     rearAxle.position.set(0, g.wheelRadius, rZ);
     group.add(rShock, rearAxle);
 
-    // 5. Recessed LED Headlight Strip + Turn Signals + Headlight Beams
-    const hlBar = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.42, 0.055, 0.05, 0.012, 2, 6),
-      mats.headlight,
+    // 5. Beveled Recessed LED Headlight Bar with Translucent Lens + Turn Signals + Rear Plate + Beams
+    const hlBar = createBeveledHeadlightAssembly(
+      {
+        width: width * 0.44,
+        height: 0.068,
+        depth: 0.052,
+        style: 'bar',
+        side: 0,
+        frameMat: mats.trim,
+      },
+      mats,
+      cityMode,
     );
-    hlBar.position.set(0, baseChassisY + 0.38, halfL * 0.90);
+    hlBar.position.set(0, baseChassisY + 0.38, halfL * 0.905);
     hlBar.rotation.x = 0.22;
+    tagPart(hlBar, 'Farol LED Dianteiro Quadriciclo', 0, 0.12, 0.38);
     const tlBar = new THREE.Mesh(
       createRoundedBoxGeo(width * 0.36, 0.045, 0.045, 0.01, 2, 6),
       mats.taillight,
     );
     tlBar.position.set(0, baseChassisY + 0.48, -halfL * 0.88);
     group.add(hlBar, tlBar);
+
+    const atvPlateY = baseChassisY + 0.34;
+    const atvPlateZ = -halfL * 0.915;
+    const atvBracket = makeStrutBetween(
+      new THREE.Vector3(0, baseChassisY + 0.47, -halfL * 0.86),
+      new THREE.Vector3(0, atvPlateY + 0.03, atvPlateZ + 0.012),
+      0.015,
+      0.015,
+      mats.trim,
+      6,
+    );
+    const atvPlate = createLicensePlateGroup(
+      { variant: 'moto', isRear: true, width: 0.21, height: 0.145 },
+      mats,
+      cityMode,
+    );
+    atvPlate.position.set(0, atvPlateY, atvPlateZ);
+    atvPlate.rotation.x = -0.18;
+    tagPart(atvPlate, 'Placa Traseira Quadriciclo', 0, -0.05, -0.40);
+    group.add(atvBracket, atvPlate);
 
     [-1, 1].forEach((side) => {
       const fBlink = new THREE.Mesh(
@@ -1546,15 +1607,30 @@ export function buildMotorcycleOrAtv(
     }
   }
 
-  // 8. Authentic Headlights + Turn Signals + Beams & Taillight
+  // 8. Authentic Beveled Headlights with Translucent Lenses + Turn Signals + Beams & Taillight + Rear Plate
   if (isFairedSport || isMaxiScooter) {
     [-1, 1].forEach((side) => {
-      const bezel = new THREE.Mesh(createRoundedBoxGeo(0.12, 0.075, 0.06, 0.015, 2, 8), mats.grille);
-      bezel.position.set(side * 0.105, g.groundClearance + 0.65, fZ * 0.80);
-      bezel.rotation.y = side * -0.22;
-      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.07, 12), mats.headlight);
-      lens.rotation.x = Math.PI / 2;
-      lens.position.copy(bezel.position);
+      const hlUnit = createBeveledHeadlightAssembly(
+        {
+          width: 0.132,
+          height: 0.082,
+          depth: 0.058,
+          style: 'twin_projector',
+          side: side as -1 | 1,
+          frameMat: mats.grille,
+        },
+        mats,
+        cityMode,
+      );
+      hlUnit.position.set(side * 0.105, g.groundClearance + 0.65, fZ * 0.805);
+      hlUnit.rotation.y = side * -0.22;
+      tagPart(
+        hlUnit,
+        side < 0 ? 'Farol Dianteiro Projetor Esquerdo' : 'Farol Dianteiro Projetor Direito',
+        side * 0.12,
+        0.15,
+        0.35,
+      );
       const blinkF = new THREE.Mesh(
         createRoundedBoxGeo(0.052, 0.03, 0.035, 0.01, 2, 6),
         side < 0 ? mats.signalLeft : mats.signalRight,
@@ -1562,24 +1638,22 @@ export function buildMotorcycleOrAtv(
       blinkF.position.set(side * 0.22, g.groundClearance + 0.64, fZ * 0.72);
       const beam = createHeadlightBeamMesh(3.8, 0.72, 0.08);
       beam.position.set(side * 0.105, g.groundClearance + 0.65, fZ * 0.84);
-      group.add(bezel, lens, blinkF, beam);
+      group.add(hlUnit, blinkF, beam);
       animated.headlightBeams.push(beam);
     });
-    tagPart(group.children[group.children.length - 1], 'Conjunto Óptico Duplo Projetor', 0, 0.25, 0.4);
   } else {
-    const hlBucket = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.108, 0.09, 0.14, 16),
+    const hlUnit = createBeveledRoundHeadlightUnit(
+      0.104,
+      0.135,
+      mats,
       isCruiser || isNaked ? mats.chrome : mats.trim,
+      cityMode,
     );
-    hlBucket.rotation.x = Math.PI / 2;
-    hlBucket.position.set(0, -0.02, 0.10);
-    const hlLens = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.04, 16), mats.headlight);
-    hlLens.rotation.x = Math.PI / 2;
-    hlLens.position.set(0, -0.02, 0.16);
+    hlUnit.position.set(0, -0.02, 0.125);
     const beam = createHeadlightBeamMesh(3.6, 0.72, 0.08);
     beam.position.set(0, -0.02, 0.18);
-    tagPart(hlBucket, 'Farol Dianteiro Projetor', 0, 0.25, 0.4);
-    frontForkPivot.add(hlBucket, hlLens, beam);
+    tagPart(hlUnit, 'Farol Dianteiro Projetor', 0, 0.25, 0.4);
+    frontForkPivot.add(hlUnit, beam);
     animated.headlightBeams.push(beam);
 
     [-1, 1].forEach((side) => {
@@ -1612,6 +1686,27 @@ export function buildMotorcycleOrAtv(
     blinkR.position.set(side * 0.13, tl.position.y, tl.position.z);
     group.add(blinkR);
   });
+
+  // Rear motorcycle/scooter Mercosul license plate mounted on angled tail-tidy fender bracket clearing rear tire
+  const motoPlateY = Math.max(g.groundClearance + 0.24, tl.position.y - 0.13);
+  const motoPlateZ = Math.min(tl.position.z - 0.09, rZ - g.wheelRadius - 0.035);
+  const tailTidyArm = makeStrutBetween(
+    new THREE.Vector3(0, tl.position.y - 0.015, tl.position.z + 0.01),
+    new THREE.Vector3(0, motoPlateY + 0.035, motoPlateZ + 0.016),
+    0.014,
+    0.014,
+    mats.trim,
+    6,
+  );
+  const motoPlate = createLicensePlateGroup(
+    { variant: 'moto', isRear: true, width: 0.19, height: 0.13 },
+    mats,
+    cityMode,
+  );
+  motoPlate.position.set(0, motoPlateY, motoPlateZ);
+  motoPlate.rotation.x = -0.22;
+  tagPart(motoPlate, 'Placa Traseira Moto', 0, 0.08, -0.42);
+  group.add(tailTidyArm, motoPlate);
 
   // 9. Sculpted Exhaust Headers + Upswept / Megaphone / Shotgun Muffler (none on Electric EV!)
   if (!isElectricMoto) {
