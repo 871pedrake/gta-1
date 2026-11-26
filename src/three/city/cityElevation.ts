@@ -1,6 +1,82 @@
 import * as THREE from 'three';
 
-export const WEST_ISLAND_CENTER = { x: -236, z: -14 } as const;
+export interface IslandSpec {
+  id: string;
+  name: string;
+  x: number;
+  z: number;
+  baseRadius: number;
+  maxHeight: number;
+  hillOffsetX: number;
+  hillOffsetZ: number;
+  hillBoost: number;
+  seed: number;
+}
+
+export const WEST_ISLAND_CENTER = { x: -268, z: -12 } as const;
+
+export const WEST_ISLANDS: IslandSpec[] = [
+  {
+    id: 'sol',
+    name: 'Ilha do Sol',
+    x: -268,
+    z: -12,
+    baseRadius: 29.5,
+    maxHeight: 2.3,
+    hillOffsetX: -7,
+    hillOffsetZ: -8,
+    hillBoost: 4.1,
+    seed: 0.0,
+  },
+  {
+    id: 'restinga',
+    name: 'Ilha da Restinga',
+    x: -258,
+    z: -64,
+    baseRadius: 16.5,
+    maxHeight: 1.45,
+    hillOffsetX: -3,
+    hillOffsetZ: -2,
+    hillBoost: 1.1,
+    seed: 1.4,
+  },
+  {
+    id: 'farol',
+    name: 'Ilha do Farol',
+    x: -304,
+    z: 32,
+    baseRadius: 22.0,
+    maxHeight: 2.4,
+    hillOffsetX: -4,
+    hillOffsetZ: 3,
+    hillBoost: 4.8,
+    seed: 2.7,
+  },
+  {
+    id: 'morro_verde',
+    name: 'Ilha do Morro Verde',
+    x: -298,
+    z: -104,
+    baseRadius: 25.0,
+    maxHeight: 2.8,
+    hillOffsetX: -6,
+    hillOffsetZ: -5,
+    hillBoost: 6.2,
+    seed: 4.1,
+  },
+  {
+    id: 'pedras',
+    name: 'Ilhote das Pedras',
+    x: -222,
+    z: 26,
+    baseRadius: 10.5,
+    maxHeight: 1.4,
+    hillOffsetX: -1.5,
+    hillOffsetZ: 1.0,
+    hillBoost: 1.9,
+    seed: 5.5,
+  },
+];
 
 /**
  * Unified elevation profile for Metrópole Cidade Nova.
@@ -51,104 +127,125 @@ export function creekCenterX(z: number): number {
 }
 
 /**
- * Organic coastline wave along the West Beach (Praia Oeste).
+ * Organic crescent coastline wave along the expanded Grand West Beach (Z ∈ [-116, +10]).
  */
 export function westShoreWave(z: number): number {
-  return Math.sin(z * 0.115) * 1.4 + Math.cos(z * 0.055) * 0.8;
+  const bayCurve = Math.sin(THREE.MathUtils.clamp((z + 114) / 122, 0, 1) * Math.PI) * 6.8;
+  return bayCurve + Math.sin(z * 0.075) * 2.1 + Math.cos(z * 0.042) * 1.2;
 }
 
 /**
- * 0..1 envelope defining the open sandy West Beach cove along Z ∈ [-46, +9].
+ * 0..1 envelope defining the expansive sandy West Beach cove along Z ∈ [-116, +10].
  */
 export function westCoveMask(z: number): number {
-  const s = THREE.MathUtils.smoothstep(z, -47.0, -37.0);
-  const n = 1.0 - THREE.MathUtils.smoothstep(z, 2.5, 9.2);
+  const s = THREE.MathUtils.smoothstep(z, -116.5, -96.0);
+  const n = 1.0 - THREE.MathUtils.smoothstep(z, 1.5, 10.5);
   return s * n;
 }
 
 /**
- * Exact sand elevation on the Mainland West Beach (X <= -171.5, Z ∈ [-46, +9]).
- * Keeps the backshore dry terrace nearly flat (+0.18m → +0.04m) for zero-clipping
- * kiosks, sports court & loungers, then curves smoothly to -1.25m waterline & -2.6m seabed.
+ * Exact sand elevation on the Grand Mainland West Beach (X <= -176.2, Z ∈ [-116, +10]).
+ * Sits ~1.05m below the Grand Calçadão (+0.30m) so broad granite staircases &
+ * curved amphitheater terraces descend onto an expansive 21–28m dry golden sand terrace
+ * (-0.72m → -0.92m), then curve gently through wet foreshore to -1.25m surf & -2.65m seabed.
  */
 export function westMainlandBeachY(x: number, z: number): number {
-  const distOut = Math.max(0, -171.5 - x);
+  const distOut = Math.max(0, -176.2 - x);
   const wave = westShoreWave(z);
   const mask = westCoveMask(z);
 
-  // When mask drops near 0 (north/south headlands), foreshore retracts cleanly
-  const drySpan = 10.2 * mask;
-  const slopeSpan = (12.0 + wave) * (0.25 + 0.75 * mask);
+  const drySpan = (20.5 + wave * 0.85) * mask;
+  const slopeSpan = (15.5 + wave * 0.55) * (0.28 + 0.72 * mask);
 
   if (distOut <= drySpan) {
     const t = drySpan > 0.01 ? distOut / drySpan : 0;
-    return THREE.MathUtils.lerp(0.18, 0.02, t);
+    const ripple = Math.sin(x * 0.28 + z * 0.16) * 0.022 * mask;
+    return THREE.MathUtils.lerp(-0.72, -0.92, t) + ripple;
   }
-  const tSlope = THREE.MathUtils.clamp((distOut - drySpan) / Math.max(2.0, slopeSpan), 0, 1);
-  return THREE.MathUtils.lerp(0.02, -2.6, THREE.MathUtils.smoothstep(tSlope, 0, 1));
+  const tSlope = THREE.MathUtils.clamp((distOut - drySpan) / Math.max(2.5, slopeSpan), 0, 1);
+  return THREE.MathUtils.lerp(-0.92, -2.65, THREE.MathUtils.smoothstep(tSlope, 0, 1));
 }
 
 /**
- * Organic perimeter radius to the -1.25m waterline of Ilha do Sol (West Lagoon Island).
+ * Organic perimeter radius to the -1.25m waterline for any island spec.
  */
-export function westIslandRadiusAt(dx: number, dz: number): number {
+export function islandShoreRadiusAt(spec: IslandSpec, dx: number, dz: number): number {
   const theta = Math.atan2(dz, dx);
+  const scale = spec.baseRadius / 26.5;
   return (
-    26.5 +
-    2.8 * Math.cos(2 * theta - 0.5) +
-    1.8 * Math.sin(3 * theta + 0.7) +
-    0.9 * Math.cos(4 * theta + 1.2)
+    spec.baseRadius +
+    scale *
+      (2.8 * Math.cos(2 * theta - 0.5 + spec.seed) +
+        1.8 * Math.sin(3 * theta + 0.7 + spec.seed * 1.3) +
+        0.9 * Math.cos(4 * theta + 1.2 - spec.seed))
   );
 }
 
 /**
- * Continuous heightfield for Ilha do Sol centered at (-236, -14).
- * Waterline (-1.25m) sits at u = 1.0; beach rim spans u ∈ [0.80, 1.22];
- * lush interior trails sit around +1.0m..+2.3m with a SW forested peak up to +6.4m.
+ * Backwards-compatible shoreline radius helper for Ilha do Sol.
  */
-export function westIslandTerrainY(x: number, z: number): number {
-  const dx = x - WEST_ISLAND_CENTER.x;
-  const dz = z - WEST_ISLAND_CENTER.z;
+export function westIslandRadiusAt(dx: number, dz: number): number {
+  return islandShoreRadiusAt(WEST_ISLANDS[0], dx, dz);
+}
+
+/**
+ * Terrain heightfield for a single island spec.
+ */
+export function singleIslandTerrainY(spec: IslandSpec, x: number, z: number): number {
+  const dx = x - spec.x;
+  const dz = z - spec.z;
   const r = Math.hypot(dx, dz);
-  const rShore = westIslandRadiusAt(dx, dz);
+  const rShore = islandShoreRadiusAt(spec, dx, dz);
   const u = r / rShore;
 
-  if (u >= 1.24) return -2.6;
+  if (u >= 1.24) return -2.65;
 
-  // Outer underwater drop & sandy island shoreline through -1.25m at u = 1.0
   if (u >= 0.80) {
     const t = THREE.MathUtils.clamp((u - 0.80) / 0.44, 0, 1);
-    return THREE.MathUtils.lerp(0.45, -2.6, THREE.MathUtils.smoothstep(t, 0, 1));
+    return THREE.MathUtils.lerp(0.45, -2.65, THREE.MathUtils.smoothstep(t, 0, 1));
   }
 
-  // Interior terrain smoothly rising from +0.45m beach rim up to +2.2m plateau
   const tIn = THREE.MathUtils.clamp((0.80 - u) / 0.65, 0, 1);
-  let y = 0.45 + THREE.MathUtils.smoothstep(tIn, 0, 1) * 1.75;
+  let y = 0.45 + THREE.MathUtils.smoothstep(tIn, 0, 1) * (spec.maxHeight - 0.45);
 
-  // Lush forested hillock in the SW interior around (-243, -22)
-  const hillDist = Math.hypot(x - -243, z - -22);
-  if (hillDist < 18.0) {
-    const ht = 1.0 - THREE.MathUtils.smoothstep(hillDist, 0, 18.0);
-    y += ht * 3.9;
+  const hillR = spec.baseRadius * 0.62;
+  const hillDist = Math.hypot(x - (spec.x + spec.hillOffsetX), z - (spec.z + spec.hillOffsetZ));
+  if (hillDist < hillR) {
+    const ht = 1.0 - THREE.MathUtils.smoothstep(hillDist, 0, hillR);
+    y += ht * spec.hillBoost;
   }
 
-  // Gentle flattening around East Pier Arrival Plaza (-211, -14) so bridge landing is level
-  const pierDist = Math.hypot(x - -211.5, z - -14);
-  if (pierDist < 5.8) {
-    const pt = 1.0 - THREE.MathUtils.smoothstep(pierDist, 2.0, 5.8);
-    y = THREE.MathUtils.lerp(y, 0.72, pt);
+  // Flatten eastern landing apron on Ilha do Sol so bridge arrives level
+  if (spec.id === 'sol') {
+    const pierDist = Math.hypot(x - (spec.x + 26.5), z - spec.z);
+    if (pierDist < 5.8) {
+      const pt = 1.0 - THREE.MathUtils.smoothstep(pierDist, 2.0, 5.8);
+      y = THREE.MathUtils.lerp(y, 0.72, pt);
+    }
   }
 
   return y;
 }
 
 /**
- * Continuous terrain height across the entire city basin, West Beach, West Bay,
- * Offshore Island (Ilha do Sol) and lush outer coastal hills.
+ * Combined terrain heightfield across all 5 islands in the West Archipelago.
+ */
+export function westIslandTerrainY(x: number, z: number): number {
+  let best = -2.65;
+  for (let i = 0; i < WEST_ISLANDS.length; i++) {
+    const y = singleIslandTerrainY(WEST_ISLANDS[i], x, z);
+    if (y > best) best = y;
+  }
+  return best;
+}
+
+/**
+ * Continuous terrain height across the entire city basin, Grand West Beach,
+ * West Archipelago (5 islands) and lush outer coastal hills.
  */
 export function cityBasinTerrainY(x: number, z: number): number {
-  // 1. Keep main river channel deeply recessed (Z = 7.5 .. 26.5, X >= -172)
-  if (z > 7.5 && z < 26.5 && x >= -172) {
+  // 1. Keep main river channel deeply recessed (Z = 7.5 .. 26.5, X >= -176.2)
+  if (z > 7.5 && z < 26.5 && x >= -176.2) {
     const edge = Math.min(z - 7.5, 26.5 - z);
     const depth = THREE.MathUtils.smoothstep(edge, 0, 2.2) * 2.55;
     return -depth;
@@ -163,28 +260,34 @@ export function cityBasinTerrainY(x: number, z: number): number {
     }
   }
 
-  // 3. Flat West Coastal Drive & Copacabana Boardwalk Zone (X ∈ [-171.6, -153.2], Z ∈ [-41.5, +7.5])
-  if (x <= -153.2 && x >= -171.6 && z >= -41.5 && z <= 7.5) {
-    return cityRoadY(Math.max(z, -39.5));
+  // 3. Flat West Coastal Drive & Grand Calçadão Superior Zone (X ∈ [-176.2, -156.4], Z ∈ [-112.0, +7.6])
+  if (x <= -156.4 && x >= -176.2 && z >= -112.0 && z <= 7.6) {
+    return 0.0;
   }
 
-  // 4. Open West Bay Lagoon + West Beach Cove + Offshore Tropical Island (X < -171.5, Z ∈ [-56, +34])
-  if (x < -171.5 && z >= -56 && z <= 34) {
-    const coveY = z >= -47 && z <= 9.5 ? westMainlandBeachY(x, z) : -2.6;
+  // 3B. Smooth green bluff transition from coastal drive (X = -156.4 @ 0m) up to western city elevation (X = -153.2 @ cityRoadY(z))
+  if (x > -156.4 && x <= -153.2 && z >= -114.0 && z <= 7.6) {
+    const blend = THREE.MathUtils.smoothstep(x, -156.4, -153.2);
+    return THREE.MathUtils.lerp(0.0, cityRoadY(z), blend);
+  }
+
+  // 4. Open West Bay Lagoon + Grand West Beach + 5-Island Tropical Archipelago (X < -176.0, Z ∈ [-142, +64])
+  if (x < -176.0 && z >= -142 && z <= 64) {
+    const coveY = z >= -116.5 && z <= 10.5 ? westMainlandBeachY(x, z) : -2.65;
     const islandY = westIslandTerrainY(x, z);
     let bayY = Math.max(coveY, islandY);
 
-    // Smoothly rise into northern coastal reforestation park for Z > 25.5 (away from island)
-    if (z > 25.5) {
-      const nt = THREE.MathUtils.smoothstep(z, 25.5, 34.0);
-      const parkH = 0.4 + Math.max(0, (-171.5 - x) * 0.035);
-      bayY = THREE.MathUtils.lerp(bayY, parkH, nt);
+    // Smoothly rise into northern coastal headland park only east of -184 and north of Z = +34
+    if (z > 34.0 && x > -188.0) {
+      const ntZ = THREE.MathUtils.smoothstep(z, 34.0, 52.0);
+      const ntX = THREE.MathUtils.smoothstep(x, -188.0, -176.0);
+      bayY = THREE.MathUtils.lerp(bayY, 1.8, ntZ * ntX);
     }
-    // Smoothly rise into southern coastal bluff for Z < -45.5
-    if (z < -45.5) {
-      const st = THREE.MathUtils.smoothstep(-z, 45.5, 56.0);
-      const bluffH = cityRoadY(z) + Math.min(4.2, Math.max(0, (-171.5 - x) * 0.04));
-      bayY = THREE.MathUtils.lerp(bayY, bluffH, st);
+    // Dramatic southern dune headland ("Morro da Duna Sul") framing the south end of the beach for Z < -114
+    if (z < -114.0) {
+      const st = THREE.MathUtils.smoothstep(-z, 114.0, 134.0);
+      const bluffH = 2.4 + Math.min(7.8, Math.max(0, (-176.0 - x) * 0.085));
+      bayY = THREE.MathUtils.lerp(bayY, Math.max(islandY, bluffH), st * (x > -248 ? 1.0 : 0.0));
     }
     return bayY;
   }
@@ -197,8 +300,9 @@ export function cityBasinTerrainY(x: number, z: number): number {
     const wave = 0.5 + 0.5 * Math.sin(z * 0.055 + 1.0);
     base += overX * overX * (6.8 + wave * 5.2);
   } else if (x < -155) {
-    // Only elevate hills outside the coastal drive/bay corridor (NW Z > 30 or SW Z < -46)
-    const distFromBay = z > 30 ? THREE.MathUtils.smoothstep(z, 30, 56) : z < -46 ? THREE.MathUtils.smoothstep(-z, 46, 72) : 0;
+    // Only elevate hills outside the expanded coastal drive/bay corridor (NW Z > 34 or SW Z < -114)
+    const distFromBay =
+      z > 34 ? THREE.MathUtils.smoothstep(z, 34, 62) : z < -114 ? THREE.MathUtils.smoothstep(-z, 114, 142) : 0;
     const overX = Math.min(1, (-155 - x) / 68);
     const wave = 0.5 + 0.5 * Math.sin(z * 0.06 - 0.8);
     base += distFromBay * overX * overX * (6.2 + wave * 4.8);

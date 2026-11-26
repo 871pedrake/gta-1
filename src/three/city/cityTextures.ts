@@ -88,6 +88,8 @@ export interface CityTextureAtlas {
   soccerField: THREE.CanvasTexture;
   calcadaPraia: THREE.CanvasTexture;
   beachSand: THREE.CanvasTexture;
+  beachPlazaPattern: THREE.CanvasTexture;
+  surfFoam: THREE.CanvasTexture;
   schoolSign: THREE.CanvasTexture;
   schoolCourtyard: THREE.CanvasTexture;
   trafficSignSchool: THREE.CanvasTexture;
@@ -614,6 +616,17 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
     { name: 'QUIOSQUE ÁGUA DE COCO', sub: 'ORLA · PASTEL & CALDO', bg: '#065f46', accent: '#fde047', interior: '#115e59', kind: 'food' },
     { name: 'QUIOSQUE BRISA DO MAR', sub: 'AÇAÍ · PRANCHAS · SOL', bg: '#0369a1', accent: '#fb923c', interior: '#0c4a6e', kind: 'food' },
     { name: 'PAPELARIA DO ESTUDANTE', sub: 'LIVROS · XEROX · LANCHES', bg: '#1e3a8a', accent: '#facc15', interior: '#1e40af', kind: 'tech' },
+    // 25..29: Lojas do Grande Calçadão da Praia
+    { name: 'RESTAURANTE MARÉ ALTA', sub: 'FRUTOS DO MAR · DECK VISTA MAR', bg: '#0f172a', accent: '#38bdf8', interior: '#1e293b', kind: 'food' },
+    { name: 'SORVETERIA & AÇAÍ PRAIA', sub: 'GELATOS · AÇAÍ NA TIGELA', bg: '#701a75', accent: '#f472b6', interior: '#4a044e', kind: 'food' },
+    { name: 'SURF & MODA PRAIA', sub: 'PRANCHAS · BIQUÍNIS · SHORTS', bg: '#0e7490', accent: '#fde047', interior: '#155e75', kind: 'fashion' },
+    { name: 'BAR DO LEME & PETISCOS', sub: 'DRINKS · CHOPP · MÚSICA AO VIVO', bg: '#7c2d12', accent: '#fb923c', interior: '#431407', kind: 'food' },
+    { name: 'CAIAQUE & STAND-UP', sub: 'ALUGUEL NÁUTICO · PASSEIOS', bg: '#064e3b', accent: '#22d3ee', interior: '#042f2e', kind: 'service' },
+    // 30..33: Expansão Sul da Praia & Ilha da Restinga
+    { name: 'PEIXARIA MAR AZUL', sub: 'PEIXE NA BRASA · CAMARÃO · MOQUECA', bg: '#1e3a8a', accent: '#38bdf8', interior: '#172554', kind: 'food' },
+    { name: 'CLUBE DA PRAIA', sub: 'BEACH LOUNGE · DRINKS & DJ', bg: '#312e81', accent: '#facc15', interior: '#1e1b4b', kind: 'food' },
+    { name: 'MERGULHO & PASSEIOS', sub: 'SNORKEL · ESCUNA · ARQUIPÉLAGO', bg: '#0f766e', accent: '#fde047', interior: '#134e4a', kind: 'service' },
+    { name: 'BAR DA ILHOTA', sub: 'RESTINGA · ÁGUA DE COCO & PETISCOS', bg: '#854d0e', accent: '#bef264', interior: '#422006', kind: 'food' },
   ];
 
   const shopSigns = shopConfigs.map((sc) => {
@@ -1293,16 +1306,117 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
   })();
 
   const beachSand = (() => {
-    const [c, ctx] = makeCanvas(256, 256);
-    ctx.fillStyle = '#e8cf97';
-    ctx.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 2400; i++) {
-      const x = (i * 73) % 256;
-      const y = (i * 137) % 256;
-      ctx.fillStyle = i % 3 === 0 ? '#d8ba78' : i % 2 === 0 ? '#f3dfb0' : '#cfb06e';
-      ctx.fillRect(x, y, 2, 2);
+    const S = 512;
+    const [c, ctx] = makeCanvas(S, S);
+    ctx.fillStyle = '#ead29d';
+    ctx.fillRect(0, 0, S, S);
+
+    // Subtle wind-sculpted coastal sand ripples
+    for (let y = 0; y < S; y += 6) {
+      const rippleAlpha = 0.045 + 0.025 * Math.sin(y * 0.14);
+      ctx.strokeStyle = y % 12 === 0 ? `rgba(255,248,225,${rippleAlpha + 0.03})` : `rgba(182,146,84,${rippleAlpha})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let x = 0; x <= S; x += 16) {
+        const wy = y + Math.sin((x / S) * Math.PI * 4 + y * 0.05) * 4;
+        if (x === 0) ctx.moveTo(x, wy);
+        else ctx.lineTo(x, wy);
+      }
+      ctx.stroke();
     }
-    return reg(finalizeColorTex(c, 4, 2, maxAniso));
+
+    // Fine mineral grain & crushed shell flecks
+    for (let i = 0; i < 14000; i++) {
+      const x = (i * 173 + (i % 19) * 7) % S;
+      const y = (i * 311 + (i % 23) * 5) % S;
+      const kind = i % 7;
+      ctx.fillStyle =
+        kind === 0
+          ? 'rgba(255,250,235,0.45)'
+          : kind < 3
+            ? 'rgba(204,170,104,0.38)'
+            : kind < 5
+              ? 'rgba(241,218,162,0.40)'
+              : 'rgba(176,138,76,0.28)';
+      ctx.fillRect(x, y, i % 11 === 0 ? 2 : 1, i % 13 === 0 ? 2 : 1);
+    }
+    return reg(finalizeColorTex(c, 5, 6, maxAniso));
+  })();
+
+  const beachPlazaPattern = (() => {
+    const S = 512;
+    const [c, ctx] = makeCanvas(S, S);
+    ctx.fillStyle = '#f2ecdc';
+    ctx.fillRect(0, 0, S, S);
+
+    const cx = S * 0.5;
+    const cy = S * 0.5;
+    // Concentric Ponta Negra style black-and-cream Portuguese stone rings & geometric waves
+    for (let r = 28; r <= 246; r += 28) {
+      ctx.strokeStyle = (r / 28) % 2 === 1 ? '#18181b' : '#b45309';
+      ctx.lineWidth = (r / 28) % 2 === 1 ? 8 : 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Radiating basalt wedge rays
+    for (let i = 0; i < 24; i++) {
+      const a = (i * Math.PI * 2) / 24;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(a);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(24,24,27,0.85)' : 'rgba(245,240,225,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(46, -4);
+      ctx.lineTo(240, -11);
+      ctx.lineTo(240, 11);
+      ctx.lineTo(46, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    // Inner circular stone medallion
+    ctx.fillStyle = '#18181b';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 48, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f5f0e1';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#0ea5e9';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    return reg(finalizeColorTex(c, 1, 1, maxAniso));
+  })();
+
+  const surfFoam = (() => {
+    const W = 256;
+    const H = 128;
+    const [c, ctx] = makeCanvas(W, H);
+    ctx.clearRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0.0, 'rgba(255,255,255,0.0)');
+    g.addColorStop(0.32, 'rgba(224,247,250,0.42)');
+    g.addColorStop(0.55, 'rgba(255,255,255,0.92)');
+    g.addColorStop(0.78, 'rgba(240,253,255,0.55)');
+    g.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Bubbly sea-foam lace speckles
+    for (let i = 0; i < 180; i++) {
+      const fx = 65 + ((i * 53) % 140);
+      const fy = (i * 37) % H;
+      const r = 1.5 + (i % 4) * 1.1;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath();
+      ctx.arc(fx, fy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    return reg(finalizeColorTex(c, 1, 8, maxAniso));
   })();
 
   const schoolSign = (() => {
@@ -1424,6 +1538,8 @@ export function createCityTextureAtlas(maxAniso = 8): CityTextureAtlas {
     soccerField,
     calcadaPraia,
     beachSand,
+    beachPlazaPattern,
+    surfFoam,
     schoolSign,
     schoolCourtyard,
     trafficSignSchool,

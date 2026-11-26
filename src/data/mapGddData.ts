@@ -62,9 +62,9 @@ export const GDD_EXPLICIT_RULES: GddExplicitRule[] = [
   {
     code: 'REGRA-03',
     title: 'Vegetação Botânica Multi-Polígono (Proibido Árvore ou Arbusto de 1 Polígono)',
-    scope: 'cityVegetation · Ipês, Árvores Urbanas, Mata Atlântica, Palmeiras & Arbustos',
-    rule: 'Nenhuma árvore ou arbusto pode ser modelado como um único cilindro/cone/esfera. Árvores folhosas exigem raízes sapopembas, tronco curvado em segmentos, 4 galhos primários bifurcados, 4 sub-ramos e copa de 13 aglomerados de folhagem orgânica; palmeiras exigem tronco anelado em 6 segmentos, palmito e 11 frondes arqueadas em 2 estágios; arbustos exigem 7 moitas orgânicas com botões florais coloridos.',
-    unityRequirement: 'Usar prefabs LOD0 com meshes fundidas em dois draw calls por espécie (tronco + copa instanciada com shader de vento sincronizado à Bandeira) e manter o leito do córrego livre de troncos.',
+    scope: 'cityVegetation · Ipês, Árvores Urbanas, Mata Atlântica, Coqueiros & Arbustos',
+    rule: 'Nenhuma árvore ou arbusto pode ser modelado como um único cilindro/cone/esfera. Árvores folhosas exigem raízes sapopembas, tronco curvado em segmentos, 4 galhos primários bifurcados, 4 sub-ramos e copa de 13 aglomerados de folhagem orgânica; palmeiras e coqueiros da praia exigem tronco curvo anelado em 9 segmentos, palmito, cacho de cocos e 14 frondes pinadas arqueadas com folíolos; arbustos exigem 7 moitas orgânicas com botões florais coloridos.',
+    unityRequirement: 'Usar prefabs LOD0 com meshes fundidas por espécie (tronco + cocos + frondes instanciadas com shader de vento sincronizado à Bandeira) e manter o leito do córrego livre de troncos.',
   },
   {
     code: 'REGRA-04',
@@ -82,10 +82,10 @@ export const GDD_EXPLICIT_RULES: GddExplicitRule[] = [
   },
   {
     code: 'REGRA-06',
-    title: 'Contraste Brasileiro: Escola Pública, Praia Oeste, Ponte, Ilha do Sol & Reflorestamento',
-    scope: 'E.M. Cidade Nova (-17,-85) · Praia Oeste (X < -171) · Ilha do Sol (-236,-14)',
-    rule: 'A cidade integra contraste urbano legível: Morro da Esperança no maciço Norte; setor financeiro e Cidade Alta; Escola Pública E.M. Cidade Nova (-17,-85 @ +6,75m) com escada/rampa e Área Escolar; e no flanco esquerdo (-X) a Praia Oeste conectada pela Av. Beira-Mar (-162), calçadão em pedra portuguesa, Ponte em Arco com píer e trilha completa cercando a Ilha do Sol (-236,-14), envolvida por amplo reflorestamento multi-espécie.',
-    unityRequirement: 'Manter a muralha sul do rio contínua até X = -171,6, gerar terreno contínuo da Praia Oeste/Baía/Ilha via cityBasinTerrainY e InstancedMesh botânico nas zonas de reflorestamento.',
+    title: 'Contraste Brasileiro: Escola Pública, Praia Oeste Ponta Negra & Ilha do Sol',
+    scope: 'E.M. Cidade Nova (-17,-85) · Praia Oeste (X < -176) · Ilha do Sol (-252,-10)',
+    rule: 'A cidade integra contraste urbano legível: Morro da Esperança no maciço Norte; setor financeiro e Cidade Alta; Escola Pública E.M. Cidade Nova (-17,-85 @ +6,75m) com escada/rampa e Área Escolar; e no flanco esquerdo (-X) a Praia Oeste estilo Ponta Negra ligada pela Av. Beira-Mar (-162), grande calçadão de 9m (+0,30m) com 3 escadarias, praça semicircular com arco em onda, caminho sinuoso na areia, 7 lojas/quiosques, cadeiras/espreguiçadeiras e Ponte em Arco até a Ilha do Sol (-252,-10).',
+    unityRequirement: 'Manter a muralha sul do rio contínua até X = -176,2, gerar terreno contínuo da Praia Oeste/Baía/Ilha via cityBasinTerrainY e InstancedMesh botânico nas zonas de reflorestamento.',
   },
 ];
 
@@ -263,27 +263,27 @@ export const GDD_ZONES: GddZoneSpec[] = [
   },
   {
     id: 'beach',
-    name: 'Praia Oeste, Ponte, Ilha do Sol & Reflorestamento',
-    shortLabel: 'Praia & Ilha (Oeste)',
-    boundsLabel: 'X ∈ [-262, -162] · Z ∈ [-46, +14] · Y = -2,6m → +6,4m',
+    name: 'Praia Oeste Ponta Negra, Calçadão & Ilha do Sol',
+    shortLabel: 'Praia Oeste & Ilha (-252,-10)',
+    boundsLabel: 'X ∈ [-284, -162] · Z ∈ [-54.5, +11.5] · Y = -2,65m → +6,4m',
     colorHex: '#fde047',
-    svgRect: { x: -260, z: -44, w: 96, d: 58 },
+    svgRect: { x: -280, z: -52, w: 118, d: 64 },
     summary:
-      'Orla balneária completa no flanco esquerdo (-X) do mapa, sem colisões de relevo: Av. Beira-Mar Oeste (-162), calçadão em pedra portuguesa, faixa plana e curva de areia dourada, Ponte em Arco com píer náutico até a Ilha do Sol (-236,-14) e trilha perimetral envolvida por reflorestamento de Mata Atlântica, Ipês e coqueiros.',
+      'Orla balneária completa estilo Ponta Negra no flanco esquerdo (-X): Av. Beira-Mar Oeste (-162), grande calçadão de 9m (+0,30m) em pedra portuguesa com ilhas geométricas azuis, praça semicircular com arco em onda, 3 escadarias descendo à areia dourada, caminho sinuoso iluminado, 7 lojas/quiosques, cadeiras/espreguiçadeiras, coqueiros botânicos curvos e Ponte em Arco até a Ilha do Sol (-252,-10).',
     blocks: [
-      'Acesso & Orla Oeste (-162..-171,6): Av. Beira-Mar conectada às ruas Z=0 e Z=-34 + Calçadão Copacabana e 2 quiosques voltados ao mar',
-      'Areia Plana & Lazer (-171,6..-190): Platô nivelado (+0,18m→+0,02m) com futevôlei, posto salva-vidas, guarda-sóis e transição suave até -1,25m',
-      'Ponte & Trilha da Ilha do Sol (-208..-260): Ponte em arco sobre a lagoa com píer lateral e trilha contínua ao redor da ilha e do Mirante',
-      'Reflorestamento Amplo: Coqueiros, Ipês e Mata Atlântica preenchendo a Ilha, Bosque Noroeste, Costão Sudoeste e Serra Sul',
+      'Grande Calçadão Superior (-167,2..-176,2 @ +0,30m): Pedra portuguesa Copacabana, praça semicircular Ponta Negra com 4 degraus e arco branco, ilhas azuis, 3 escadarias e 6 lojas/quiosques',
+      'Areia Dourada & Caminho Sinuoso (-176,2..-195 @ -0,74m→-0,90m): Caminho curvo iluminado, Aluguel de Caiaques, 14 conjuntos de espreguiçadeiras/cadeiras, futevôlei e posto salva-vidas',
+      'Mar Turquesa, Ponte & Ilha do Sol (-200..-284): 3 ondas animadas, ponte em arco com píer náutico (-209) e trilha perimetral na Ilha do Sol (-252,-10)',
+      'Botânica & Reflorestamento: Coqueiros curvos de 14 frondes pinadas + cocos na areia/calçadão, Ipês e Mata Atlântica cobrindo a ilha e encostas',
     ],
     assets: [
-      'Malha arenosa orgânica sem recorte de muro, espuma acompanhando a curva da maré e anel de arrebentação em volta da ilha',
-      'Ponte em madeira/pedra com pilares submersos (-2,8m), balizadores LED e embarcação atracada no píer',
-      'Centenas de árvores botânicas multi-galho instanciadas cobrindo a ilha e reservas florestais periféricas',
+      '7 comércios na orla: Quiosque Água de Coco, Restaurante Maré Alta, Sorveteria & Açaí Praia, Surf & Moda Praia, Quiosque Brisa do Mar, Bar do Leme e Caiaque & Stand-Up',
+      'Espreguiçadeiras com toalha/almofada, cadeiras dobráveis de praia, mesas de bistrô com guarda-sóis no calçadão e bancos em madeira/aço',
+      'Malha de areia esculpida com gradiente seco→molhado→turquesa, espuma em movimento e dezenas de coqueiros multi-parte instanciados',
     ],
     unityRules: [
-      'Usar westMainlandBeachY e westIslandTerrainY integrados ao TerrainCollider contínuo sem recortes na muralha principal do rio',
-      'Conectar Calçadão (-169) → Ponte (-171..-208) → Trilha da Ilha via NavMeshLinks contínuos',
+      'Usar westMainlandBeachY (-0,74m→-0,90m) e westIslandTerrainY integrados ao TerrainCollider sem invadir o calçadão (+0,30m)',
+      'Conectar Calçadão (-171,7) → 3 Escadarias / Anfiteatro → Caminho Sinuoso → Ponte (-176,2..-225,2) → Trilha da Ilha via NavMeshLinks',
     ],
   },
   {
@@ -430,7 +430,7 @@ export const GDD_UNITY_CHECKLIST = [
     tasks: [
       'Instanciar 3 pórticos metálicos aéreos (vão ≥5,6m), placas azuis de esquina/Área Escolar, 2 totens de mapa e placas regulamentares',
       'Atualizar abrigos de ônibus com 4 pilares, vidro, banco com 3 pés, painel MUPI Linha 50 e placa fora da pista',
-      'Construir E.M. Cidade Nova (-17,-85) com escada/rampa, quadra, papelaria e Praia Oeste + Ponte + Ilha do Sol (-162..-260) com reflorestamento',
+      'Construir E.M. Cidade Nova (-17,-85) com escada/rampa, quadra, papelaria e Praia Oeste Ponta Negra (-162..-284) com 7 lojas, escadarias, cadeiras e Ilha do Sol',
     ],
   },
   {

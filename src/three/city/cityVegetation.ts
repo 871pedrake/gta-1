@@ -242,8 +242,171 @@ function buildShrubFlowerGeo(): THREE.BufferGeometry {
   return merged;
 }
 
+function buildBotanicalPalmGeos(leanAmount: number): {
+  trunkGeo: THREE.BufferGeometry;
+  coconutGeo: THREE.BufferGeometry;
+  frondGeo: THREE.BufferGeometry;
+} {
+  const trunkParts: THREE.BufferGeometry[] = [];
+  const segCount = 9;
+  const totalH = 6.35;
+
+  const spineAt = (t: number): { x: number; y: number; z: number } => ({
+    x: Math.pow(t, 1.55) * leanAmount + Math.sin(t * Math.PI) * 0.14,
+    y: t * totalH,
+    z: Math.sin(t * Math.PI * 0.85) * 0.10,
+  });
+
+  // Flared root collar
+  const bulb = new THREE.CylinderGeometry(0.28, 0.42, 0.46, 9);
+  bulb.translate(0, 0.23, 0);
+  trunkParts.push(bulb);
+
+  for (let s = 0; s < segCount; s++) {
+    const t0 = s / segCount;
+    const t1 = (s + 1) / segCount;
+    const p0 = spineAt(t0);
+    const p1 = spineAt(t1);
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const dz = p1.z - p0.z;
+    const len = Math.hypot(dx, dy, dz) * 1.04;
+    const rBot = 0.27 - t0 * 0.12;
+    const rTop = 0.27 - t1 * 0.12;
+
+    const cyl = new THREE.CylinderGeometry(rTop, rBot, len, 8);
+    const dir = new THREE.Vector3(dx, dy, dz).normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    cyl.applyQuaternion(q);
+    cyl.translate((p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5, (p0.z + p1.z) * 0.5);
+    trunkParts.push(cyl);
+
+    // Subtle growth-ring ridge collar at each segment joint
+    if (s > 0) {
+      const ring = new THREE.CylinderGeometry(rBot * 1.11, rBot * 1.05, 0.10, 8);
+      ring.applyQuaternion(q);
+      ring.translate(p0.x, p0.y, p0.z);
+      trunkParts.push(ring);
+    }
+  }
+
+  const tip = spineAt(1.0);
+  const prev = spineAt(0.88);
+  const crownDir = new THREE.Vector3(tip.x - prev.x, tip.y - prev.y, tip.z - prev.z).normalize();
+  const crownQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), crownDir);
+
+  const trunkGeo = mergeGeometriesSimple(trunkParts);
+  trunkParts.forEach((p) => p.dispose());
+
+  // Coconut cluster tucked beneath the crownshaft
+  const cocoParts: THREE.BufferGeometry[] = [];
+  for (let c = 0; c < 5; c++) {
+    const ca = (c * Math.PI * 2) / 5 + 0.3;
+    const cr = 0.24 + (c % 2) * 0.04;
+    const coco = new THREE.IcosahedronGeometry(0.145, 0);
+    coco.scale(0.92, 1.12, 0.92);
+    coco.translate(
+      tip.x + Math.cos(ca) * cr,
+      tip.y + 0.14 - (c % 2) * 0.08,
+      tip.z + Math.sin(ca) * cr,
+    );
+    cocoParts.push(coco);
+  }
+  const coconutGeo = mergeGeometriesSimple(cocoParts);
+  cocoParts.forEach((p) => p.dispose());
+
+  // Crownshaft ("palmito") + 14 arched pinnate fronds with feathery leaflet blades
+  const frondParts: THREE.BufferGeometry[] = [];
+  const crownShaft = new THREE.CylinderGeometry(0.15, 0.19, 0.72, 8);
+  crownShaft.translate(0, 0.32, 0);
+  crownShaft.applyQuaternion(crownQ);
+  crownShaft.translate(tip.x, tip.y - 0.06, tip.z);
+  frondParts.push(crownShaft);
+
+  const crownTop = new THREE.Vector3(
+    tip.x + crownDir.x * 0.62,
+    tip.y + crownDir.y * 0.62,
+    tip.z + crownDir.z * 0.62,
+  );
+
+  const frondCount = 14;
+  for (let f = 0; f < frondCount; f++) {
+    const az = (f * Math.PI * 2) / frondCount + (f % 2) * 0.11;
+    const tier = f % 3; // 0: high upright plume, 1: mid graceful arch, 2: lower sweeping frond
+    const reach = tier === 0 ? 2.45 : tier === 1 ? 3.15 : 2.95;
+    const archPeak = tier === 0 ? 1.15 : tier === 1 ? 0.75 : 0.38;
+    const tipDrop = tier === 0 ? -0.15 : tier === 1 ? -0.82 : -1.28;
+
+    const dirX = Math.cos(az);
+    const dirZ = Math.sin(az);
+    const sideX = -dirZ;
+    const sideZ = dirX;
+
+    const spinePts: THREE.Vector3[] = [];
+    const spineSteps = 5;
+    for (let k = 0; k <= spineSteps; k++) {
+      const u = k / spineSteps;
+      const rDist = u * reach;
+      const yOff = Math.sin(u * Math.PI * 0.78) * archPeak + Math.pow(u, 2.0) * tipDrop;
+      spinePts.push(
+        new THREE.Vector3(
+          crownTop.x + dirX * rDist,
+          crownTop.y + yOff,
+          crownTop.z + dirZ * rDist,
+        ),
+      );
+    }
+
+    // Central arched rachis stem
+    for (let k = 0; k < spineSteps; k++) {
+      const a = spinePts[k];
+      const b = spinePts[k + 1];
+      const v = new THREE.Vector3().subVectors(b, a);
+      const len = v.length();
+      const t = (k + 0.5) / spineSteps;
+      const stem = new THREE.CylinderGeometry(0.022 * (1 - t * 0.6), 0.036 * (1 - t * 0.45), len * 1.05, 4);
+      const sq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize());
+      stem.applyQuaternion(sq);
+      stem.translate((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
+      frondParts.push(stem);
+    }
+
+    // 10 pairs of feathery drooping leaflets fanning off each side of the rachis
+    const pairs = 10;
+    for (let p = 1; p <= pairs; p++) {
+      const u = p / (pairs + 0.6);
+      const fIdx = Math.min(spineSteps - 1, Math.floor(u * spineSteps));
+      const localT = u * spineSteps - fIdx;
+      const basePt = new THREE.Vector3().lerpVectors(spinePts[fIdx], spinePts[fIdx + 1], localT);
+      const tangent = new THREE.Vector3().subVectors(spinePts[fIdx + 1], spinePts[fIdx]).normalize();
+      const leafLen = (0.44 + Math.sin(u * Math.PI) * 0.52) * (tier === 0 ? 0.88 : 1.02);
+
+      [-1, 1].forEach((side) => {
+        const leafDir = new THREE.Vector3(
+          sideX * side * 0.78 + tangent.x * 0.48,
+          -0.46 - u * 0.32,
+          sideZ * side * 0.78 + tangent.z * 0.48,
+        ).normalize();
+
+        const blade = new THREE.ConeGeometry(0.075, leafLen, 3);
+        blade.scale(1.0, 1.0, 0.22);
+        blade.translate(0, leafLen * 0.5, 0);
+        const lq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), leafDir);
+        blade.applyQuaternion(lq);
+        blade.translate(basePt.x, basePt.y, basePt.z);
+        frondParts.push(blade);
+      });
+    }
+  }
+
+  const frondGeo = mergeGeometriesSimple(frondParts);
+  frondParts.forEach((p) => p.dispose());
+  return { trunkGeo, coconutGeo, frondGeo };
+}
+
 export function createVegetationSystem(placements: {
   palms: VegetationPlacement[];
+  beachPalms?: VegetationPlacement[];
   ipesYellow: VegetationPlacement[];
   ipesPink: VegetationPlacement[];
   urbanLeafy: VegetationPlacement[];
@@ -302,25 +465,11 @@ export function createVegetationSystem(placements: {
   };
 
   // =========================================================================
-  // 1. PALMEIRAS IMPERIAIS (Ringed Segmented Trunk + 12 Arched Multi-Segment Fronds)
+  // 1. PALMEIRAS BOTÂNICAS & COQUEIROS DA PRAIA (Tronco Curvo Anelado + Cocos + 14 Frondes Pinadas)
   // =========================================================================
-  const palmTrunkParts: THREE.BufferGeometry[] = [];
-  const palmBulb = new THREE.CylinderGeometry(0.28, 0.36, 0.55, 8);
-  palmBulb.translate(0, 0.275, 0);
-  palmTrunkParts.push(palmBulb);
-  for (let seg = 0; seg < 6; seg++) {
-    const rBot = 0.27 - seg * 0.022;
-    const rTop = 0.24 - seg * 0.022;
-    const cyl = new THREE.CylinderGeometry(rTop, rBot, 0.94, 8);
-    cyl.translate(Math.sin(seg * 0.45) * 0.04, 0.95 + seg * 0.92, 0);
-    palmTrunkParts.push(cyl);
-  }
-  const palmTrunkGeo = regGeo(mergeGeometriesSimple(palmTrunkParts));
-  palmTrunkParts.forEach((p) => p.dispose());
-
   const palmTrunkMat = regMat(
     makeWindStandardMaterial(
-      { color: 0x857c70, roughness: 0.9 },
+      { color: 0x7c6f62, roughness: 0.90 },
       uniforms,
       0.16,
       0.01,
@@ -329,60 +478,56 @@ export function createVegetationSystem(placements: {
       'palm_trunk',
     ),
   );
-  populate(palmTrunkGeo, palmTrunkMat, placements.palms, false);
-
-  // Crownshaft collar + 11 arched multi-segment palm fronds
-  const frondParts: THREE.BufferGeometry[] = [];
-  const crownShaft = new THREE.CylinderGeometry(0.18, 0.20, 0.72, 8);
-  crownShaft.translate(0, 6.45, 0);
-  frondParts.push(crownShaft);
-
-  for (let f = 0; f < 11; f++) {
-    const az = (f * Math.PI * 2) / 11;
-    const lift = f % 2 === 0 ? 0.88 : 1.18;
-
-    // Inner stem reaching upward/outward
-    const seg1 = new THREE.ConeGeometry(0.32, 1.55, 5);
-    seg1.scale(1.0, 1.0, 0.22);
-    seg1.translate(0, 0.77, 0);
-    seg1.rotateZ(lift);
-    seg1.rotateY(az);
-    seg1.translate(0, 6.72, 0);
-    frondParts.push(seg1);
-
-    // Outer drooping leaf fan tip
-    const seg2 = new THREE.ConeGeometry(0.46, 1.75, 5);
-    seg2.scale(1.15, 1.0, 0.18);
-    seg2.translate(0, 0.87, 0);
-    seg2.rotateZ(lift + 0.62);
-    seg2.rotateY(az);
-    const rMid = Math.sin(lift) * 1.45;
-    const yMid = 6.72 + Math.cos(lift) * 1.45;
-    seg2.translate(-Math.cos(az) * rMid, yMid, Math.sin(az) * rMid);
-    frondParts.push(seg2);
-  }
-  const crownCap = new THREE.SphereGeometry(0.30, 7, 5);
-  crownCap.translate(0, 6.75, 0);
-  frondParts.push(crownCap);
-
-  const palmFrondGeo = regGeo(mergeGeometriesSimple(frondParts));
-  frondParts.forEach((p) => p.dispose());
+  const palmCocoMat = regMat(
+    makeWindStandardMaterial(
+      { color: 0x654321, roughness: 0.78 },
+      uniforms,
+      0.20,
+      0.02,
+      5.2,
+      2.2,
+      'palm_coco',
+    ),
+  );
   const palmFrondMat = regMat(
     makeWindStandardMaterial(
-      { color: 0x15803d, roughness: 0.72 },
+      { color: 0x16a34a, roughness: 0.68 },
       uniforms,
-      0.24,
-      0.095,
+      0.26,
+      0.105,
       5.0,
-      3.2,
+      3.4,
       'palm_frond',
     ),
   );
-  populate(palmFrondGeo, palmFrondMat, placements.palms, true, [
-    new THREE.Color(0x15803d),
-    new THREE.Color(0x166534),
+
+  const straightPalm = buildBotanicalPalmGeos(0.32);
+  regGeo(straightPalm.trunkGeo);
+  regGeo(straightPalm.coconutGeo);
+  regGeo(straightPalm.frondGeo);
+
+  populate(straightPalm.trunkGeo, palmTrunkMat, placements.palms, false);
+  populate(straightPalm.coconutGeo, palmCocoMat, placements.palms, false);
+  populate(straightPalm.frondGeo, palmFrondMat, placements.palms, true, [
     new THREE.Color(0x16a34a),
+    new THREE.Color(0x15803d),
+    new THREE.Color(0x22c55e),
   ]);
+
+  if (placements.beachPalms && placements.beachPalms.length > 0) {
+    const coastalPalm = buildBotanicalPalmGeos(1.25);
+    regGeo(coastalPalm.trunkGeo);
+    regGeo(coastalPalm.coconutGeo);
+    regGeo(coastalPalm.frondGeo);
+
+    populate(coastalPalm.trunkGeo, palmTrunkMat, placements.beachPalms, false);
+    populate(coastalPalm.coconutGeo, palmCocoMat, placements.beachPalms, false);
+    populate(coastalPalm.frondGeo, palmFrondMat, placements.beachPalms, true, [
+      new THREE.Color(0x22c55e),
+      new THREE.Color(0x16a34a),
+      new THREE.Color(0x15803d),
+    ]);
+  }
 
   // =========================================================================
   // 2. IPÊS AMARELOS, IPÊS ROSAS & ÁRVORES URBANAS (Troncos Ramificados + Copa Orgânica)

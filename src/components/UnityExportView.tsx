@@ -78,7 +78,7 @@ export const UnityExportView: React.FC<UnityExportViewProps> = ({
               }`}
             >
               <Code2 className="w-3.5 h-3.5" />
-              Scripts C# (Frota 50)
+              Scripts C# (Frota {vehicles.length})
             </button>
             <button
               type="button"
@@ -159,7 +159,7 @@ export const UnityExportView: React.FC<UnityExportViewProps> = ({
             <p><strong className="text-zinc-200">1.</strong> Crie uma pasta <span className="font-mono-tech text-zinc-200">Assets/Scripts/Veiculos50</span> e coloque os 3 arquivos baixados.</p>
             <p><strong className="text-zinc-200">2.</strong> Confira que seu jogador tem a Tag <span className="font-mono-tech text-zinc-200">Player</span> e os scripts <span className="font-mono-tech text-zinc-200">MovimentoJogador</span> + <span className="font-mono-tech text-zinc-200">AparenciaPersonagem</span>.</p>
             <p><strong className="text-zinc-200">3.</strong> Na <span className="font-mono-tech text-zinc-200">Main Camera</span>, garanta que o script <span className="font-mono-tech text-zinc-200">CameraGTA</span> (de CameraSeguir.cs) esteja ativo.</p>
-            <p><strong className="text-zinc-200">4.</strong> No menu superior da Unity clique em <span className="text-amber-400">Cidade &gt; Veículos &gt; Gerar Frota Completa (50 Modelos)</span> para criar todos os 50 prefabs na cena, ou anexe <span className="font-mono-tech text-zinc-200">Fabrica50Veiculos</span> em um objeto vazio para trocar veículos em jogo com <span className="font-mono-tech text-zinc-200">F2</span>.</p>
+            <p><strong className="text-zinc-200">4.</strong> No menu superior da Unity clique em <span className="text-amber-400">Cidade &gt; Veículos &gt; Gerar Frota Completa ({vehicles.length} Modelos)</span> para criar todos os {vehicles.length} prefabs na cena, ou anexe <span className="font-mono-tech text-zinc-200">Fabrica50Veiculos</span> em um objeto vazio para trocar veículos em jogo com <span className="font-mono-tech text-zinc-200">F2</span>.</p>
             <p><strong className="text-zinc-200">5.</strong> Aperte <span className="font-mono-tech text-zinc-200">Play</span>: use <span className="font-mono-tech text-zinc-200">E</span> para entrar/sair, <span className="font-mono-tech text-zinc-200">WASD</span> para dirigir, <span className="font-mono-tech text-zinc-200">Shift</span> turbo, <span className="font-mono-tech text-zinc-200">Espaço</span> freio/subir helicóptero e <span className="font-mono-tech text-zinc-200">L</span> para faróis e giroflex.</p>
           </div>
 

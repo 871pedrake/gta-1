@@ -15,19 +15,26 @@ export function generateUnityCSharpForVehicle(v: VehicleConcept): string {
   const isBoat = v.unitySpec.controlType === 'BarcoControle';
   const isAir = v.unitySpec.controlType === 'AeronaveControle';
   const isMoto = v.unitySpec.controlType === 'MotoControle';
+  const isPlaneOrJet = v.geometry.archetype === 'airplane' || v.geometry.archetype === 'jet';
 
   return `using UnityEngine;
 
 /// <summary>
-/// Concept Art ${v.code} — ${v.name} (${v.category})
+/// Concept Art ${v.code} — ${v.name} (${v.tierClass ?? v.category})
+/// Rank Unity: ${v.performanceRank ?? 'Padrão'}
+/// Classificação: ${v.classificationDescription ?? v.conceptSummary}
 /// Papel na Cidade: ${v.roleInCity}
 /// Compatível com EntrarSairCarro.cs e AparenciaPersonagem.cs
 /// </summary>
 public class Gerador_${safeName} : MonoBehaviour
 {
-    [Header("Identificação & Física")]
+    [Header("Identificação, Classificação & Física")]
     public string codigoModelo = "${v.code}";
     public string nomeVeiculo = "${v.name}";
+    public string classeUnity = "${v.tierClass ?? v.category}";
+    public string rankDesempenho = "${v.performanceRank ?? 'Padrão'}";
+    [TextArea(2, 4)]
+    public string descricaoClassificacao = "${(v.classificationDescription ?? v.conceptSummary).replace(/"/g, '\\"')}";
     public float velocidadeMaxKmh = ${v.unitySpec.maxSpeedKmh}f;
     public float aceleracao = ${v.unitySpec.acceleration}f;
     public float massaKg = ${v.unitySpec.massKg}f;
@@ -59,7 +66,8 @@ public class Gerador_${safeName} : MonoBehaviour
         Color corPrimaria = Hex(hexPrimaria);
         Color corSecundaria = Hex(hexSecundaria);
         Color corDestaque = Hex(hexDestaque);
-        Color corVidro = new Color(0.09f, 0.14f, 0.21f, 0.78f);
+        Color corInterior = Hex("${v.palette.interior}");
+        Color corVidro = new Color(0.55f, 0.78f, 0.94f, 0.42f);
         Color corPneu = new Color(0.11f, 0.11f, 0.12f);
 
         // 1. Carroceria Principal (${length.toFixed(2)}m x ${width.toFixed(2)}m)
@@ -67,31 +75,57 @@ public class Gerador_${safeName} : MonoBehaviour
         float clear = ${v.geometry.groundClearance.toFixed(2)}f;
         CriarPeca(PrimitiveType.Cube, "Carroceria_Base", raiz.transform,
             new Vector3(0f, clear + alturaBase * 0.5f, 0f),
-            new Vector3(${width.toFixed(2)}f, alturaBase, ${length.toFixed(2)}f), corPrimaria);
+            new Vector3(${isPlaneOrJet ? (width * 0.18).toFixed(2) : width.toFixed(2)}f, alturaBase, ${length.toFixed(2)}f), corPrimaria);
 
-        // 2. Cabine / Greenhouse
+        // 2. Cabine Transparente & Interior (${v.palette.interior})
         float alturaCabine = ${(height * v.geometry.cabinHeightRatio).toFixed(2)}f;
         float compCabine = ${(length * v.geometry.cabinLengthRatio).toFixed(2)}f;
-        CriarPeca(PrimitiveType.Cube, "Cabine_Principal", raiz.transform,
+        CriarPeca(PrimitiveType.Cube, "Bancos_Interior", raiz.transform,
+            new Vector3(0f, clear + alturaBase + 0.16f, 0f),
+            new Vector3(${(width * (isPlaneOrJet ? 0.12 : 0.64)).toFixed(2)}f, 0.34f, ${(length * v.geometry.cabinLengthRatio * 0.65).toFixed(2)}f), corInterior);
+        CriarPeca(PrimitiveType.Cube, "Cabine_Vidro_Transparente", raiz.transform,
             new Vector3(0f, clear + alturaBase + alturaCabine * 0.45f, 0f),
-            new Vector3(${(width * 0.86).toFixed(2)}f, alturaCabine, compCabine), corVidro);
-
-        // 3. Para-choques / Acabamentos
+            new Vector3(${(width * (isPlaneOrJet ? 0.15 : 0.86)).toFixed(2)}f, alturaCabine, compCabine), corVidro);
+${
+  isPlaneOrJet
+    ? `
+        // Asas e Empenagem (${v.geometry.archetype})
+        CriarPeca(PrimitiveType.Cube, "Asas_Principais", raiz.transform,
+            new Vector3(0f, clear + alturaBase * 0.75f, 0.1f),
+            new Vector3(${width.toFixed(2)}f, 0.12f, ${(length * 0.22).toFixed(2)}f), corPrimaria);
+        CriarPeca(PrimitiveType.Cube, "Deriva_Vertical", raiz.transform,
+            new Vector3(0f, clear + alturaBase + 0.65f, -${(length * 0.40).toFixed(2)}f),
+            new Vector3(0.10f, 1.25f, ${(length * 0.16).toFixed(2)}f), corDestaque);`
+    : `
+        // 3. Para-choques, Retrovisores e Escapamentos
         CriarPeca(PrimitiveType.Cube, "Parachoque_Dianteiro", raiz.transform,
             new Vector3(0f, clear + 0.12f, ${(length * 0.5 + 0.04).toFixed(2)}f),
             new Vector3(${(width * 0.96).toFixed(2)}f, 0.14f, 0.12f), corSecundaria);
         CriarPeca(PrimitiveType.Cube, "Parachoque_Traseiro", raiz.transform,
             new Vector3(0f, clear + 0.12f, -${(length * 0.5 + 0.04).toFixed(2)}f),
             new Vector3(${(width * 0.96).toFixed(2)}f, 0.14f, 0.12f), corSecundaria);
+        CriarPeca(PrimitiveType.Cube, "Retrovisor_E", raiz.transform,
+            new Vector3(-${(width * 0.54).toFixed(2)}f, clear + alturaBase + 0.08f, ${(length * 0.14).toFixed(2)}f),
+            new Vector3(0.14f, 0.08f, 0.10f), corPrimaria);
+        CriarPeca(PrimitiveType.Cube, "Retrovisor_D", raiz.transform,
+            new Vector3(${(width * 0.54).toFixed(2)}f, clear + alturaBase + 0.08f, ${(length * 0.14).toFixed(2)}f),
+            new Vector3(0.14f, 0.08f, 0.10f), corPrimaria);
+        CriarPeca(PrimitiveType.Cylinder, "Escapamento_E", raiz.transform,
+            new Vector3(-${(width * 0.28).toFixed(2)}f, clear + 0.06f, -${(length * 0.51).toFixed(2)}f),
+            new Vector3(0.08f, 0.12f, 0.08f), corDestaque);
+        CriarPeca(PrimitiveType.Cylinder, "Escapamento_D", raiz.transform,
+            new Vector3(${(width * 0.28).toFixed(2)}f, clear + 0.06f, -${(length * 0.51).toFixed(2)}f),
+            new Vector3(0.08f, 0.12f, 0.08f), corDestaque);`
+}
 
         // 4. Faróis e Lanternas
-        float fX = ${(width * 0.34).toFixed(2)}f;
+        float fX = ${(width * (isPlaneOrJet ? 0.06 : 0.34)).toFixed(2)}f;
         CriarPeca(PrimitiveType.Cube, "Farol_E", raiz.transform,
             new Vector3(-fX, clear + alturaBase * 0.6f, ${(length * 0.5 + 0.01).toFixed(2)}f),
-            new Vector3(${(width * 0.18).toFixed(2)}f, 0.10f, 0.06f), new Color(1f, 0.97f, 0.82f));
+            new Vector3(${(width * (isPlaneOrJet ? 0.04 : 0.18)).toFixed(2)}f, 0.10f, 0.06f), new Color(1f, 0.97f, 0.82f));
         CriarPeca(PrimitiveType.Cube, "Farol_D", raiz.transform,
             new Vector3(fX, clear + alturaBase * 0.6f, ${(length * 0.5 + 0.01).toFixed(2)}f),
-            new Vector3(${(width * 0.18).toFixed(2)}f, 0.10f, 0.06f), new Color(1f, 0.97f, 0.82f));
+            new Vector3(${(width * (isPlaneOrJet ? 0.04 : 0.18)).toFixed(2)}f, 0.10f, 0.06f), new Color(1f, 0.97f, 0.82f));
 ${
   wheelbase > 0 && v.geometry.wheelRadius > 0
     ? `
@@ -103,7 +137,7 @@ ${
           isMoto
             ? `CriarRoda("Roda_Dianteira", raiz.transform, new Vector3(0f, rRoda, zEixo), rRoda, lRoda, corPneu, corDestaque);
         CriarRoda("Roda_Traseira", raiz.transform, new Vector3(0f, rRoda, -zEixo), rRoda, lRoda, corPneu, corDestaque);`
-            : `float xRoda = ${(width * 0.46).toFixed(2)}f;
+            : `float xRoda = ${(width * (isPlaneOrJet ? 0.14 : 0.46)).toFixed(2)}f;
         CriarRoda("Roda_FE", raiz.transform, new Vector3(-xRoda, rRoda, zEixo), rRoda, lRoda, corPneu, corDestaque);
         CriarRoda("Roda_FD", raiz.transform, new Vector3(xRoda, rRoda, zEixo), rRoda, lRoda, corPneu, corDestaque);
         CriarRoda("Roda_TE", raiz.transform, new Vector3(-xRoda, rRoda, -zEixo), rRoda, lRoda, corPneu, corDestaque);
@@ -175,7 +209,7 @@ export function generateFullCatalogScriptableObject(vehicles: VehicleConcept[]):
   const entries = vehicles
     .map(
       (v) =>
-        `        new SpecVeiculoConceito { codigo = "${v.code}", nome = "${v.name}", categoria = "${v.category}", comprimento = ${v.dimensions.length}f, largura = ${v.dimensions.width}f, altura = ${v.dimensions.height}f, velMaxKmh = ${v.unitySpec.maxSpeedKmh}f, aceleracao = ${v.unitySpec.acceleration}f, massaKg = ${v.unitySpec.massKg}f, corHex = "${v.palette.primary}", zonaSpawn = "${v.unitySpec.spawnZone}" }`,
+        `        new SpecVeiculoConceito { codigo = "${v.code}", nome = "${v.name}", categoria = "${v.category}", classeUnity = "${v.tierClass ?? v.category}", rankDesempenho = "${v.performanceRank ?? 'Padrão'}", descricao = "${(v.classificationDescription ?? v.conceptSummary).replace(/"/g, '\\"')}", comprimento = ${v.dimensions.length}f, largura = ${v.dimensions.width}f, altura = ${v.dimensions.height}f, velMaxKmh = ${v.unitySpec.maxSpeedKmh}f, aceleracao = ${v.unitySpec.acceleration}f, massaKg = ${v.unitySpec.massKg}f, corHex = "${v.palette.primary}", zonaSpawn = "${v.unitySpec.spawnZone}" }`,
     )
     .join(',\n');
 
@@ -187,6 +221,9 @@ public struct SpecVeiculoConceito
     public string codigo;
     public string nome;
     public string categoria;
+    public string classeUnity;
+    public string rankDesempenho;
+    public string descricao;
     public float comprimento;
     public float largura;
     public float altura;
@@ -198,7 +235,7 @@ public struct SpecVeiculoConceito
 }
 
 /// <summary>
-/// Catálogo completo dos 50 veículos extras de Concept Art para o projeto Cidade.
+/// Catálogo completo dos ${vehicles.length} veículos de Concept Art para o projeto Cidade.
 /// </summary>
 public class Catalogo50VeiculosConceito : MonoBehaviour
 {

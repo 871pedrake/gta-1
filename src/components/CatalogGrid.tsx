@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Search } from 'lucide-react';
-import { VehicleCategory, VehicleConcept } from '../types/vehicle';
-import { VEHICLE_CATEGORIES } from '../data/vehicles50';
+import { VehicleConcept, VehicleTierClass } from '../types/vehicle';
+import { VEHICLE_TIER_CLASSES, VEHICLE_TIER_META } from '../data/vehicleClassifications';
 import { thumbnailRenderer } from '../three/studioScene';
 
 interface CatalogGridProps {
@@ -17,7 +17,7 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
   selectedId,
   onSelectAndOpenStudio,
 }) => {
-  const [category, setCategory] = useState<'Todas' | VehicleCategory>('Todas');
+  const [tierFilter, setTierFilter] = useState<'Todas' | VehicleTierClass>('Todas');
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('id');
   const [thumbs, setThumbs] = useState<Record<number, string>>(() => {
@@ -60,14 +60,16 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = vehicles.filter((v) => {
-      const catOk = category === 'Todas' || v.category === category;
+      const tierOk = tierFilter === 'Todas' || v.tierClass === tierFilter;
       const qOk =
         !q ||
         v.name.toLowerCase().includes(q) ||
         v.code.toLowerCase().includes(q) ||
+        (v.tierClass ?? '').toLowerCase().includes(q) ||
+        (v.classificationDescription ?? '').toLowerCase().includes(q) ||
         v.conceptSummary.toLowerCase().includes(q) ||
         v.roleInCity.toLowerCase().includes(q);
-      return catOk && qOk;
+      return tierOk && qOk;
     });
 
     return [...list].sort((a, b) => {
@@ -75,7 +77,7 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
       if (sortBy === 'length') return b.dimensions.length - a.dimensions.length;
       return a.id - b.id;
     });
-  }, [vehicles, category, query, sortBy]);
+  }, [vehicles, tierFilter, query, sortBy]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-zinc-950">
@@ -85,10 +87,10 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
           <div>
             <div className="text-xs font-mono-tech text-amber-400">EXPANSÃO DE FROTA URBANA</div>
             <h1 className="font-display text-3xl font-bold text-zinc-100 mt-1">
-              Catálogo Completo — 50 Veículos Conceito
+              Catálogo Completo — {vehicles.length} Veículos Conceito
             </h1>
             <p className="text-sm text-zinc-400 mt-1 max-w-2xl">
-              Modelos 3D multi-peças em escala 1:1 para cidade aberta, rios e espaço aéreo. Clique em qualquer veículo para inspecionar no Estúdio 3D ou gerar o script C#.
+              Modelos 3D multi-peças em escala 1:1 com vidros aparentes, interiores, retrovisores, escapes, aeronaves e embarcações. Clique para inspecionar no Estúdio 3D ou gerar C#.
             </p>
           </div>
 
@@ -129,37 +131,50 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
           </div>
         </div>
 
-        {/* Category Filter Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-2">
-          <button
-            type="button"
-            onClick={() => setCategory('Todas')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-              category === 'Todas'
-                ? 'bg-amber-500 text-zinc-950'
-                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-100 border border-zinc-800'
-            }`}
-          >
-            Todos ({vehicles.length})
-          </button>
-          {VEHICLE_CATEGORIES.map((cat) => {
-            const count = vehicles.filter((v) => v.category === cat).length;
-            const active = category === cat;
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategory(cat)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                  active
-                    ? 'bg-amber-500 text-zinc-950'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-100 border border-zinc-800'
-                }`}
-              >
-                {cat} ({count})
-              </button>
-            );
-          })}
+        {/* Tier Classification Filter Tabs */}
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setTierFilter('Todas')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                tierFilter === 'Todas'
+                  ? 'bg-amber-500 text-zinc-950'
+                  : 'bg-zinc-900 text-zinc-400 hover:text-zinc-100 border border-zinc-800'
+              }`}
+            >
+              Todas as Classes ({vehicles.length})
+            </button>
+            {VEHICLE_TIER_CLASSES.map((tier) => {
+              const count = vehicles.filter((v) => v.tierClass === tier).length;
+              const active = tierFilter === tier;
+              return (
+                <button
+                  key={tier}
+                  type="button"
+                  onClick={() => setTierFilter(tier)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-amber-500 text-zinc-950'
+                      : 'bg-zinc-900 text-zinc-400 hover:text-zinc-100 border border-zinc-800'
+                  }`}
+                >
+                  {tier} ({count})
+                </button>
+              );
+            })}
+          </div>
+          {tierFilter !== 'Todas' && (
+            <div className="px-4 py-2.5 rounded-lg bg-zinc-900/70 border border-zinc-800 text-xs text-zinc-300 flex flex-wrap items-center gap-2">
+              <span className="font-mono-tech text-amber-400 font-semibold">
+                {VEHICLE_TIER_META[tierFilter].rank}
+              </span>
+              <span className="text-zinc-600">·</span>
+              <span className="text-zinc-200 font-medium">{VEHICLE_TIER_META[tierFilter].tagline}</span>
+              <span className="text-zinc-600">—</span>
+              <span className="text-zinc-400">{VEHICLE_TIER_META[tierFilter].unityHandlingSummary}</span>
+            </div>
+          )}
         </div>
 
         {/* 50-Vehicle Grid */}
@@ -206,8 +221,10 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
                   {/* Card Body — Zero-Pill Unboxed Metadata */}
                   <div className="p-4 space-y-2">
                     <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-400">
-                      <span className="font-mono-tech text-amber-400">{v.code}</span>
-                      <span className="truncate">{v.category}</span>
+                      <span className="font-mono-tech text-amber-400">
+                        {v.code} · {v.performanceRank ?? v.category}
+                      </span>
+                      <span className="truncate text-emerald-400/90">{v.tierClass ?? v.category}</span>
                     </div>
 
                     <div className="flex items-start justify-between gap-2">
@@ -218,7 +235,7 @@ export const CatalogGrid: React.FC<CatalogGridProps> = ({
                     </div>
 
                     <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
-                      {v.conceptSummary}
+                      {v.classificationDescription ?? v.conceptSummary}
                     </p>
 
                     <div className="pt-2 border-t border-zinc-800/80 flex items-center gap-2 text-[11px] font-mono-tech text-zinc-400">

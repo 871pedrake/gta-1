@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
-import { StudioCameraPreset, VehicleConcept } from '../types/vehicle';
+import { PaintLivery, StudioCameraPreset, VehicleConcept, WheelStyle } from '../types/vehicle';
 import { buildCraftedVehicle, BuiltVehicle } from './vehicleBuilder';
 import { getContactShadowTexture, getStudioFloorTexture, isSoftwareGl } from './materials';
 
@@ -12,6 +12,7 @@ const _vec3B = new THREE.Vector3();
 export interface StudioCallbacks {
   onHoverPart?: (partLabel: string | null) => void;
   onPartsCount?: (count: number) => void;
+  onOpenablesCount?: (count: number) => void;
 }
 
 export class VehicleStudioController {
@@ -24,12 +25,19 @@ export class VehicleStudioController {
 
   private currentBuilt: BuiltVehicle | null = null;
   private currentVehicle: VehicleConcept | null = null;
+  private customLivery: PaintLivery | undefined = undefined;
+  private customWheelStyle: WheelStyle | undefined = undefined;
+  private customPaintHex: string | undefined = undefined;
+  private customPaintFinish: VehicleConcept['palette']['finish'] | undefined = undefined;
+  private customStripeHex: string | undefined = undefined;
   private contactShadow: THREE.Mesh;
   private turntable: THREE.Mesh;
   private blueprintGroup: THREE.Group;
 
   private explodeTarget = 0;
   private explodeCurrent = 0;
+  private doorsTarget = 0;
+  private doorsCurrent = 0;
   private autoRotate = true;
   private animateSystems = true;
   private lightsOn = true;
@@ -181,35 +189,62 @@ export class VehicleStudioController {
       this.autoRotate ||
       this.animateSystems ||
       this.camTransitioning ||
-      Math.abs(this.explodeCurrent - this.explodeTarget) > 0.002
+      Math.abs(this.explodeCurrent - this.explodeTarget) > 0.002 ||
+      Math.abs(this.doorsCurrent - this.doorsTarget) > 0.002
     );
   }
 
-  public setVehicle(v: VehicleConcept, preserveCamera = false) {
+  public setVehicle(v: VehicleConcept, preserveCamera = false, keepCustomization = false) {
+    const prevRotationY = preserveCamera && this.currentBuilt ? this.currentBuilt.group.rotation.y : 0;
+
     if (this.currentBuilt) {
       this.scene.remove(this.currentBuilt.group);
       this.currentBuilt.dispose();
       this.currentBuilt = null;
     }
 
+    if (!keepCustomization) {
+      this.customLivery = undefined;
+      this.customWheelStyle = undefined;
+      this.customPaintHex = undefined;
+      this.customPaintFinish = undefined;
+      this.customStripeHex = undefined;
+    }
+
     this.currentVehicle = v;
     const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
-    const built = buildCraftedVehicle(v, maxAniso);
+    const built = buildCraftedVehicle(v, maxAniso, {
+      liveryOverride: this.customLivery,
+      wheelStyleOverride: this.customWheelStyle,
+      stripeColorOverride: this.customStripeHex,
+    });
+    built.group.rotation.y = prevRotationY;
     this.currentBuilt = built;
     this.scene.add(built.group);
 
-    // Resize contact shadow & turntable scale for big vehicles (buses, helicopters)
+    if (this.customPaintHex || this.customPaintFinish) {
+      this.applyCustomPaintToBuilt(
+        this.customPaintHex ?? v.palette.primary,
+        this.customPaintFinish ?? v.palette.finish,
+        this.customStripeHex,
+      );
+    }
+
+    // Resize contact shadow & turntable scale for big vehicles (buses, aircraft, helicopters)
     const span = Math.max(v.dimensions.length, v.dimensions.width);
-    this.contactShadow.scale.set(v.dimensions.width * 1.45 / 6, v.dimensions.length * 1.25 / 9, 1);
+    this.contactShadow.scale.set(v.dimensions.width * 1.3 / 6, v.dimensions.length * 1.25 / 9, 1);
     const floorScale = Math.max(1, span / 11);
     this.turntable.scale.set(floorScale, 1, floorScale);
+    this.controls.maxDistance = Math.max(32, span * 2.8);
 
     // Apply current toggles
     this.applyLightsState();
     this.applyWireframeState();
     this.applyExplodePositions(this.explodeCurrent);
+    this.applyOpenables(this.doorsCurrent);
 
     this.callbacks.onPartsCount?.(built.partsCount);
+    this.callbacks.onOpenablesCount?.(built.animatedParts.openables.length);
 
     if (!preserveCamera) {
       this.setCameraPreset('hero', true);
@@ -218,7 +253,23 @@ export class VehicleStudioController {
     }
   }
 
-  public updateCustomPaint(primaryHex: string, finish?: VehicleConcept['palette']['finish']) {
+  public updateCustomization(opts: {
+    livery?: PaintLivery;
+    wheelStyle?: WheelStyle;
+    stripeColor?: string;
+  }) {
+    if (!this.currentVehicle) return;
+    if ('livery' in opts) this.customLivery = opts.livery;
+    if ('wheelStyle' in opts) this.customWheelStyle = opts.wheelStyle;
+    if ('stripeColor' in opts) this.customStripeHex = opts.stripeColor;
+    this.setVehicle(this.currentVehicle, true, true);
+  }
+
+  private applyCustomPaintToBuilt(
+    primaryHex: string,
+    finish?: VehicleConcept['palette']['finish'],
+    stripeHex?: string,
+  ) {
     if (!this.currentBuilt) return;
     const mat = this.currentBuilt.materials.body;
     mat.color.set(primaryHex);
@@ -233,6 +284,20 @@ export class VehicleStudioController {
       }
       mat.needsUpdate = true;
     }
+    if (stripeHex) {
+      this.currentBuilt.materials.liveryStripe.color.set(stripeHex);
+    }
+  }
+
+  public updateCustomPaint(
+    primaryHex: string,
+    finish?: VehicleConcept['palette']['finish'],
+    stripeHex?: string,
+  ) {
+    this.customPaintHex = primaryHex;
+    if (finish) this.customPaintFinish = finish;
+    if (stripeHex) this.customStripeHex = stripeHex;
+    this.applyCustomPaintToBuilt(primaryHex, finish, stripeHex);
     if (!this.needsContinuousLoop()) this.requestRender();
   }
 
@@ -241,7 +306,8 @@ export class VehicleStudioController {
     const len = v ? v.dimensions.length : 4.5;
     const wid = v ? v.dimensions.width : 1.9;
     const hgt = v ? v.dimensions.height : 1.6;
-    const radius = Math.max(len * 0.92, wid * 1.6, hgt * 1.8, 3.6);
+    const widFactor = wid > 4.5 ? 1.08 : 1.6;
+    const radius = Math.max(len * 0.92, wid * widFactor, hgt * 1.8, 3.6);
     const lookY = hgt * 0.45;
 
     this.camTargetLook.set(0, lookY, 0);
@@ -278,6 +344,11 @@ export class VehicleStudioController {
 
   public setExplode(amount: number) {
     this.explodeTarget = THREE.MathUtils.clamp(amount, 0, 1);
+    this.ensureLoopRunning();
+  }
+
+  public setDoorsOpen(open: boolean) {
+    this.doorsTarget = open ? 1 : 0;
     this.ensureLoopRunning();
   }
 
@@ -337,6 +408,30 @@ export class VehicleStudioController {
         obj.position.copy(_vec3A).add(_vec3B);
       }
     });
+    if (this.doorsCurrent > 0.001) {
+      this.applyOpenables(this.doorsCurrent);
+    }
+  }
+
+  private applyOpenables(factor: number) {
+    if (!this.currentBuilt) return;
+    const explodeFactor = this.explodeCurrent;
+    for (const op of this.currentBuilt.animatedParts.openables) {
+      op.pivot.rotation.set(
+        op.baseRot.x + op.openRotX * factor,
+        op.baseRot.y + op.openRotY * factor,
+        op.baseRot.z + op.openRotZ * factor,
+      );
+      op.pivot.position.copy(op.basePos);
+      if (op.pivot.userData.explodeOffset && explodeFactor > 0.001) {
+        _vec3B.copy(op.pivot.userData.explodeOffset).multiplyScalar(explodeFactor);
+        op.pivot.position.add(_vec3B);
+      }
+      if (op.openOffset) {
+        _vec3A.copy(op.openOffset).multiplyScalar(factor);
+        op.pivot.position.add(_vec3A);
+      }
+    }
   }
 
   private handleResize = () => {
@@ -459,6 +554,11 @@ export class VehicleStudioController {
     if (Math.abs(this.explodeCurrent - this.explodeTarget) > 0.001) {
       this.explodeCurrent = THREE.MathUtils.damp(this.explodeCurrent, this.explodeTarget, 9, dt);
       this.applyExplodePositions(this.explodeCurrent);
+    }
+
+    if (Math.abs(this.doorsCurrent - this.doorsTarget) > 0.001) {
+      this.doorsCurrent = THREE.MathUtils.damp(this.doorsCurrent, this.doorsTarget, 7.5, dt);
+      this.applyOpenables(this.doorsCurrent);
     }
 
     if (this.currentBuilt) {
@@ -601,7 +701,8 @@ class OffscreenThumbnailRenderer {
     const built = buildCraftedVehicle(v, 2);
     scene.add(built.group);
 
-    const span = Math.max(v.dimensions.length * 0.92, v.dimensions.width * 1.55, v.dimensions.height * 1.75, 3.4);
+    const widFactor = v.dimensions.width > 4.5 ? 1.06 : 1.55;
+    const span = Math.max(v.dimensions.length * 0.92, v.dimensions.width * widFactor, v.dimensions.height * 1.75, 3.4);
     const lookY = v.dimensions.height * 0.45;
     camera.position.set(span * 0.96, lookY + span * 0.42, span * 1.04);
     camera.lookAt(0, lookY, 0);
@@ -629,7 +730,8 @@ class OffscreenThumbnailRenderer {
     const built = buildCraftedVehicle(v, 4);
     scene.add(built.group);
 
-    const span = Math.max(v.dimensions.length * 0.94, v.dimensions.width * 1.6, v.dimensions.height * 1.8, 3.4);
+    const widFactor = v.dimensions.width > 4.5 ? 1.08 : 1.6;
+    const span = Math.max(v.dimensions.length * 0.94, v.dimensions.width * widFactor, v.dimensions.height * 1.8, 3.4);
     const lookY = v.dimensions.height * 0.45;
 
     const snap = (x: number, y: number, z: number) => {

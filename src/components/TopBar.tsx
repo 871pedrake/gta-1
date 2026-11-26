@@ -7,22 +7,23 @@ interface TopBarProps {
   onChangeView: (view: AppViewMode) => void;
   onExportSheet: () => void;
   isExporting: boolean;
+  totalCount?: number;
 }
-
-const NAV_ITEMS: { id: AppViewMode; label: string }[] = [
-  { id: 'city', label: 'Cidade Conceito' },
-  { id: 'studio', label: 'Estúdio 3D' },
-  { id: 'catalog', label: 'Catálogo (50)' },
-  { id: 'compare', label: 'Escala 1:1' },
-  { id: 'unity', label: 'Unity C#' },
-];
 
 export const TopBar: React.FC<TopBarProps> = ({
   activeView,
   onChangeView,
   onExportSheet,
   isExporting,
+  totalCount = 100,
 }) => {
+  const navItems: { id: AppViewMode; label: string }[] = [
+    { id: 'city', label: 'Cidade Conceito' },
+    { id: 'studio', label: 'Estúdio 3D' },
+    { id: 'catalog', label: `Catálogo (${totalCount})` },
+    { id: 'compare', label: 'Escala 1:1' },
+    { id: 'unity', label: 'Unity C#' },
+  ];
   return (
     <header className="h-14 shrink-0 flex items-center justify-between gap-8 px-6 bg-zinc-950 border-b border-zinc-800/80 z-30">
       {/* Zone 1: Single-line Brand Wordmark */}
@@ -34,9 +35,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         Garagem Conceito 50
       </button>
 
-      {/* Zone 2: 4 clean single-line navigation links */}
+      {/* Zone 2: clean single-line navigation links */}
       <nav className="flex items-center gap-6 overflow-x-auto">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const active = activeView === item.id;
           return (
             <button

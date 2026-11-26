@@ -1,4 +1,6 @@
 import { VehicleConcept, VehicleCategory } from '../types/vehicle';
+import { EXTRA_50_VEHICLES } from './vehiclesExtra50';
+import { classifyVehicle } from './vehicleClassifications';
 
 export const VEHICLE_CATEGORIES: VehicleCategory[] = [
   'Compactos & Populares',
@@ -11,7 +13,7 @@ export const VEHICLE_CATEGORIES: VehicleCategory[] = [
   'Aéreos & Especiais',
 ];
 
-export const VEHICLES_50: VehicleConcept[] = [
+const BASE_50_VEHICLES: VehicleConcept[] = [
   // =========================================================================
   // 1. COMPACTOS & POPULARES URBANOS (#01 - #08)
   // =========================================================================
@@ -2094,3 +2096,15 @@ export const VEHICLES_50: VehicleConcept[] = [
     craftedParts: ['Saia inflável periférica segmentada em borracha', 'Convés estrutural chanfrado', 'Cabine panorâmica avançada para 4 ocupantes', 'Dois dutos aerodinâmicos traseiros com hélices giratórias', 'Lemes verticais sincronizados atrás dos dutos'],
   },
 ];
+
+const RAW_VEHICLES_100: VehicleConcept[] = [
+  ...BASE_50_VEHICLES,
+  ...EXTRA_50_VEHICLES,
+];
+
+export const VEHICLES_50: VehicleConcept[] = RAW_VEHICLES_100.map((v) => ({
+  ...v,
+  ...classifyVehicle(v),
+}));
+
+export const VEHICLES_100 = VEHICLES_50;

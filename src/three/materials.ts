@@ -161,6 +161,10 @@ export interface VehicleMaterialSet {
   alloy: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
   rubber: THREE.MeshStandardMaterial;
   glass: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
+  mirrorGlass: THREE.MeshStandardMaterial;
+  exhaustBore: THREE.MeshStandardMaterial;
+  amberSignal: THREE.MeshStandardMaterial;
+  liveryStripe: THREE.MeshStandardMaterial;
   brakeDisc: THREE.MeshStandardMaterial;
   caliper: THREE.MeshStandardMaterial;
   headlight: THREE.MeshStandardMaterial;
@@ -178,6 +182,9 @@ interface CitySharedVehicleMaterials {
   alloy: THREE.MeshStandardMaterial;
   rubber: THREE.MeshStandardMaterial;
   glass: THREE.MeshStandardMaterial;
+  mirrorGlass: THREE.MeshStandardMaterial;
+  exhaustBore: THREE.MeshStandardMaterial;
+  amberSignal: THREE.MeshStandardMaterial;
   brakeDisc: THREE.MeshStandardMaterial;
   headlight: THREE.MeshStandardMaterial;
   taillight: THREE.MeshStandardMaterial;
@@ -192,7 +199,7 @@ let cachedCityVehicleMats: CitySharedVehicleMaterials | null = null;
 function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMaterials {
   if (cachedCityVehicleMats) return cachedCityVehicleMats;
   cachedCityVehicleMats = {
-    interiorDark: new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.05, roughness: 0.85 }),
+    interiorDark: new THREE.MeshStandardMaterial({ color: 0x26262b, metalness: 0.05, roughness: 0.85 }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xf4f4f5, metalness: 0.92, roughness: 0.14 }),
     alloy: new THREE.MeshStandardMaterial({ color: 0xd4d4d8, metalness: 0.88, roughness: 0.22 }),
     rubber: new THREE.MeshStandardMaterial({
@@ -202,11 +209,20 @@ function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMater
       roughness: 0.88,
     }),
     glass: new THREE.MeshStandardMaterial({
-      color: 0x111e2e,
-      metalness: 0.28,
-      roughness: 0.08,
+      color: 0x6ea8d6,
+      metalness: 0.12,
+      roughness: 0.06,
       transparent: true,
-      opacity: 0.76,
+      opacity: 0.48,
+      depthWrite: false,
+    }),
+    mirrorGlass: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.05 }),
+    exhaustBore: new THREE.MeshStandardMaterial({ color: 0x09090b, metalness: 0.1, roughness: 0.95 }),
+    amberSignal: new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xd97706,
+      emissiveIntensity: 0.75,
+      roughness: 0.2,
     }),
     brakeDisc: new THREE.MeshStandardMaterial({ color: 0xa1a1aa, metalness: 0.85, roughness: 0.34 }),
     headlight: new THREE.MeshStandardMaterial({
@@ -254,7 +270,7 @@ export function createVehicleMaterials(
   finish: PaintFinish,
   trimStyle: TrimFinish,
   maxAniso = 4,
-  options?: { cityMode?: boolean },
+  options?: { cityMode?: boolean; stripeColor?: string },
 ): VehicleMaterialSet {
   const isMatte = finish === 'matte';
   const isMetallic = finish === 'metallic' || finish === 'pearl';
@@ -289,7 +305,13 @@ export function createVehicleMaterials(
       roughness: trimStyle === 'chrome' ? 0.14 : trimStyle === 'carbon' ? 0.36 : 0.72,
     });
 
-    const owned = [body, secondary, accent, trim];
+    const liveryStripe = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(options?.stripeColor ?? accentColor),
+      metalness: 0.25,
+      roughness: 0.22,
+    });
+
+    const owned = [body, secondary, accent, trim, liveryStripe];
     return {
       body,
       secondary,
@@ -300,6 +322,10 @@ export function createVehicleMaterials(
       alloy: shared.alloy,
       rubber: shared.rubber,
       glass: shared.glass,
+      mirrorGlass: shared.mirrorGlass,
+      exhaustBore: shared.exhaustBore,
+      amberSignal: shared.amberSignal,
+      liveryStripe,
       brakeDisc: shared.brakeDisc,
       caliper: accent,
       headlight: shared.headlight,
@@ -378,16 +404,44 @@ export function createVehicleMaterials(
   });
 
   const glass = new THREE.MeshPhysicalMaterial({
-    color: 0x172536,
-    metalness: 0.05,
-    roughness: 0.06,
-    transmission: isSoftwareGl ? 0 : 0.55,
+    color: 0xaad4f5,
+    metalness: 0.04,
+    roughness: 0.04,
+    transmission: isSoftwareGl ? 0 : 0.62,
     transparent: true,
-    opacity: isSoftwareGl ? 0.62 : 0.86,
-    ior: 1.52,
-    thickness: 0.25,
+    opacity: isSoftwareGl ? 0.34 : 0.36,
+    depthWrite: false,
+    ior: 1.5,
+    thickness: 0.14,
     clearcoat: 1.0,
     clearcoatRoughness: 0.04,
+    side: THREE.DoubleSide,
+  });
+
+  const mirrorGlass = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0,
+    metalness: 0.98,
+    roughness: 0.04,
+  });
+
+  const exhaustBore = new THREE.MeshStandardMaterial({
+    color: 0x09090b,
+    metalness: 0.12,
+    roughness: 0.95,
+  });
+
+  const amberSignal = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.85,
+    roughness: 0.18,
+    metalness: 0.1,
+  });
+
+  const liveryStripe = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(options?.stripeColor ?? accentColor),
+    metalness: 0.25,
+    roughness: 0.2,
   });
 
   const brakeDisc = new THREE.MeshStandardMaterial({
@@ -455,6 +509,10 @@ export function createVehicleMaterials(
     alloy,
     rubber,
     glass,
+    mirrorGlass,
+    exhaustBore,
+    amberSignal,
+    liveryStripe,
     brakeDisc,
     caliper,
     headlight,
@@ -475,6 +533,10 @@ export function createVehicleMaterials(
     alloy,
     rubber,
     glass,
+    mirrorGlass,
+    exhaustBore,
+    amberSignal,
+    liveryStripe,
     brakeDisc,
     caliper,
     headlight,

@@ -22,7 +22,6 @@ export const ScaleCompareView: React.FC<ScaleCompareViewProps> = ({ vehicles }) 
     if (!el) return;
     const ctrl = new ScaleCompareController(el);
     controllerRef.current = ctrl;
-    ctrl.setLineup(selectedList);
 
     return () => {
       ctrl.dispose();

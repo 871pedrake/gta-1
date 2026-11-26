@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AppViewMode, VehicleConcept } from './types/vehicle';
 import { VEHICLES_50 } from './data/vehicles50';
 import { TopBar } from './components/TopBar';
@@ -31,6 +31,7 @@ export function App() {
         onChangeView={setActiveView}
         onExportSheet={handleExportSheet}
         isExporting={isExporting}
+        totalCount={VEHICLES_50.length}
       />
 
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden">

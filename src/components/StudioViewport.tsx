@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ChevronUp,
   Code2,
+  DoorOpen,
   Eye,
   Grid3x3,
   Layers,
@@ -14,9 +15,16 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react';
-import { PaintFinish, StudioCameraPreset, VehicleConcept } from '../types/vehicle';
+import {
+  PaintFinish,
+  PaintLivery,
+  StudioCameraPreset,
+  VehicleConcept,
+  WheelStyle,
+} from '../types/vehicle';
 import { VehicleStudioController } from '../three/studioScene';
 import { VEHICLE_CATEGORIES } from '../data/vehicles50';
+import { VEHICLE_TIER_CLASSES } from '../data/vehicleClassifications';
 
 interface StudioViewportProps {
   vehicles: VehicleConcept[];
@@ -27,6 +35,8 @@ interface StudioViewportProps {
 
 const PAINT_SWATCHES = [
   { label: 'Azul Cobalto', hex: '#2563EB' },
+  { label: 'Azul Retrô 80s', hex: '#3B82F6' },
+  { label: 'Magenta 80s', hex: '#E11D74' },
   { label: 'Vermelho Corsa', hex: '#DC2626' },
   { label: 'Âmbar Solar', hex: '#F59E0B' },
   { label: 'Verde Esmeralda', hex: '#059669' },
@@ -41,6 +51,30 @@ const FINISH_OPTIONS: { id: PaintFinish; label: string }[] = [
   { id: 'gloss', label: 'Brilho' },
   { id: 'matte', label: 'Fosco' },
   { id: 'pearl', label: 'Pérola' },
+];
+
+const LIVERY_OPTIONS: { id: PaintLivery; label: string }[] = [
+  { id: 'solid', label: 'Sólida' },
+  { id: 'racing_stripes', label: 'Faixa Dupla' },
+  { id: 'two_tone', label: 'Bicolor' },
+  { id: 'side_stripe', label: 'Faixa Lateral' },
+  { id: 'rally', label: 'Rally' },
+  { id: 'squadron', label: 'Esquadrão' },
+];
+
+const WHEEL_OPTIONS: { id: WheelStyle; label: string }[] = [
+  { id: 'retro_turbofan', label: 'Turbofan 80s' },
+  { id: 'deep_dish_6', label: 'Deep Dish 6' },
+  { id: 'bbs_mesh', label: 'BBS Mesh' },
+  { id: 'sport_5spoke', label: '5 Raios Sport' },
+  { id: 'aero_blade', label: 'Aero Blade' },
+  { id: 'wire_spoke', label: 'Raiada Wire' },
+  { id: 'classic_whitewall', label: 'Faixa Branca' },
+  { id: 'offroad_beadlock', label: 'Off-Road' },
+  { id: 'city_alloy', label: 'Urbana Liga' },
+  { id: 'moto_sport', label: 'Moto Sport' },
+  { id: 'moto_spoke', label: 'Moto Raiada' },
+  { id: 'aircraft_gear', label: 'Trem Pouso' },
 ];
 
 const CAMERA_PRESETS: { id: StudioCameraPreset; label: string }[] = [
@@ -68,15 +102,24 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
 
   const [hoveredPart, setHoveredPart] = useState<string | null>(null);
   const [partsCount, setPartsCount] = useState<number>(0);
+  const [openablesCount, setOpenablesCount] = useState<number>(0);
 
   const [activePreset, setActivePreset] = useState<StudioCameraPreset>('hero');
   const [explode, setExplode] = useState(0);
+  const [doorsOpen, setDoorsOpen] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
   const [animateSystems, setAnimateSystems] = useState(true);
   const [lightsOn, setLightsOn] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [paintHex, setPaintHex] = useState(selectedVehicle.palette.primary);
   const [paintFinish, setPaintFinish] = useState<PaintFinish>(selectedVehicle.palette.finish);
+  const [paintLivery, setPaintLivery] = useState<PaintLivery>(selectedVehicle.palette.livery ?? 'solid');
+  const [wheelStyle, setWheelStyle] = useState<WheelStyle>(selectedVehicle.geometry.wheelStyle);
+
+  const latestPropsRef = useRef({ vehicles, selectedVehicle, onSelectVehicle });
+  latestPropsRef.current = { vehicles, selectedVehicle, onSelectVehicle };
+  const loadedVehicleIdRef = useRef<number | null>(null);
+  const lastStepMsRef = useRef<number>(0);
 
   // Initialize Three.js Studio once
   useEffect(() => {
@@ -84,47 +127,76 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
     if (!el) return;
 
     const studio = new VehicleStudioController(el, {
-      onHoverPart: (label) => setHoveredPart(label),
-      onPartsCount: (count) => setPartsCount(count),
+      onHoverPart: (label) => setHoveredPart((prev) => (prev === label ? prev : label)),
+      onPartsCount: (count) => setPartsCount((prev) => (prev === count ? prev : count)),
+      onOpenablesCount: (count) => setOpenablesCount((prev) => (prev === count ? prev : count)),
     });
     studioRef.current = studio;
-    studio.setVehicle(selectedVehicle, false);
+    const initialVehicle = latestPropsRef.current.selectedVehicle;
+    loadedVehicleIdRef.current = initialVehicle.id;
+    studio.setVehicle(initialVehicle, false);
 
     return () => {
       studio.dispose();
       studioRef.current = null;
+      loadedVehicleIdRef.current = null;
     };
   }, []);
 
-  // Update vehicle when selection changes
+  // Update vehicle only when selectedVehicle.id actually changes after mount
   useEffect(() => {
+    if (loadedVehicleIdRef.current === selectedVehicle.id) return;
+    loadedVehicleIdRef.current = selectedVehicle.id;
     setPaintHex(selectedVehicle.palette.primary);
     setPaintFinish(selectedVehicle.palette.finish);
+    setPaintLivery(selectedVehicle.palette.livery ?? 'solid');
+    setWheelStyle(selectedVehicle.geometry.wheelStyle);
     setActivePreset('hero');
+    setExplode(0);
+    setDoorsOpen(false);
+    studioRef.current?.setExplode(0);
+    studioRef.current?.setDoorsOpen(false);
     studioRef.current?.setVehicle(selectedVehicle, false);
   }, [selectedVehicle]);
 
-  // Keyboard shortcut H to toggle dock, Left/Right arrows for vehicle switching
+  const handleStep = (dir: -1 | 1) => {
+    const { vehicles: list, selectedVehicle: current, onSelectVehicle: select } = latestPropsRef.current;
+    if (list.length === 0) return;
+    const idx = list.findIndex((v) => v.id === current.id);
+    const baseIdx = idx >= 0 ? idx : 0;
+    const nextIdx = (baseIdx + dir + list.length) % list.length;
+    const next = list[nextIdx];
+    if (next && next.id !== current.id) {
+      select(next);
+    }
+  };
+
+  // Keyboard shortcut H to toggle dock, Left/Right arrows for vehicle switching (registered once)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
       if (e.key === 'h' || e.key === 'H') {
+        if (e.repeat) return;
         setDockCollapsed((prev) => !prev);
-      } else if (e.key === 'ArrowRight') {
-        handleStep(1);
-      } else if (e.key === 'ArrowLeft') {
-        handleStep(-1);
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const now = performance.now();
+        if (e.repeat && now - lastStepMsRef.current < 160) return;
+        lastStepMsRef.current = now;
+        handleStep(e.key === 'ArrowRight' ? 1 : -1);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedVehicle, vehicles]);
-
-  const handleStep = (dir: -1 | 1) => {
-    const idx = vehicles.findIndex((v) => v.id === selectedVehicle.id);
-    const nextIdx = (idx + dir + vehicles.length) % vehicles.length;
-    onSelectVehicle(vehicles[nextIdx]);
-  };
+  }, []);
 
   const handlePreset = (preset: StudioCameraPreset) => {
     setActivePreset(preset);
@@ -134,6 +206,12 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
   const handleExplode = (val: number) => {
     setExplode(val);
     studioRef.current?.setExplode(val);
+  };
+
+  const handleToggleDoors = () => {
+    const next = !doorsOpen;
+    setDoorsOpen(next);
+    studioRef.current?.setDoorsOpen(next);
   };
 
   const handleAutoRotate = () => {
@@ -166,13 +244,27 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
     studioRef.current?.updateCustomPaint(hex, finish);
   };
 
+  const handleLiveryChange = (nextLivery: PaintLivery) => {
+    setPaintLivery(nextLivery);
+    studioRef.current?.updateCustomization({ livery: nextLivery });
+  };
+
+  const handleWheelChange = (nextWheel: WheelStyle) => {
+    setWheelStyle(nextWheel);
+    studioRef.current?.updateCustomization({ wheelStyle: nextWheel });
+  };
+
   const filteredPicker = vehicles.filter((v) => {
-    const matchCat = pickerCategory === 'Todas' || v.category === pickerCategory;
+    const matchCat =
+      pickerCategory === 'Todas' ||
+      v.category === pickerCategory ||
+      v.tierClass === pickerCategory;
     const q = pickerSearch.trim().toLowerCase();
     const matchQ =
       !q ||
       v.name.toLowerCase().includes(q) ||
       v.code.toLowerCase().includes(q) ||
+      (v.tierClass ?? '').toLowerCase().includes(q) ||
       v.roleInCity.toLowerCase().includes(q);
     return matchCat && matchQ;
   });
@@ -183,11 +275,17 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
       <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
       {/* Top-Left Minimal Spec Header (unboxed metadata, no pills, solid bg-zinc-950/90) */}
-      <div className="pointer-events-none absolute top-5 left-6 z-10 max-w-xl">
-        <div className="flex items-center gap-2 text-xs font-medium text-amber-400 font-mono-tech">
+      <div className="pointer-events-none absolute top-5 left-6 z-10 max-w-2xl">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-amber-400 font-mono-tech">
           <span>{selectedVehicle.code}</span>
           <span aria-hidden="true" className="text-zinc-600">·</span>
-          <span className="text-zinc-400 font-sans">{selectedVehicle.category}</span>
+          <span className="text-zinc-300 font-sans">{selectedVehicle.tierClass ?? selectedVehicle.category}</span>
+          {selectedVehicle.performanceRank && (
+            <>
+              <span aria-hidden="true" className="text-zinc-600">·</span>
+              <span className="text-emerald-400">{selectedVehicle.performanceRank}</span>
+            </>
+          )}
           <span aria-hidden="true" className="text-zinc-600">·</span>
           <span className="text-zinc-400">{selectedVehicle.id} / {vehicles.length}</span>
         </div>
@@ -200,6 +298,12 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
           {selectedVehicle.unitySpec.maxSpeedKmh} km/h
           <span className="mx-2 text-zinc-600">·</span>
           {partsCount} submalhas 3D
+          {openablesCount > 0 && (
+            <>
+              <span className="mx-2 text-zinc-600">·</span>
+              {openablesCount} aberturas articuladas
+            </>
+          )}
         </p>
         {hoveredPart && (
           <div className="mt-2 inline-block px-2.5 py-1 bg-zinc-900/95 border border-zinc-700 rounded text-xs text-amber-300">
@@ -240,6 +344,15 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
 
           <div className="flex-1 overflow-y-auto p-5 space-y-5 text-sm">
             <div>
+              <div className="text-xs font-medium text-zinc-500 mb-1">
+                Classificação Unity · {selectedVehicle.performanceRank ?? selectedVehicle.category}
+              </div>
+              <p className="text-zinc-200 leading-relaxed">
+                {selectedVehicle.classificationDescription ?? selectedVehicle.conceptSummary}
+              </p>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-800/80">
               <div className="text-xs font-medium text-zinc-500 mb-1">Conceito Visual</div>
               <p className="text-zinc-300 leading-relaxed">{selectedVehicle.conceptSummary}</p>
             </div>
@@ -311,7 +424,7 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
         <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/75">
           <div className="w-full max-w-3xl max-h-[82vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between gap-4 px-5 py-3.5 border-b border-zinc-800">
-              <h2 className="font-display text-lg font-bold text-zinc-100">Selecionar Veículo (50 Modelos)</h2>
+              <h2 className="font-display text-lg font-bold text-zinc-100">Selecionar Veículo ({vehicles.length} Modelos)</h2>
               <button
                 type="button"
                 onClick={() => setPickerOpen(false)}
@@ -332,7 +445,7 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
                 />
               </div>
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                {['Todas', ...VEHICLE_CATEGORIES].map((cat) => (
+                {Array.from(new Set(['Todas', ...VEHICLE_TIER_CLASSES, ...VEHICLE_CATEGORIES])).map((cat) => (
                   <button
                     key={cat}
                     type="button"
@@ -366,8 +479,8 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
                     }`}
                   >
                     <div className="min-w-0">
-                      <div className="text-[11px] font-mono-tech text-zinc-500">
-                        {v.code} · {v.category}
+                      <div className="text-[11px] font-mono-tech text-zinc-500 truncate">
+                        {v.code} · {v.performanceRank ?? v.category} · {v.tierClass ?? v.category}
                       </div>
                       <div className="text-sm font-semibold truncate">{v.name}</div>
                     </div>
@@ -455,7 +568,22 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
             </div>
 
             {/* Toggles */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {openablesCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleToggleDoors}
+                  title="Abrir / Fechar Portas, Capô, Canopy e Compartimentos"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border whitespace-nowrap cursor-pointer ${
+                    doorsOpen
+                      ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300'
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                  }`}
+                >
+                  <DoorOpen className="w-3.5 h-3.5" />
+                  {doorsOpen ? 'Fechar Portas' : 'Abrir Portas'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleLights}
@@ -580,6 +708,45 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Row 3: Livery Style & Wheel Style Customizer */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-zinc-800/80 text-xs">
+            <label className="flex items-center gap-2 text-zinc-400">
+              <span className="whitespace-nowrap">Pintura / Faixas</span>
+              <select
+                value={paintLivery}
+                onChange={(e) => handleLiveryChange(e.target.value as PaintLivery)}
+                className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-100 text-xs focus:outline-none focus:border-amber-500 cursor-pointer"
+              >
+                {LIVERY_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {selectedVehicle.geometry.wheelStyle !== 'none' && (
+              <label className="flex items-center gap-2 text-zinc-400">
+                <span className="whitespace-nowrap">Modelo de Roda</span>
+                <select
+                  value={wheelStyle}
+                  onChange={(e) => handleWheelChange(e.target.value as WheelStyle)}
+                  className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-100 text-xs focus:outline-none focus:border-amber-500 cursor-pointer"
+                >
+                  {WHEEL_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <span className="text-[11px] font-mono-tech text-zinc-500 hidden md:inline">
+              Vidros aparentes · Retrovisores · Escapes ({selectedVehicle.geometry.exhaustStyle ?? 'padrão'})
+            </span>
           </div>
         </div>
       </div>
