@@ -107,7 +107,7 @@ export const UnityExportView: React.FC<UnityExportViewProps> = ({
         {/* Left Column: Step-by-step Unity Installation Guide */}
         <div className="lg:col-span-4 space-y-5">
           <div>
-            <div className="text-xs font-mono-tech text-amber-400">PACOTE COMPLETO UNITY (3 SCRIPTS)</div>
+            <div className="text-xs font-mono-tech text-amber-400">PACOTE COMPLETO UNITY (4 SCRIPTS)</div>
             <h1 className="font-display text-3xl font-bold text-zinc-100 mt-1">
               Instalação Perfeita na Unity
             </h1>
@@ -156,7 +156,7 @@ export const UnityExportView: React.FC<UnityExportViewProps> = ({
 
           <div className="p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl space-y-2.5 text-xs text-zinc-400 leading-relaxed">
             <div className="font-semibold text-zinc-200">Passo a Passo na Unity:</div>
-            <p><strong className="text-zinc-200">1.</strong> Crie uma pasta <span className="font-mono-tech text-zinc-200">Assets/Scripts/Veiculos50</span> e coloque os 3 arquivos baixados.</p>
+            <p><strong className="text-zinc-200">1.</strong> Crie uma pasta <span className="font-mono-tech text-zinc-200">Assets/Scripts/Veiculos50</span> e coloque os 4 arquivos baixados.</p>
             <p><strong className="text-zinc-200">2.</strong> Confira que seu jogador tem a Tag <span className="font-mono-tech text-zinc-200">Player</span> e os scripts <span className="font-mono-tech text-zinc-200">MovimentoJogador</span> + <span className="font-mono-tech text-zinc-200">AparenciaPersonagem</span>.</p>
             <p><strong className="text-zinc-200">3.</strong> Na <span className="font-mono-tech text-zinc-200">Main Camera</span>, garanta que o script <span className="font-mono-tech text-zinc-200">CameraGTA</span> (de CameraSeguir.cs) esteja ativo.</p>
             <p><strong className="text-zinc-200">4.</strong> No menu superior da Unity clique em <span className="text-amber-400">Cidade &gt; Veículos &gt; Gerar Frota Completa ({vehicles.length} Modelos)</span> para criar todos os {vehicles.length} prefabs na cena, ou anexe <span className="font-mono-tech text-zinc-200">Fabrica50Veiculos</span> em um objeto vazio para trocar veículos em jogo com <span className="font-mono-tech text-zinc-200">F2</span>.</p>

@@ -22,6 +22,8 @@ let cachedFloorTex: THREE.CanvasTexture | null = null;
 let cachedShadowTex: THREE.CanvasTexture | null = null;
 let cachedCarPlateTex: THREE.CanvasTexture | null = null;
 let cachedMotoPlateTex: THREE.CanvasTexture | null = null;
+let cachedGrilleColorTex: THREE.CanvasTexture | null = null;
+let cachedGrilleBumpTex: THREE.CanvasTexture | null = null;
 
 export function getCarbonTexture(maxAniso = 4): THREE.CanvasTexture {
   if (cachedCarbonTex) return cachedCarbonTex;
@@ -84,14 +86,18 @@ export function getStudioFloorTexture(maxAniso = 8): THREE.CanvasTexture {
   c.width = size;
   c.height = size;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#111115';
-  ctx.fillRect(0, 0, size, size);
-
   const cx = size / 2;
   const cy = size / 2;
 
+  const baseGrad = ctx.createRadialGradient(cx, cy, 40, cx, cy, size * 0.56);
+  baseGrad.addColorStop(0, '#1e212a');
+  baseGrad.addColorStop(0.48, '#13151c');
+  baseGrad.addColorStop(1, '#0c0d12');
+  ctx.fillStyle = baseGrad;
+  ctx.fillRect(0, 0, size, size);
+
   // Fine calibration metric grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.032)';
   ctx.lineWidth = 1;
   const step = size / 24;
   for (let i = 0; i <= 24; i++) {
@@ -111,7 +117,7 @@ export function getStudioFloorTexture(maxAniso = 8): THREE.CanvasTexture {
   radii.forEach((r, idx) => {
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.strokeStyle = idx === 2 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255,255,255,0.09)';
+    ctx.strokeStyle = idx === 2 ? 'rgba(245, 158, 11, 0.22)' : 'rgba(255,255,255,0.075)';
     ctx.lineWidth = idx === 2 ? 2 : 1.25;
     ctx.stroke();
   });
@@ -124,7 +130,7 @@ export function getStudioFloorTexture(maxAniso = 8): THREE.CanvasTexture {
     ctx.beginPath();
     ctx.moveTo(cx + Math.cos(rad) * r0, cy + Math.sin(rad) * r0);
     ctx.lineTo(cx + Math.cos(rad) * r1, cy + Math.sin(rad) * r1);
-    ctx.strokeStyle = deg % 90 === 0 ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.16)';
+    ctx.strokeStyle = deg % 90 === 0 ? 'rgba(245,158,11,0.40)' : 'rgba(255,255,255,0.14)';
     ctx.lineWidth = deg % 90 === 0 ? 2 : 1;
     ctx.stroke();
   }
@@ -138,16 +144,66 @@ export function getStudioFloorTexture(maxAniso = 8): THREE.CanvasTexture {
 
 export function getContactShadowTexture(): THREE.CanvasTexture {
   if (cachedShadowTex) return cachedShadowTex;
+  const size = 512;
+  const cx = size / 2;
+  const cy = size / 2;
   const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 256;
+  c.width = size;
+  c.height = size;
   const ctx = c.getContext('2d')!;
-  const grad = ctx.createRadialGradient(128, 128, 16, 128, 128, 124);
-  grad.addColorStop(0, 'rgba(0,0,0,0.72)');
-  grad.addColorStop(0.55, 'rgba(0,0,0,0.32)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 256, 256);
+
+  const drawSoftEllipse = (
+    x: number,
+    y: number,
+    rx: number,
+    ry: number,
+    stops: Array<[number, string]>,
+  ) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(rx, ry);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    for (const [offset, color] of stops) {
+      g.addColorStop(offset, color);
+    }
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  // Layer 1: Wide feathered ambient occlusion penumbra (zero visible rectangle boundary)
+  drawSoftEllipse(cx, cy, size * 0.44, size * 0.46, [
+    [0.0, 'rgba(5, 7, 14, 0.22)'],
+    [0.45, 'rgba(5, 7, 14, 0.12)'],
+    [0.78, 'rgba(5, 7, 14, 0.03)'],
+    [1.0, 'rgba(5, 7, 14, 0)'],
+  ]);
+
+  // Layer 2: Soft elongated chassis shadow footprint
+  drawSoftEllipse(cx, cy, size * 0.26, size * 0.35, [
+    [0.0, 'rgba(4, 6, 12, 0.44)'],
+    [0.52, 'rgba(4, 6, 12, 0.28)'],
+    [0.82, 'rgba(4, 6, 12, 0.07)'],
+    [1.0, 'rgba(4, 6, 12, 0)'],
+  ]);
+
+  // Layer 3: Subtle four-corner tire contact ambient pockets
+  const wheelOffsets: Array<[number, number]> = [
+    [-0.18, -0.22],
+    [0.18, -0.22],
+    [-0.18, 0.22],
+    [0.18, 0.22],
+  ];
+  for (const [ox, oy] of wheelOffsets) {
+    drawSoftEllipse(cx + ox * size, cy + oy * size, size * 0.095, size * 0.135, [
+      [0.0, 'rgba(2, 4, 9, 0.34)'],
+      [0.55, 'rgba(2, 4, 9, 0.14)'],
+      [1.0, 'rgba(2, 4, 9, 0)'],
+    ]);
+  }
+
   const tex = new THREE.CanvasTexture(c);
   cachedShadowTex = tex;
   return tex;
@@ -285,12 +341,80 @@ export function getMotoPlateTexture(maxAniso = 4): THREE.CanvasTexture {
   return tex;
 }
 
+function getGrilleMeshTextures(maxAniso = 4): {
+  map: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
+} {
+  if (cachedGrilleColorTex && cachedGrilleBumpTex) {
+    return { map: cachedGrilleColorTex, bumpMap: cachedGrilleBumpTex };
+  }
+
+  const w = 128;
+  const h = 128;
+
+  const drawHexPattern = (ctx: CanvasRenderingContext2D, isBump: boolean) => {
+    ctx.fillStyle = isBump ? '#181818' : '#050507';
+    ctx.fillRect(0, 0, w, h);
+
+    const r = 10;
+    const dx = r * 1.73205;
+    const dy = r * 1.5;
+
+    ctx.strokeStyle = isBump ? '#e5e5e5' : '#26262c';
+    ctx.lineWidth = isBump ? 3.2 : 2.6;
+
+    for (let row = -1; row < Math.ceil(h / dy) + 2; row++) {
+      for (let col = -1; col < Math.ceil(w / dx) + 2; col++) {
+        const cx = col * dx + (row % 2 !== 0 ? dx * 0.5 : 0);
+        const cy = row * dy;
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const ang = (Math.PI / 3) * k + Math.PI / 6;
+          const px = cx + (r * 0.92) * Math.cos(ang);
+          const py = cy + (r * 0.92) * Math.sin(ang);
+          if (k === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+    }
+  };
+
+  const cColor = document.createElement('canvas');
+  cColor.width = w;
+  cColor.height = h;
+  drawHexPattern(cColor.getContext('2d')!, false);
+  const map = new THREE.CanvasTexture(cColor);
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(9, 4);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = maxAniso;
+
+  const cBump = document.createElement('canvas');
+  cBump.width = w;
+  cBump.height = h;
+  drawHexPattern(cBump.getContext('2d')!, true);
+  const bumpMap = new THREE.CanvasTexture(cBump);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(9, 4);
+  bumpMap.anisotropy = maxAniso;
+
+  cachedGrilleColorTex = map;
+  cachedGrilleBumpTex = bumpMap;
+  return { map, bumpMap };
+}
+
 export interface VehicleMaterialSet {
   body: THREE.MeshStandardMaterial;
   secondary: THREE.MeshStandardMaterial;
   accent: THREE.MeshStandardMaterial;
   interior: THREE.MeshStandardMaterial;
   trim: THREE.MeshStandardMaterial;
+  windowTrim: THREE.MeshStandardMaterial;
+  panelGap: THREE.MeshStandardMaterial;
   chrome: THREE.MeshStandardMaterial;
   alloy: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
   rubber: THREE.MeshStandardMaterial;
@@ -304,14 +428,17 @@ export interface VehicleMaterialSet {
   brakeDisc: THREE.MeshStandardMaterial;
   caliper: THREE.MeshStandardMaterial;
   headlight: THREE.MeshStandardMaterial;
+  drlLed: THREE.MeshStandardMaterial;
   headlightLens: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
   taillight: THREE.MeshStandardMaterial;
+  taillightLens: THREE.MeshPhysicalMaterial | THREE.MeshStandardMaterial;
   licensePlate: THREE.MeshStandardMaterial;
   motoPlate: THREE.MeshStandardMaterial;
   sirenRed: THREE.MeshStandardMaterial;
   sirenBlue: THREE.MeshStandardMaterial;
   sirenAmber: THREE.MeshStandardMaterial;
   grille: THREE.MeshStandardMaterial;
+  grilleMesh: THREE.MeshStandardMaterial;
   safetyYellow: THREE.MeshStandardMaterial;
   transitBlue: THREE.MeshStandardMaterial;
   dispose: () => void;
@@ -324,6 +451,7 @@ interface CitySharedVehicleMaterials {
   rubber: THREE.MeshStandardMaterial;
   glass: THREE.MeshStandardMaterial;
   headlightLens: THREE.MeshStandardMaterial;
+  taillightLens: THREE.MeshStandardMaterial;
   licensePlate: THREE.MeshStandardMaterial;
   motoPlate: THREE.MeshStandardMaterial;
   mirrorGlass: THREE.MeshStandardMaterial;
@@ -331,11 +459,15 @@ interface CitySharedVehicleMaterials {
   amberSignal: THREE.MeshStandardMaterial;
   brakeDisc: THREE.MeshStandardMaterial;
   headlight: THREE.MeshStandardMaterial;
+  drlLed: THREE.MeshStandardMaterial;
   taillight: THREE.MeshStandardMaterial;
   sirenRed: THREE.MeshStandardMaterial;
   sirenBlue: THREE.MeshStandardMaterial;
   sirenAmber: THREE.MeshStandardMaterial;
   grille: THREE.MeshStandardMaterial;
+  grilleMesh: THREE.MeshStandardMaterial;
+  windowTrim: THREE.MeshStandardMaterial;
+  panelGap: THREE.MeshStandardMaterial;
   safetyYellow: THREE.MeshStandardMaterial;
   transitBlue: THREE.MeshStandardMaterial;
 }
@@ -344,6 +476,7 @@ let cachedCityVehicleMats: CitySharedVehicleMaterials | null = null;
 
 function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMaterials {
   if (cachedCityVehicleMats) return cachedCityVehicleMats;
+  const grilleTex = getGrilleMeshTextures(maxAniso);
   cachedCityVehicleMats = {
     interiorDark: new THREE.MeshStandardMaterial({ color: 0x26262b, metalness: 0.05, roughness: 0.85 }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xf4f4f5, metalness: 0.92, roughness: 0.14 }),
@@ -368,6 +501,15 @@ function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMater
       roughness: 0.06,
       transparent: true,
       opacity: 0.34,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+    taillightLens: new THREE.MeshStandardMaterial({
+      color: 0xfca5a5,
+      metalness: 0.12,
+      roughness: 0.08,
+      transparent: true,
+      opacity: 0.42,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
@@ -397,6 +539,13 @@ function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMater
       roughness: 0.14,
       metalness: 0.1,
     }),
+    drlLed: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0xe0f2fe,
+      emissiveIntensity: 1.85,
+      roughness: 0.1,
+      metalness: 0.05,
+    }),
     taillight: new THREE.MeshStandardMaterial({
       color: 0xdc2626,
       emissive: 0xef4444,
@@ -423,6 +572,23 @@ function getCitySharedVehicleMaterials(maxAniso: number): CitySharedVehicleMater
       roughness: 0.22,
     }),
     grille: new THREE.MeshStandardMaterial({ color: 0x121216, metalness: 0.5, roughness: 0.55 }),
+    grilleMesh: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: grilleTex.map,
+      bumpMap: grilleTex.bumpMap,
+      bumpScale: 0.008,
+      metalness: 0.35,
+      roughness: 0.58,
+    }),
+    windowTrim: new THREE.MeshStandardMaterial({ color: 0x141418, metalness: 0.22, roughness: 0.44 }),
+    panelGap: new THREE.MeshStandardMaterial({
+      color: 0x070709,
+      metalness: 0.04,
+      roughness: 0.94,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    }),
     safetyYellow: new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.18, roughness: 0.32 }),
     transitBlue: new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.06, roughness: 0.76 }),
   };
@@ -533,6 +699,8 @@ export function createVehicleMaterials(
       accent,
       interior: shared.interiorDark,
       trim,
+      windowTrim: shared.windowTrim,
+      panelGap: shared.panelGap,
       chrome: shared.chrome,
       alloy: shared.alloy,
       rubber: shared.rubber,
@@ -546,14 +714,17 @@ export function createVehicleMaterials(
       brakeDisc: shared.brakeDisc,
       caliper: accent,
       headlight,
+      drlLed: headlight,
       headlightLens: shared.headlightLens,
       taillight: shared.taillight,
+      taillightLens: shared.taillightLens,
       licensePlate: shared.licensePlate,
       motoPlate: shared.motoPlate,
       sirenRed,
       sirenBlue,
       sirenAmber,
       grille: shared.grille,
+      grilleMesh: shared.grilleMesh,
       safetyYellow: shared.safetyYellow,
       transitBlue: shared.transitBlue,
       dispose: () => {
@@ -566,7 +737,7 @@ export function createVehicleMaterials(
     color: new THREE.Color(primaryColor),
     metalness: isMatte ? 0.22 : isMetallic ? 0.65 : 0.38,
     roughness: isMatte ? 0.39 : finish === 'pearl' ? 0.25 : isMetallic ? 0.27 : 0.30,
-    envMapIntensity: 1.32,
+    envMapIntensity: 0.95,
   });
 
   const secondary = new THREE.MeshStandardMaterial({
@@ -623,18 +794,18 @@ export function createVehicleMaterials(
   });
 
   const glass = new THREE.MeshPhysicalMaterial({
-    color: 0x1e3a4c,
-    metalness: 0.08,
-    roughness: 0.06,
+    color: 0x5c829c,
+    metalness: 0.05,
+    roughness: 0.05,
     transmission: 0,
     transparent: true,
-    opacity: 0.22,
+    opacity: 0.16,
     depthWrite: false,
     ior: 1.45,
     reflectivity: 0.35,
-    clearcoat: 0.30,
-    clearcoatRoughness: 0.08,
-    envMapIntensity: 0.40,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.06,
+    envMapIntensity: 0.45,
     side: THREE.DoubleSide,
   });
 
@@ -695,24 +866,33 @@ export function createVehicleMaterials(
   const headlight = new THREE.MeshStandardMaterial({
     color: 0xfefce8,
     emissive: 0xfef3c7,
-    emissiveIntensity: 1.35,
-    roughness: 0.12,
-    metalness: 0.1,
+    emissiveIntensity: 2.2,
+    roughness: 0.10,
+    metalness: 0.08,
+  });
+
+  const drlLed = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xe0f2fe,
+    emissiveIntensity: 2.5,
+    roughness: 0.06,
+    metalness: 0.04,
   });
 
   const headlightLens = new THREE.MeshPhysicalMaterial({
-    color: 0xf8fafc,
-    metalness: 0.04,
-    roughness: 0.05,
-    transmission: 0,
-    transparent: true,
-    opacity: 0.32,
-    depthWrite: false,
+    color: 0xffffff,
+    metalness: 0.0,
+    roughness: 0.04,
+    transmission: isSoftwareGl ? 0 : 0.92,
+    thickness: 0.055,
     ior: 1.5,
-    reflectivity: 0.78,
-    clearcoat: 0.9,
-    clearcoatRoughness: 0.04,
-    envMapIntensity: 1.3,
+    reflectivity: 0.88,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.03,
+    envMapIntensity: 1.45,
+    transparent: true,
+    opacity: isSoftwareGl ? 0.28 : 1.0,
+    depthWrite: false,
     side: THREE.DoubleSide,
   });
 
@@ -729,11 +909,30 @@ export function createVehicleMaterials(
   });
 
   const taillight = new THREE.MeshStandardMaterial({
-    color: 0xdc2626,
-    emissive: 0xef4444,
-    emissiveIntensity: 1.2,
-    roughness: 0.18,
-    metalness: 0.1,
+    color: 0xef4444,
+    emissive: 0xff1e2d,
+    emissiveIntensity: 1.9,
+    roughness: 0.12,
+    metalness: 0.08,
+  });
+
+  const taillightLens = new THREE.MeshPhysicalMaterial({
+    color: 0xfef2f2,
+    attenuationColor: new THREE.Color(0xdc2626),
+    attenuationDistance: 0.14,
+    metalness: 0.0,
+    roughness: 0.05,
+    transmission: isSoftwareGl ? 0 : 0.88,
+    thickness: 0.05,
+    ior: 1.5,
+    reflectivity: 0.85,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.03,
+    envMapIntensity: 1.4,
+    transparent: true,
+    opacity: isSoftwareGl ? 0.34 : 1.0,
+    depthWrite: false,
+    side: THREE.DoubleSide,
   });
 
   const sirenRed = new THREE.MeshStandardMaterial({
@@ -763,6 +962,31 @@ export function createVehicleMaterials(
     roughness: 0.55,
   });
 
+  const studioGrilleTex = getGrilleMeshTextures(maxAniso);
+  const grilleMesh = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    map: studioGrilleTex.map,
+    bumpMap: studioGrilleTex.bumpMap,
+    bumpScale: 0.010,
+    metalness: 0.36,
+    roughness: 0.56,
+  });
+
+  const windowTrim = new THREE.MeshStandardMaterial({
+    color: 0x141418,
+    metalness: 0.24,
+    roughness: 0.40,
+  });
+
+  const panelGap = new THREE.MeshStandardMaterial({
+    color: 0x070709,
+    metalness: 0.04,
+    roughness: 0.94,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+
   const safetyYellow = new THREE.MeshStandardMaterial({
     color: 0xfacc15,
     metalness: 0.18,
@@ -781,6 +1005,8 @@ export function createVehicleMaterials(
     accent,
     interior,
     trim,
+    windowTrim,
+    panelGap,
     chrome,
     alloy,
     rubber,
@@ -794,14 +1020,17 @@ export function createVehicleMaterials(
     brakeDisc,
     caliper,
     headlight,
+    drlLed,
     headlightLens,
     taillight,
+    taillightLens,
     licensePlate,
     motoPlate,
     sirenRed,
     sirenBlue,
     sirenAmber,
     grille,
+    grilleMesh,
     safetyYellow,
     transitBlue,
   ];
@@ -812,6 +1041,8 @@ export function createVehicleMaterials(
     accent,
     interior,
     trim,
+    windowTrim,
+    panelGap,
     chrome,
     alloy,
     rubber,
@@ -825,14 +1056,17 @@ export function createVehicleMaterials(
     brakeDisc,
     caliper,
     headlight,
+    drlLed,
     headlightLens,
     taillight,
+    taillightLens,
     licensePlate,
     motoPlate,
     sirenRed,
     sirenBlue,
     sirenAmber,
     grille,
+    grilleMesh,
     safetyYellow,
     transitBlue,
     dispose: () => {

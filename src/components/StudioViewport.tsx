@@ -85,6 +85,7 @@ const CAMERA_PRESETS: { id: StudioCameraPreset; label: string }[] = [
   { id: 'front', label: 'Frontal' },
   { id: 'rear', label: 'Traseira' },
   { id: 'top', label: 'Topo' },
+  { id: 'interior', label: 'Interior' },
 ];
 
 export const StudioViewport: React.FC<StudioViewportProps> = ({
@@ -132,6 +133,7 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
       onHoverPart: (label) => setHoveredPart((prev) => (prev === label ? prev : label)),
       onPartsCount: (count) => setPartsCount((prev) => (prev === count ? prev : count)),
       onOpenablesCount: (count) => setOpenablesCount((prev) => (prev === count ? prev : count)),
+      onAutoRotateChange: (enabled) => setAutoRotate(enabled),
     });
     studioRef.current = studio;
     const initialVehicle = latestPropsRef.current.selectedVehicle;
@@ -314,8 +316,20 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
         )}
       </div>
 
-      {/* Quick Top-Right Action for Technical Sheet (only opens drawer on click) */}
+      {/* Quick Top-Right Actions (always visible even when bottom dock is collapsed) */}
       <div className="absolute top-5 right-6 z-10 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => handlePreset(activePreset === 'interior' ? 'hero' : 'interior')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap cursor-pointer ${
+            activePreset === 'interior'
+              ? 'bg-amber-500 border-amber-400 text-zinc-950'
+              : 'text-zinc-200 bg-zinc-900 border-zinc-800 hover:border-zinc-700 hover:text-white'
+          }`}
+        >
+          <Eye className={`w-3.5 h-3.5 ${activePreset === 'interior' ? 'text-zinc-950' : 'text-amber-400'}`} />
+          {activePreset === 'interior' ? 'Sair do Interior' : 'Ver Interior'}
+        </button>
         <button
           type="button"
           onClick={() => setSpecsOpen((v) => !v)}

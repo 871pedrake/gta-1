@@ -16,9 +16,10 @@ export type { BuiltVehicle, BuildVehicleOptions, OpenablePart };
 const _invRoot = new THREE.Matrix4();
 const _relMat = new THREE.Matrix4();
 
-function optimizeCityVehicle(
+function optimizeRigidSubtrees(
   rootGroup: THREE.Group,
   animated: BuiltVehicle['animatedParts'],
+  options: { cityMode: boolean },
 ): void {
   rootGroup.updateMatrixWorld(true);
 
@@ -43,11 +44,32 @@ function optimizeCityVehicle(
     skipMergeNodes.add(a);
   });
 
+  if (!options.cityMode) {
+    animated.openables.forEach((op) => protectedRoots.add(op.pivot));
+    rootGroup.traverse((obj) => {
+      if (obj === rootGroup) return;
+      if (obj.userData.partLabel || obj.userData.explodeOffset) {
+        protectedRoots.add(obj);
+      }
+      if (obj.userData.extraMaterials) {
+        protectedRoots.add(obj);
+        skipMergeNodes.add(obj);
+      }
+      if (obj.userData.sharedGeometry) {
+        skipMergeNodes.add(obj);
+      }
+    });
+  }
+
   const allOriginalGeos = new Set<THREE.BufferGeometry>();
+  const sharedGeos = new Set<THREE.BufferGeometry>();
   rootGroup.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (mesh.isMesh && mesh.geometry) {
       allOriginalGeos.add(mesh.geometry);
+      if (mesh.userData.sharedGeometry) {
+        sharedGeos.add(mesh.geometry);
+      }
     }
   });
 
@@ -57,6 +79,7 @@ function optimizeCityVehicle(
     const meshes: THREE.Mesh[] = [];
     const walk = (node: THREE.Object3D) => {
       if (node !== subtreeRoot && protectedRoots.has(node)) return;
+      if (skipMergeNodes.has(node)) return;
       const m = node as THREE.Mesh;
       if (m.isMesh && m.geometry && !Array.isArray(m.material)) {
         const pos = m.geometry.getAttribute('position');
@@ -78,6 +101,9 @@ function optimizeCityVehicle(
     interface Bucket {
       material: THREE.Material;
       castShadow: boolean;
+      receiveShadow: boolean;
+      renderOrder: number;
+      noShadow: boolean;
       hasUv: boolean;
       hasColor: boolean;
       items: { mesh: THREE.Mesh; geo: THREE.BufferGeometry }[];
@@ -87,16 +113,18 @@ function optimizeCityVehicle(
     for (let i = 0; i < meshes.length; i++) {
       const mesh = meshes[i];
       _relMat.multiplyMatrices(_invRoot, mesh.matrixWorld);
-      if (_relMat.determinant() <= 1e-8) continue;
+      if (Math.abs(_relMat.determinant()) <= 1e-8) continue;
 
       const srcGeo = mesh.geometry;
       const hasUv = Boolean(srcGeo.getAttribute('uv'));
       const hasColor = Boolean(srcGeo.getAttribute('color'));
       const mat = mesh.material as THREE.Material;
-      const key = `${mat.uuid}|${mesh.castShadow ? 1 : 0}|${hasUv ? 1 : 0}|${hasColor ? 1 : 0}`;
+      const castShadow = mesh.castShadow;
+      const receiveShadow = options.cityMode ? false : mesh.receiveShadow;
+      const noShadow = Boolean(mesh.userData.noShadow);
+      const key = `${mat.uuid}|${castShadow ? 1 : 0}|${receiveShadow ? 1 : 0}|${mesh.renderOrder}|${noShadow ? 1 : 0}|${hasUv ? 1 : 0}|${hasColor ? 1 : 0}`;
 
-      let geo = srcGeo.index ? srcGeo.toNonIndexed() : srcGeo.clone();
-      // Keep uniform attribute set across bucket so mergeGeometries never fails
+      const geo = srcGeo.index ? srcGeo.toNonIndexed() : srcGeo.clone();
       const attrNames = Object.keys(geo.attributes);
       for (let a = 0; a < attrNames.length; a++) {
         const name = attrNames[a];
@@ -118,7 +146,10 @@ function optimizeCityVehicle(
       if (!bucket) {
         bucket = {
           material: mat,
-          castShadow: mesh.castShadow,
+          castShadow,
+          receiveShadow,
+          renderOrder: mesh.renderOrder,
+          noShadow,
           hasUv,
           hasColor,
           items: [],
@@ -152,7 +183,11 @@ function optimizeCityVehicle(
 
       const mergedMesh = new THREE.Mesh(merged, bucket.material);
       mergedMesh.castShadow = bucket.castShadow;
-      mergedMesh.receiveShadow = false;
+      mergedMesh.receiveShadow = bucket.receiveShadow;
+      mergedMesh.renderOrder = bucket.renderOrder;
+      if (bucket.noShadow) {
+        mergedMesh.userData.noShadow = true;
+      }
       subtreeRoot.add(mergedMesh);
     });
 
@@ -186,10 +221,25 @@ function optimizeCityVehicle(
     }
   });
   allOriginalGeos.forEach((g) => {
-    if (!survivingGeos.has(g)) {
+    if (!survivingGeos.has(g) && !sharedGeos.has(g)) {
       g.dispose();
     }
   });
+
+  if (options.cityMode) {
+    rootGroup.updateMatrixWorld(true);
+    const freezeChild = (node: THREE.Object3D) => {
+      if (node !== rootGroup && !protectedRoots.has(node)) {
+        node.matrixAutoUpdate = false;
+        node.updateMatrix();
+      }
+      const ch = node.children;
+      for (let i = 0; i < ch.length; i++) {
+        freezeChild(ch[i]);
+      }
+    };
+    freezeChild(rootGroup);
+  }
 }
 
 export function buildCraftedVehicle(
@@ -290,9 +340,7 @@ export function buildCraftedVehicle(
     }
   });
 
-  if (cityMode) {
-    optimizeCityVehicle(group, animated);
-  }
+  optimizeRigidSubtrees(group, animated, { cityMode });
 
   const dispose = () => {
     group.traverse((child) => {

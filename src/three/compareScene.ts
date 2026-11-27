@@ -71,11 +71,11 @@ export class ScaleCompareController {
       powerPreference: 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMappingExposure = 0.98;
     this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = !isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.VSMShadowMap;
     this.renderer.setSize(container.clientWidth || 800, container.clientHeight || 600);
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
@@ -101,17 +101,25 @@ export class ScaleCompareController {
     room.dispose();
     pmrem.dispose();
 
-    this.scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1c1917, 0.78));
-    const key = new THREE.DirectionalLight(0xfff1dc, 1.85);
+    this.scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1c1917, 0.56));
+    const key = new THREE.DirectionalLight(0xfff4e4, 1.38);
     key.position.set(10, 16, 12);
     key.castShadow = !isSoftwareGl;
-    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.mapSize.set(2048, 2048);
     key.shadow.camera.left = -16;
     key.shadow.camera.right = 16;
     key.shadow.camera.top = 12;
     key.shadow.camera.bottom = -12;
-    key.shadow.bias = -0.0005;
+    key.shadow.radius = 4.0;
+    key.shadow.blurSamples = 16;
+    key.shadow.intensity = 0.60;
+    key.shadow.bias = -0.0002;
+    key.shadow.normalBias = 0.015;
     this.scene.add(key);
+
+    const rim = new THREE.DirectionalLight(0x93c5fd, 0.68);
+    rim.position.set(-10, 7, -12);
+    this.scene.add(rim);
 
     const floorTex = getStudioFloorTexture(this.renderer.capabilities.getMaxAnisotropy());
     floorTex.repeat.set(2, 2);

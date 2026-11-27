@@ -299,6 +299,7 @@ export class CityConceptController {
   private windStrength = 1.0;
   private simPaused = false;
   private lastPhaseIdx = -1;
+  private lastBeaconOn: boolean | null = null;
 
   private camTransitioning = false;
   private camTargetPos = new THREE.Vector3(-76, 54, -84);
@@ -324,13 +325,13 @@ export class CityConceptController {
       preserveDrawingBuffer: true,
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMappingExposure = 1.00;
     this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.25));
     this.renderer.shadowMap.enabled = !isSoftwareGl;
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = !isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.VSMShadowMap;
     this.renderer.setSize(container.clientWidth || 1000, container.clientHeight || 680);
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
@@ -385,13 +386,13 @@ export class CityConceptController {
   }
 
   private setupLighting() {
-    this.hemiLight = new THREE.HemisphereLight(0xfde68a, 0x1e293b, 0.88);
+    this.hemiLight = new THREE.HemisphereLight(0xfde68a, 0x1e293b, 0.74);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xffb36b, 2.2);
+    this.sunLight = new THREE.DirectionalLight(0xffb36b, 1.80);
     this.sunLight.position.set(-95, 58, -72);
     this.sunLight.castShadow = !isSoftwareGl;
-    this.sunLight.shadow.mapSize.set(1024, 1024);
+    this.sunLight.shadow.mapSize.set(2048, 2048);
     this.sunLight.shadow.camera.near = 15;
     this.sunLight.shadow.camera.far = 360;
     const d = 158;
@@ -399,8 +400,11 @@ export class CityConceptController {
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
-    this.sunLight.shadow.bias = -0.0005;
-    this.sunLight.shadow.normalBias = 0.03;
+    this.sunLight.shadow.radius = 3.0;
+    this.sunLight.shadow.blurSamples = 12;
+    this.sunLight.shadow.intensity = 0.66;
+    this.sunLight.shadow.bias = -0.0002;
+    this.sunLight.shadow.normalBias = 0.04;
     this.scene.add(this.sunLight);
 
     this.lampEmissiveMat = new THREE.MeshStandardMaterial({
@@ -2029,48 +2033,50 @@ export class CityConceptController {
 
   public applyTimeOfDay(mode: CityTimeOfDay) {
     this.currentTimeOfDay = mode;
+    const sceneBg = this.scene.background as THREE.Color;
+    const sceneFog = this.scene.fog as THREE.FogExp2;
     if (mode === 'sunset') {
-      const bg = new THREE.Color(0x281e32);
-      this.scene.background = bg;
-      this.scene.fog = new THREE.FogExp2(bg.getHex(), 0.0024);
+      sceneBg.setHex(0x281e32);
+      sceneFog.color.setHex(0x281e32);
+      sceneFog.density = 0.0024;
       this.hemiLight.color.setHex(0xfde68a);
       this.hemiLight.groundColor.setHex(0x1f2937);
-      this.hemiLight.intensity = 0.92;
+      this.hemiLight.intensity = 0.74;
       this.sunLight.color.setHex(0xffab5e);
-      this.sunLight.intensity = 2.35;
+      this.sunLight.intensity = 1.80;
       this.sunLight.position.set(-95, 52, -72);
-      this.lampEmissiveMat.emissiveIntensity = 1.85;
-      this.windowEmissiveMat.emissiveIntensity = 1.05;
-      this.skylineGlowMats.forEach((m) => (m.emissiveIntensity = 0.75));
-      this.flagRig.spotlights.forEach((s) => (s.intensity = 48));
+      this.lampEmissiveMat.emissiveIntensity = 1.55;
+      this.windowEmissiveMat.emissiveIntensity = 0.90;
+      this.skylineGlowMats.forEach((m) => (m.emissiveIntensity = 0.65));
+      this.flagRig.spotlights.forEach((s) => (s.intensity = 26));
     } else if (mode === 'day') {
-      const bg = new THREE.Color(0x7cc4f5);
-      this.scene.background = bg;
-      this.scene.fog = new THREE.FogExp2(bg.getHex(), 0.0017);
+      sceneBg.setHex(0x7cc4f5);
+      sceneFog.color.setHex(0x7cc4f5);
+      sceneFog.density = 0.0017;
       this.hemiLight.color.setHex(0xe0f2fe);
       this.hemiLight.groundColor.setHex(0x3f3f46);
-      this.hemiLight.intensity = 1.08;
+      this.hemiLight.intensity = 0.85;
       this.sunLight.color.setHex(0xfffbeb);
-      this.sunLight.intensity = 2.45;
+      this.sunLight.intensity = 1.85;
       this.sunLight.position.set(75, 108, -60);
       this.lampEmissiveMat.emissiveIntensity = 0.15;
       this.windowEmissiveMat.emissiveIntensity = 0.22;
       this.skylineGlowMats.forEach((m) => (m.emissiveIntensity = 0.08));
       this.flagRig.spotlights.forEach((s) => (s.intensity = 6));
     } else {
-      const bg = new THREE.Color(0x090b16);
-      this.scene.background = bg;
-      this.scene.fog = new THREE.FogExp2(bg.getHex(), 0.0028);
+      sceneBg.setHex(0x090b16);
+      sceneFog.color.setHex(0x090b16);
+      sceneFog.density = 0.0028;
       this.hemiLight.color.setHex(0x3b82f6);
       this.hemiLight.groundColor.setHex(0x09090b);
-      this.hemiLight.intensity = 0.48;
+      this.hemiLight.intensity = 0.45;
       this.sunLight.color.setHex(0x93c5fd);
-      this.sunLight.intensity = 0.68;
+      this.sunLight.intensity = 0.62;
       this.sunLight.position.set(55, 80, 60);
-      this.lampEmissiveMat.emissiveIntensity = 2.9;
-      this.windowEmissiveMat.emissiveIntensity = 2.0;
-      this.skylineGlowMats.forEach((m) => (m.emissiveIntensity = 1.65));
-      this.flagRig.spotlights.forEach((s) => (s.intensity = 95));
+      this.lampEmissiveMat.emissiveIntensity = 2.35;
+      this.windowEmissiveMat.emissiveIntensity = 1.65;
+      this.skylineGlowMats.forEach((m) => (m.emissiveIntensity = 1.35));
+      this.flagRig.spotlights.forEach((s) => (s.intensity = 48));
     }
     this.currentHeadlightsOn = mode !== 'day';
     this.applyVehicleHeadlights(this.currentHeadlightsOn);
@@ -2446,7 +2452,7 @@ export class CityConceptController {
     this.elapsed += dt;
     this.frameCount++;
 
-    if (this.renderer.shadowMap.enabled && !this.simPaused && (this.frameCount & 1) === 0) {
+    if (this.renderer.shadowMap.enabled && !this.simPaused && this.frameCount % 3 === 0) {
       this.renderer.shadowMap.needsUpdate = true;
     }
 
@@ -2463,14 +2469,19 @@ export class CityConceptController {
       }
     }
 
+    const camX = this.camera.position.x;
+    const camZ = this.camera.position.z;
+
     // 2. Monumental Flag + ALL 400+ City/Morro/Bairro Trees synced to "Vento na Bandeira"!
-    this.flagRig.update(this.elapsed, this.windStrength);
+    const fdx = this.flagRig.group.position.x - camX;
+    const fdz = this.flagRig.group.position.z - camZ;
+    const flagDistSq = fdx * fdx + fdz * fdz;
+    if (flagDistSq < 110 * 110 || this.frameCount % 3 === 0) {
+      this.flagRig.update(this.elapsed, this.windStrength);
+    }
     this.vegetation.update(this.elapsed, this.windStrength);
 
     if (!this.simPaused) {
-      const camX = this.camera.position.x;
-      const camZ = this.camera.position.z;
-
       this.atlas.waterRipple.offset.x = (this.elapsed * 0.06) % 1;
       this.atlas.waterRipple.offset.y = -((this.elapsed * 0.16) % 1);
       this.beachResult?.update(this.elapsed);
@@ -2482,9 +2493,13 @@ export class CityConceptController {
         this.shopAnimated.barberPole.rotation.y += dt * 2.8;
       }
 
-      const blink = Math.sin(this.elapsed * 4.2) > 0 ? 2.4 : 0.15;
-      for (let bi = 0; bi < this.beacons.length; bi++) {
-        this.beacons[bi].emissiveIntensity = blink;
+      const blinkOn = Math.sin(this.elapsed * 4.2) > 0;
+      if (blinkOn !== this.lastBeaconOn) {
+        this.lastBeaconOn = blinkOn;
+        const blink = blinkOn ? 2.4 : 0.15;
+        for (let bi = 0; bi < this.beacons.length; bi++) {
+          this.beacons[bi].emissiveIntensity = blink;
+        }
       }
 
       // 3. Synchronized Traffic Lights (only mutate shared materials on phase transition!)
@@ -2499,9 +2514,14 @@ export class CityConceptController {
         }
       }
 
-      // Update emergency police, ambulance, fire & amber beacons independently per vehicle
+      // Update emergency police, ambulance, fire & amber beacons with distance LOD
+      const emergencyLodDistSq = 210 * 210;
       for (let ei = 0; ei < this.emergencyActors.length; ei++) {
         const ea = this.emergencyActors[ei];
+        const ePos = ea.built.group.position;
+        const edx = ePos.x - camX;
+        const edz = ePos.z - camZ;
+        if (edx * edx + edz * edz > emergencyLodDistSq) continue;
         const m = ea.built.materials;
         if (ea.mode === 'police_fire') {
           const tFlash = this.elapsed * 16 + ea.phase;
@@ -2606,8 +2626,12 @@ export class CityConceptController {
             actor.built.materials.signalLeft.emissiveIntensity = useLeft ? flash : 0.08;
             actor.built.materials.signalRight.emissiveIntensity = !useLeft ? flash : 0.08;
           } else {
-            actor.built.materials.signalLeft.emissiveIntensity = 0.08;
-            actor.built.materials.signalRight.emissiveIntensity = 0.08;
+            if (actor.built.materials.signalLeft.emissiveIntensity !== 0.08) {
+              actor.built.materials.signalLeft.emissiveIntensity = 0.08;
+            }
+            if (actor.built.materials.signalRight.emissiveIntensity !== 0.08) {
+              actor.built.materials.signalRight.emissiveIntensity = 0.08;
+            }
           }
           if (anim.mixerDrum) {
             anim.mixerDrum.rotation.z = (anim.mixerDrum.rotation.z + dt * 1.4) % tau;
@@ -2620,6 +2644,7 @@ export class CityConceptController {
       }
 
       // 5. Aquatic & Amphibious Fleet (River & West Ocean Bay)
+      const boatLodDistSq = 190 * 190;
       for (let bIdx = 0; bIdx < this.boatActors.length; bIdx++) {
         const b = this.boatActors[bIdx];
         if (b.speed > 0) {
@@ -2638,31 +2663,40 @@ export class CityConceptController {
         const phase = b.x * 0.2 + b.z * 0.17;
         b.built.group.position.y = -1.22 + Math.sin(this.elapsed * 2.4 + phase) * (b.speed > 0 ? 0.08 : 0.04);
         b.built.group.rotation.z = Math.sin(this.elapsed * 1.9 + phase) * (b.speed > 0 ? 0.035 : 0.015);
-        const bAnim = b.built.animatedParts;
-        const props = bAnim.propellers;
-        for (let pi = 0; pi < props.length; pi++) {
-          const spinSpeed = (props[pi].userData.spinSpeed as number | undefined) ?? 18;
-          props[pi].rotation.z = (props[pi].rotation.z + dt * spinSpeed) % tau;
-        }
-        const boatSteer = Math.sin(this.elapsed * 1.1 + bIdx * 1.3) * 0.24;
-        for (let si = 0; si < bAnim.steeringPivots.length; si++) {
-          bAnim.steeringPivots[si].rotation.y = boatSteer;
-        }
-        for (let swi = 0; swi < bAnim.steeringWheels.length; swi++) {
-          bAnim.steeringWheels[swi].rotation.z = -boatSteer * 2.8;
-        }
-        if ((this.elapsed + bIdx * 2.1) % 10.0 < 3.2) {
-          const flash = Math.sin(this.elapsed * 8.5) > 0 ? 2.4 : 0.1;
-          const useLeft = bIdx % 2 === 0;
-          b.built.materials.signalLeft.emissiveIntensity = useLeft ? flash : 0.08;
-          b.built.materials.signalRight.emissiveIntensity = !useLeft ? flash : 0.08;
-        } else {
-          b.built.materials.signalLeft.emissiveIntensity = 0.08;
-          b.built.materials.signalRight.emissiveIntensity = 0.08;
+        const bdx = b.x - camX;
+        const bdz = b.z - camZ;
+        if (bdx * bdx + bdz * bdz < boatLodDistSq) {
+          const bAnim = b.built.animatedParts;
+          const props = bAnim.propellers;
+          for (let pi = 0; pi < props.length; pi++) {
+            const spinSpeed = (props[pi].userData.spinSpeed as number | undefined) ?? 18;
+            props[pi].rotation.z = (props[pi].rotation.z + dt * spinSpeed) % tau;
+          }
+          const boatSteer = Math.sin(this.elapsed * 1.1 + bIdx * 1.3) * 0.24;
+          for (let si = 0; si < bAnim.steeringPivots.length; si++) {
+            bAnim.steeringPivots[si].rotation.y = boatSteer;
+          }
+          for (let swi = 0; swi < bAnim.steeringWheels.length; swi++) {
+            bAnim.steeringWheels[swi].rotation.z = -boatSteer * 2.8;
+          }
+          if ((this.elapsed + bIdx * 2.1) % 10.0 < 3.2) {
+            const flash = Math.sin(this.elapsed * 8.5) > 0 ? 2.4 : 0.1;
+            const useLeft = bIdx % 2 === 0;
+            b.built.materials.signalLeft.emissiveIntensity = useLeft ? flash : 0.08;
+            b.built.materials.signalRight.emissiveIntensity = !useLeft ? flash : 0.08;
+          } else {
+            if (b.built.materials.signalLeft.emissiveIntensity !== 0.08) {
+              b.built.materials.signalLeft.emissiveIntensity = 0.08;
+            }
+            if (b.built.materials.signalRight.emissiveIntensity !== 0.08) {
+              b.built.materials.signalRight.emissiveIntensity = 0.08;
+            }
+          }
         }
       }
 
       // 6. Airspace Fleet (Helicopters, Airplanes & Jets with turbines & afterburner flames)
+      const airLodDistSq = 260 * 260;
       for (let aIdx = 0; aIdx < this.airActors.length; aIdx++) {
         const a = this.airActors[aIdx];
         const ang = this.elapsed * a.speed + aIdx * 1.15;
@@ -2679,39 +2713,43 @@ export class CityConceptController {
             ? (a.speed > 0 ? -0.11 : 0.11)
             : (a.speed > 0 ? -0.22 : 0.22);
 
-        const anim = a.built.animatedParts;
-        for (let ri = 0; ri < anim.rotors.length; ri++) {
-          const r = anim.rotors[ri];
-          const axis = r.userData.rotorAxis ?? (ri === 0 ? 'y' : 'x');
-          if (axis === 'y') {
-            r.rotation.y = (r.rotation.y + dt * 15) % tau;
-          } else {
-            r.rotation.x = (r.rotation.x + dt * 21) % tau;
+        const adx = ax - camX;
+        const adz = az - camZ;
+        if (adx * adx + adz * adz < airLodDistSq) {
+          const anim = a.built.animatedParts;
+          for (let ri = 0; ri < anim.rotors.length; ri++) {
+            const r = anim.rotors[ri];
+            const axis = r.userData.rotorAxis ?? (ri === 0 ? 'y' : 'x');
+            if (axis === 'y') {
+              r.rotation.y = (r.rotation.y + dt * 15) % tau;
+            } else {
+              r.rotation.x = (r.rotation.x + dt * 21) % tau;
+            }
           }
-        }
-        for (let pi = 0; pi < anim.propellers.length; pi++) {
-          const p = anim.propellers[pi];
-          const spinSpeed = (p.userData.spinSpeed as number | undefined) ?? 18;
-          p.rotation.z = (p.rotation.z + dt * spinSpeed) % tau;
-        }
-        const airSteer = a.speed > 0 ? -0.18 : 0.18;
-        for (let si = 0; si < anim.steeringPivots.length; si++) {
-          anim.steeringPivots[si].rotation.y = airSteer;
-        }
-        const airFlash = Math.sin(this.elapsed * 6.5 + aIdx) > 0.25 ? 2.2 : 0.12;
-        a.built.materials.signalLeft.emissiveIntensity = a.speed > 0 ? airFlash : 0.12;
-        a.built.materials.signalRight.emissiveIntensity = a.speed <= 0 ? airFlash : 0.12;
-        for (let fi = 0; fi < anim.afterburners.length; fi++) {
-          const ab = anim.afterburners[fi];
-          ab.visible = true;
-          const flicker =
-            0.88 +
-            0.12 * Math.sin(this.elapsed * 38 + fi * 1.9 + aIdx) +
-            0.07 * Math.cos(this.elapsed * 63 + fi * 2.7);
-          const xyScale = 0.88 + 0.14 * flicker;
-          const zScale = 0.82 + 0.30 * flicker;
-          ab.scale.set(xyScale, xyScale, zScale);
-          ab.rotation.z = (ab.rotation.z + dt * 10) % tau;
+          for (let pi = 0; pi < anim.propellers.length; pi++) {
+            const p = anim.propellers[pi];
+            const spinSpeed = (p.userData.spinSpeed as number | undefined) ?? 18;
+            p.rotation.z = (p.rotation.z + dt * spinSpeed) % tau;
+          }
+          const airSteer = a.speed > 0 ? -0.18 : 0.18;
+          for (let si = 0; si < anim.steeringPivots.length; si++) {
+            anim.steeringPivots[si].rotation.y = airSteer;
+          }
+          const airFlash = Math.sin(this.elapsed * 6.5 + aIdx) > 0.25 ? 2.2 : 0.12;
+          a.built.materials.signalLeft.emissiveIntensity = a.speed > 0 ? airFlash : 0.12;
+          a.built.materials.signalRight.emissiveIntensity = a.speed <= 0 ? airFlash : 0.12;
+          for (let fi = 0; fi < anim.afterburners.length; fi++) {
+            const ab = anim.afterburners[fi];
+            ab.visible = true;
+            const flicker =
+              0.88 +
+              0.12 * Math.sin(this.elapsed * 38 + fi * 1.9 + aIdx) +
+              0.07 * Math.cos(this.elapsed * 63 + fi * 2.7);
+            const xyScale = 0.88 + 0.14 * flicker;
+            const zScale = 0.82 + 0.30 * flicker;
+            ab.scale.set(xyScale, xyScale, zScale);
+            ab.rotation.z = (ab.rotation.z + dt * 10) % tau;
+          }
         }
       }
 

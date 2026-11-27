@@ -2,17 +2,28 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { PaintLivery, StudioCameraPreset, VehicleConcept, WheelStyle } from '../types/vehicle';
 import { buildCraftedVehicle, BuiltVehicle } from './vehicleBuilder';
 import { getContactShadowTexture, getStudioFloorTexture, isSoftwareGl } from './materials';
 
 const _vec3A = new THREE.Vector3();
 const _vec3B = new THREE.Vector3();
+const _interiorSteerLocal = new THREE.Vector3();
+const _interiorEyeLocal = new THREE.Vector3();
+const _interiorLookLocal = new THREE.Vector3();
+const _cabinLightLocal = new THREE.Vector3();
 
 export interface StudioCallbacks {
   onHoverPart?: (partLabel: string | null) => void;
   onPartsCount?: (count: number) => void;
   onOpenablesCount?: (count: number) => void;
+  onAutoRotateChange?: (enabled: boolean) => void;
 }
 
 export class VehicleStudioController {
@@ -22,6 +33,10 @@ export class VehicleStudioController {
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
   private callbacks: StudioCallbacks;
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+  private vignettePass: ShaderPass | null = null;
+  private outputPass: OutputPass | null = null;
 
   private currentBuilt: BuiltVehicle | null = null;
   private currentVehicle: VehicleConcept | null = null;
@@ -30,9 +45,13 @@ export class VehicleStudioController {
   private customPaintHex: string | undefined = undefined;
   private customPaintFinish: VehicleConcept['palette']['finish'] | undefined = undefined;
   private customStripeHex: string | undefined = undefined;
+  private keyLight!: THREE.DirectionalLight;
   private contactShadow: THREE.Mesh;
   private turntable: THREE.Mesh;
   private blueprintGroup: THREE.Group;
+  private cabinLight: THREE.PointLight;
+  private cabinLightLocalPos = new THREE.Vector3();
+  private currentPreset: StudioCameraPreset = 'hero';
 
   private explodeTarget = 0;
   private explodeCurrent = 0;
@@ -69,12 +88,14 @@ export class VehicleStudioController {
       preserveDrawingBuffer: true,
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMappingExposure = 0.96;
     this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = !isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.setSize(container.clientWidth || 800, container.clientHeight || 600);
+    this.renderer.shadowMap.type = THREE.VSMShadowMap;
+    const initW = container.clientWidth || 800;
+    const initH = container.clientHeight || 600;
+    this.renderer.setSize(initW, initH);
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
@@ -85,7 +106,7 @@ export class VehicleStudioController {
     this.scene.background = new THREE.Color(bgHex);
     this.scene.fog = new THREE.FogExp2(bgHex, 0.022);
 
-    const aspect = (container.clientWidth || 800) / (container.clientHeight || 600);
+    const aspect = initW / initH;
     this.camera = new THREE.PerspectiveCamera(40, aspect, 0.1, 140);
     this.camera.position.copy(this.camTargetPos);
 
@@ -96,41 +117,54 @@ export class VehicleStudioController {
     roomEnv.dispose();
     pmrem.dispose();
 
-    // 3-Point Studio Lighting + Cool/Warm Contrast
-    const hemi = new THREE.HemisphereLight(0xdbeafe, 0x1c1917, 0.72);
+    // 3-Point Studio Lighting + Cool/Warm Contrast (calibrated for AgX without highlight blowout)
+    const hemi = new THREE.HemisphereLight(0xdbeafe, 0x1c1917, 0.52);
     this.scene.add(hemi);
 
-    const keyLight = new THREE.DirectionalLight(0xfff1dc, 1.85);
+    const keyLight = new THREE.DirectionalLight(0xfff4e4, 1.32);
     keyLight.position.set(8, 12, 9);
     keyLight.castShadow = !isSoftwareGl;
-    keyLight.shadow.mapSize.set(1024, 1024);
+    keyLight.shadow.mapSize.set(2048, 2048);
     keyLight.shadow.camera.near = 1;
     keyLight.shadow.camera.far = 36;
-    const d = 10;
+    const d = 6;
     keyLight.shadow.camera.left = -d;
     keyLight.shadow.camera.right = d;
     keyLight.shadow.camera.top = d;
     keyLight.shadow.camera.bottom = -d;
-    keyLight.shadow.bias = -0.0005;
-    keyLight.shadow.normalBias = 0.02;
+    keyLight.shadow.radius = 4.5;
+    keyLight.shadow.blurSamples = 16;
+    keyLight.shadow.intensity = 0.58;
+    keyLight.shadow.bias = -0.0002;
+    keyLight.shadow.normalBias = 0.015;
     this.scene.add(keyLight);
+    this.keyLight = keyLight;
 
-    const rimLight = new THREE.DirectionalLight(0x93c5fd, 1.05);
+    const fillLight = new THREE.DirectionalLight(0xcbd5e1, 0.34);
+    fillLight.position.set(-7, 4, 7);
+    this.scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.76);
     rimLight.position.set(-9, 6, -10);
     this.scene.add(rimLight);
 
     if (!isSoftwareGl) {
       RectAreaLightUniformsLib.init();
-      const topSoftbox = new THREE.RectAreaLight(0xffffff, 2.4, 9, 4);
+      const topSoftbox = new THREE.RectAreaLight(0xffffff, 1.28, 9, 4);
       topSoftbox.position.set(0, 8.5, 1.5);
       topSoftbox.lookAt(0, 0.8, 0);
       this.scene.add(topSoftbox);
 
-      const sideSoftbox = new THREE.RectAreaLight(0xfff7ed, 1.5, 8, 2.5);
+      const sideSoftbox = new THREE.RectAreaLight(0xfff7ed, 0.82, 8, 2.5);
       sideSoftbox.position.set(-8, 3.2, 2);
       sideSoftbox.lookAt(0, 1, 0);
       this.scene.add(sideSoftbox);
     }
+
+    // Soft warm dome light inside the vehicle cabin so interior details read through glass & in Interior view
+    this.cabinLight = new THREE.PointLight(0xfff7ed, 1.5, 4.2, 1.4);
+    this.cabinLight.position.set(0, 1.15, -0.15);
+    this.scene.add(this.cabinLight);
 
     // Studio calibration turntable floor
     const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
@@ -145,16 +179,19 @@ export class VehicleStudioController {
     this.turntable.receiveShadow = true;
     this.scene.add(this.turntable);
 
-    // Contact shadow plane directly under vehicle
+    // Soft underbody contact occlusion plane directly under vehicle
     const shadowMat = new THREE.MeshBasicMaterial({
       map: getContactShadowTexture(),
       transparent: true,
       depthWrite: false,
-      opacity: 0.65,
+      opacity: 0.42,
     });
     this.contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(6, 9), shadowMat);
+    this.contactShadow.rotation.order = 'YXZ';
     this.contactShadow.rotation.x = -Math.PI / 2;
     this.contactShadow.position.y = 0.008;
+    this.contactShadow.matrixAutoUpdate = false;
+    this.contactShadow.updateMatrix();
     this.scene.add(this.contactShadow);
 
     this.blueprintGroup = new THREE.Group();
@@ -165,7 +202,7 @@ export class VehicleStudioController {
     this.controls.enableDamping = !isSoftwareGl;
     this.controls.dampingFactor = 0.06;
     this.controls.maxPolarAngle = Math.PI * 0.485;
-    this.controls.minDistance = 1.4;
+    this.controls.minDistance = 0.65;
     this.controls.maxDistance = 32;
     this.controls.target.copy(this.camTargetLook);
     this.controls.addEventListener('start', () => {
@@ -180,6 +217,36 @@ export class VehicleStudioController {
     this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
 
     if (!isSoftwareGl) {
+      const pr = this.renderer.getPixelRatio();
+      const hdrTarget = new THREE.WebGLRenderTarget(initW * pr, initH * pr, {
+        type: THREE.HalfFloatType,
+        samples: pr > 1.25 ? 2 : 4,
+      });
+      this.composer = new EffectComposer(this.renderer, hdrTarget);
+      this.composer.setPixelRatio(pr);
+      this.composer.setSize(initW, initH);
+
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+      // HDR Bloom tuned so only emissive LEDs/DRLs/lights glow cleanly with zero bleed onto car paint
+      this.bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(Math.max(1, Math.floor((initW * pr) / 2)), Math.max(1, Math.floor((initH * pr) / 2))),
+        0.24,
+        0.38,
+        1.48,
+      );
+      this.composer.addPass(this.bloomPass);
+
+      // Subtle automotive studio vignette before tone mapping + sRGB output
+      this.vignettePass = new ShaderPass(VignetteShader);
+      this.vignettePass.uniforms['offset'].value = 1.12;
+      this.vignettePass.uniforms['darkness'].value = 0.36;
+      this.composer.addPass(this.vignettePass);
+
+      // Final AgX ToneMapping + sRGB output conversion after Bloom & Vignette
+      this.outputPass = new OutputPass();
+      this.composer.addPass(this.outputPass);
+
       this.renderer.compile(this.scene, this.camera);
     }
 
@@ -244,9 +311,18 @@ export class VehicleStudioController {
       );
     }
 
-    // Resize contact shadow & turntable scale for big vehicles (buses, aircraft, helicopters)
+    // Resize contact shadow, turntable scale, and tight shadow frustum for each vehicle
     const span = Math.max(v.dimensions.length, v.dimensions.width);
-    this.contactShadow.scale.set(v.dimensions.width * 1.3 / 6, v.dimensions.length * 1.25 / 9, 1);
+    this.contactShadow.scale.set((v.dimensions.width * 1.42) / 6, (v.dimensions.length * 1.32) / 9, 1);
+    this.contactShadow.rotation.y = built.group.rotation.y;
+    this.contactShadow.updateMatrix();
+    const shadowHalf = Math.max(3.6, span * 0.95);
+    this.keyLight.shadow.camera.left = -shadowHalf;
+    this.keyLight.shadow.camera.right = shadowHalf;
+    this.keyLight.shadow.camera.top = shadowHalf;
+    this.keyLight.shadow.camera.bottom = -shadowHalf;
+    this.keyLight.shadow.camera.far = Math.max(36, span * 3.5);
+    this.keyLight.shadow.camera.updateProjectionMatrix();
     const floorScale = Math.max(1, span / 11);
     this.turntable.scale.set(floorScale, 1, floorScale);
     this.controls.maxDistance = Math.max(32, span * 2.8);
@@ -259,12 +335,50 @@ export class VehicleStudioController {
 
     this.callbacks.onPartsCount?.(built.partsCount);
     this.callbacks.onOpenablesCount?.(built.animatedParts.openables.length);
+    this.computeCabinLightLocalPos();
+    this.updateCabinLightTransform();
 
     if (!preserveCamera) {
       this.setCameraPreset('hero', true);
     } else if (!this.needsContinuousLoop()) {
       this.requestRender();
     }
+  }
+
+  private computeCabinLightLocalPos() {
+    const v = this.currentVehicle;
+    if (!v) return;
+    const arch = v.geometry.archetype;
+    const isAir = arch === 'helicopter' || arch === 'airplane' || arch === 'jet';
+    const isHeavy =
+      arch === 'semi_truck' ||
+      arch === 'dump_truck' ||
+      arch === 'mixer_truck' ||
+      arch === 'firetruck' ||
+      arch === 'tow_truck' ||
+      arch === 'bus';
+    const cabY = isAir
+      ? v.dimensions.height * 0.56
+      : isHeavy
+        ? v.dimensions.height * 0.72
+        : v.dimensions.height * 0.78;
+    const cabZ = isAir
+      ? v.dimensions.length * 0.12
+      : arch === 'semi_truck' || arch === 'dump_truck' || arch === 'mixer_truck'
+        ? v.dimensions.length * 0.22
+        : -v.dimensions.length * 0.08;
+    this.cabinLightLocalPos.set(0, cabY, cabZ);
+    this.cabinLight.distance = Math.max(3.6, Math.max(v.dimensions.length, v.dimensions.width) * 1.1);
+  }
+
+  private updateCabinLightTransform() {
+    if (!this.currentVehicle || !this.currentBuilt) return;
+    _cabinLightLocal.copy(this.cabinLightLocalPos).applyQuaternion(this.currentBuilt.group.quaternion);
+    this.cabinLight.position.copy(_cabinLightLocal);
+    const inInterior = this.currentPreset === 'interior';
+    this.cabinLight.intensity = inInterior
+      ? (this.lightsOn ? 3.2 : 2.1)
+      : (this.lightsOn ? 1.55 : 0.95);
   }
 
   public updateCustomization(opts: {
@@ -292,7 +406,7 @@ export class VehicleStudioController {
       const isMetallic = finish === 'metallic' || finish === 'pearl';
       mat.metalness = isMatte ? 0.22 : isMetallic ? 0.65 : 0.38;
       mat.roughness = isMatte ? 0.39 : finish === 'pearl' ? 0.25 : isMetallic ? 0.27 : 0.30;
-      mat.envMapIntensity = 1.32;
+      mat.envMapIntensity = 0.95;
       mat.needsUpdate = true;
     }
     if (stripeHex) {
@@ -313,6 +427,8 @@ export class VehicleStudioController {
   }
 
   public setCameraPreset(preset: StudioCameraPreset, immediate = false) {
+    const wasInterior = this.currentPreset === 'interior';
+    this.currentPreset = preset;
     const v = this.currentVehicle;
     const len = v ? v.dimensions.length : 4.5;
     const wid = v ? v.dimensions.width : 1.9;
@@ -321,28 +437,87 @@ export class VehicleStudioController {
     const minRadius = len < 2.2 ? 2.15 : 3.6;
     const radius = Math.max(len * 0.92, wid * widFactor, hgt * 1.8, minRadius);
     const lookY = hgt * 0.45;
+    const snapNow = immediate || wasInterior || preset === 'interior';
 
-    this.camTargetLook.set(0, lookY, 0);
+    if (preset === 'interior') {
+      if (this.autoRotate) {
+        this.autoRotate = false;
+        this.callbacks.onAutoRotateChange?.(false);
+      }
+      this.camera.near = 0.035;
+      this.camera.fov = 58;
+      this.camera.updateProjectionMatrix();
+      this.controls.minDistance = 0.10;
+      this.controls.maxDistance = Math.max(1.35, len * 0.42);
+      this.controls.maxPolarAngle = Math.PI * 0.78;
 
-    switch (preset) {
-      case 'hero':
-        this.camTargetPos.set(radius * 0.96, lookY + radius * 0.42, radius * 1.05);
-        break;
-      case 'side':
-        this.camTargetPos.set(radius * 1.42, lookY + 0.35, 0.01);
-        break;
-      case 'front':
-        this.camTargetPos.set(0.01, lookY + 0.35, radius * 1.35);
-        break;
-      case 'rear':
-        this.camTargetPos.set(0.01, lookY + 0.45, -radius * 1.35);
-        break;
-      case 'top':
-        this.camTargetPos.set(0.01, radius * 1.65, 0.4);
-        break;
+      if (this.currentBuilt) {
+        this.currentBuilt.group.updateMatrixWorld(true);
+      }
+
+      if (this.currentBuilt && this.currentBuilt.animatedParts.steeringWheels.length > 0) {
+        this.currentBuilt.animatedParts.steeringWheels[0].getWorldPosition(_interiorSteerLocal);
+        this.currentBuilt.group.worldToLocal(_interiorSteerLocal);
+        // Position camera in open center-left aisle between front headrests, looking forward over wheel & dash
+        _interiorEyeLocal.set(
+          _interiorSteerLocal.x * 0.16,
+          _interiorSteerLocal.y + 0.17,
+          _interiorSteerLocal.z - 0.44,
+        );
+        _interiorLookLocal.set(
+          _interiorSteerLocal.x * 0.42,
+          _interiorSteerLocal.y - 0.04,
+          _interiorSteerLocal.z + 0.08,
+        );
+        _interiorEyeLocal.applyMatrix4(this.currentBuilt.group.matrixWorld);
+        _interiorLookLocal.applyMatrix4(this.currentBuilt.group.matrixWorld);
+        this.camTargetPos.copy(_interiorEyeLocal);
+        this.camTargetLook.copy(_interiorLookLocal);
+      } else {
+        const arch = v?.geometry.archetype ?? '';
+        const isAir = arch === 'helicopter' || arch === 'airplane' || arch === 'jet';
+        const eyeY = isAir ? hgt * 0.56 : hgt * 0.80;
+        const eyeZ = isAir ? len * 0.14 : -len * 0.14;
+        _interiorEyeLocal.set(0, eyeY, eyeZ);
+        _interiorLookLocal.set(0, eyeY - 0.16, eyeZ + Math.max(0.60, len * 0.22));
+        if (this.currentBuilt) {
+          _interiorEyeLocal.applyMatrix4(this.currentBuilt.group.matrixWorld);
+          _interiorLookLocal.applyMatrix4(this.currentBuilt.group.matrixWorld);
+        }
+        this.camTargetPos.copy(_interiorEyeLocal);
+        this.camTargetLook.copy(_interiorLookLocal);
+      }
+    } else {
+      this.camera.near = 0.1;
+      this.camera.fov = 42;
+      this.camera.updateProjectionMatrix();
+      this.controls.minDistance = 0.65;
+      this.controls.maxDistance = Math.max(32, Math.max(len, wid) * 2.8);
+      this.controls.maxPolarAngle = Math.PI * 0.485;
+      this.camTargetLook.set(0, lookY, 0);
+
+      switch (preset) {
+        case 'hero':
+          this.camTargetPos.set(radius * 0.96, lookY + radius * 0.42, radius * 1.05);
+          break;
+        case 'side':
+          this.camTargetPos.set(radius * 1.42, lookY + 0.35, 0.01);
+          break;
+        case 'front':
+          this.camTargetPos.set(0.01, lookY + 0.35, radius * 1.35);
+          break;
+        case 'rear':
+          this.camTargetPos.set(0.01, lookY + 0.45, -radius * 1.35);
+          break;
+        case 'top':
+          this.camTargetPos.set(0.01, radius * 1.65, 0.4);
+          break;
+      }
     }
 
-    if (immediate) {
+    this.updateCabinLightTransform();
+
+    if (snapNow) {
       this.camera.position.copy(this.camTargetPos);
       this.controls.target.copy(this.camTargetLook);
       this.controls.update();
@@ -377,6 +552,7 @@ export class VehicleStudioController {
   public setLightsOn(enabled: boolean) {
     this.lightsOn = enabled;
     this.applyLightsState();
+    this.updateCabinLightTransform();
     if (!this.needsContinuousLoop()) this.requestRender();
   }
 
@@ -389,13 +565,14 @@ export class VehicleStudioController {
   private applyLightsState() {
     if (!this.currentBuilt) return;
     const m = this.currentBuilt.materials;
-    m.headlight.emissiveIntensity = this.lightsOn ? 1.65 : 0.05;
-    m.taillight.emissiveIntensity = this.lightsOn ? 1.35 : 0.05;
+    m.headlight.emissiveIntensity = this.lightsOn ? 2.25 : 0.05;
+    m.drlLed.emissiveIntensity = this.lightsOn ? 2.55 : 0.06;
+    m.taillight.emissiveIntensity = this.lightsOn ? 1.95 : 0.05;
     m.signalLeft.emissiveIntensity = this.lightsOn ? 0.12 : 0.04;
     m.signalRight.emissiveIntensity = this.lightsOn ? 0.12 : 0.04;
-    m.sirenRed.emissiveIntensity = this.lightsOn ? 1.8 : 0.05;
-    m.sirenBlue.emissiveIntensity = this.lightsOn ? 1.8 : 0.05;
-    m.sirenAmber.emissiveIntensity = this.lightsOn ? 1.45 : 0.05;
+    m.sirenRed.emissiveIntensity = this.lightsOn ? 2.3 : 0.05;
+    m.sirenBlue.emissiveIntensity = this.lightsOn ? 2.3 : 0.05;
+    m.sirenAmber.emissiveIntensity = this.lightsOn ? 1.95 : 0.05;
     for (let i = 0; i < this.currentBuilt.animatedParts.headlightBeams.length; i++) {
       this.currentBuilt.animatedParts.headlightBeams[i].visible = this.lightsOn;
     }
@@ -458,8 +635,19 @@ export class VehicleStudioController {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    if (this.composer) {
+      this.composer.setSize(w, h);
+    }
     if (!this.needsContinuousLoop()) this.requestRender();
   };
+
+  private renderScene() {
+    if (this.composer) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
 
   private handlePointerMove = (e: PointerEvent) => {
     if (!this.currentBuilt || !this.callbacks.onHoverPart) return;
@@ -534,7 +722,7 @@ export class VehicleStudioController {
       this.frameId = 0;
       this.renderDirty = false;
       this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      this.renderScene();
       const done = () => {
         this.renderBusy = false;
         if (this.renderDirty && !this.disposed) this.requestRender();
@@ -582,6 +770,9 @@ export class VehicleStudioController {
       if (this.autoRotate) {
         this.currentBuilt.group.rotation.y += dt * 0.34;
         this.turntable.rotation.y += dt * 0.34;
+        this.contactShadow.rotation.y = this.currentBuilt.group.rotation.y;
+        this.contactShadow.updateMatrix();
+        this.updateCabinLightTransform();
       }
 
       const targetSpeed = this.animateSystems ? 1 : 0;
@@ -660,21 +851,21 @@ export class VehicleStudioController {
         // Turn signals, emergency police/fire/ambulance strobes & amber beacons
         if (this.lightsOn) {
           const pulse = Math.sin(this.elapsed * 14);
-          this.currentBuilt.materials.sirenRed.emissiveIntensity = pulse > 0 ? 2.8 : 0.25;
-          this.currentBuilt.materials.sirenBlue.emissiveIntensity = pulse <= 0 ? 2.8 : 0.25;
+          this.currentBuilt.materials.sirenRed.emissiveIntensity = pulse > 0 ? 3.2 : 0.22;
+          this.currentBuilt.materials.sirenBlue.emissiveIntensity = pulse <= 0 ? 3.2 : 0.22;
           this.currentBuilt.materials.sirenAmber.emissiveIntensity =
-            0.25 + Math.pow(Math.max(0, Math.sin(this.elapsed * 8)), 2) * 2.4;
+            0.22 + Math.pow(Math.max(0, Math.sin(this.elapsed * 8)), 2) * 2.8;
 
           const blinkCycle = this.elapsed % 4.0;
-          const flash = Math.sin(this.elapsed * 9) > 0 ? 2.4 : 0.12;
-          this.currentBuilt.materials.signalLeft.emissiveIntensity = blinkCycle < 2.0 ? flash : 0.12;
-          this.currentBuilt.materials.signalRight.emissiveIntensity = blinkCycle >= 2.0 ? flash : 0.12;
+          const flash = Math.sin(this.elapsed * 9) > 0 ? 2.85 : 0.10;
+          this.currentBuilt.materials.signalLeft.emissiveIntensity = blinkCycle < 2.0 ? flash : 0.10;
+          this.currentBuilt.materials.signalRight.emissiveIntensity = blinkCycle >= 2.0 ? flash : 0.10;
         }
       }
     }
 
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    this.renderScene();
 
     if (this.needsContinuousLoop()) {
       if (isSoftwareGl) this.afterDraw(this.tick);
@@ -683,7 +874,7 @@ export class VehicleStudioController {
   };
 
   public captureDataUrl(): string {
-    this.renderer.render(this.scene, this.camera);
+    this.renderScene();
     return this.renderer.domElement.toDataURL('image/png');
   }
 
@@ -698,6 +889,10 @@ export class VehicleStudioController {
       this.currentBuilt.dispose();
       this.currentBuilt = null;
     }
+    this.bloomPass?.dispose();
+    this.vignettePass?.dispose();
+    this.outputPass?.dispose();
+    this.composer?.dispose();
     this.controls.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode === this.container) {
@@ -713,6 +908,8 @@ class OffscreenThumbnailRenderer {
   private renderer: THREE.WebGLRenderer | null = null;
   private scene: THREE.Scene | null = null;
   private camera: THREE.PerspectiveCamera | null = null;
+  private keyLight: THREE.DirectionalLight | null = null;
+  private contactShadow: THREE.Mesh | null = null;
   private cache = new Map<number, string>();
 
   private ensureInit() {
@@ -724,8 +921,10 @@ class OffscreenThumbnailRenderer {
     this.renderer.setSize(420, 270);
     this.renderer.setPixelRatio(1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.18;
+    this.renderer.toneMapping = THREE.AgXToneMapping;
+    this.renderer.toneMappingExposure = 0.98;
+    this.renderer.shadowMap.enabled = !isSoftwareGl;
+    this.renderer.shadowMap.type = THREE.VSMShadowMap;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x131318);
@@ -736,29 +935,70 @@ class OffscreenThumbnailRenderer {
     room.dispose();
     pmrem.dispose();
 
-    const hemi = new THREE.HemisphereLight(0xdbeafe, 0x18181b, 0.85);
+    const hemi = new THREE.HemisphereLight(0xdbeafe, 0x18181b, 0.58);
     this.scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xfff1dc, 1.9);
+    const key = new THREE.DirectionalLight(0xfff4e4, 1.38);
     key.position.set(7, 10, 8);
+    key.castShadow = !isSoftwareGl;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 36;
+    key.shadow.radius = 4.5;
+    key.shadow.blurSamples = 14;
+    key.shadow.intensity = 0.56;
+    key.shadow.bias = -0.0002;
+    key.shadow.normalBias = 0.015;
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x93c5fd, 1.0);
+    this.keyLight = key;
+
+    const fill = new THREE.DirectionalLight(0xcbd5e1, 0.32);
+    fill.position.set(-6, 4, 6);
+    this.scene.add(fill);
+
+    const rim = new THREE.DirectionalLight(0x93c5fd, 0.72);
     rim.position.set(-7, 5, -8);
     this.scene.add(rim);
 
+    const shadowCatcher = new THREE.Mesh(
+      new THREE.PlaneGeometry(40, 40),
+      new THREE.ShadowMaterial({ opacity: 0.36 }),
+    );
+    shadowCatcher.rotation.x = -Math.PI / 2;
+    shadowCatcher.position.y = 0.002;
+    shadowCatcher.receiveShadow = true;
+    this.scene.add(shadowCatcher);
+
     const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(8, 12),
+      new THREE.PlaneGeometry(6, 9),
       new THREE.MeshBasicMaterial({
         map: getContactShadowTexture(),
         transparent: true,
         depthWrite: false,
-        opacity: 0.65,
+        opacity: 0.40,
       }),
     );
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = 0.006;
     this.scene.add(shadow);
+    this.contactShadow = shadow;
 
     this.camera = new THREE.PerspectiveCamera(38, 420 / 270, 0.1, 100);
+  }
+
+  private fitShadowForVehicle(v: VehicleConcept) {
+    if (this.contactShadow) {
+      this.contactShadow.scale.set((v.dimensions.width * 1.42) / 6, (v.dimensions.length * 1.32) / 9, 1);
+    }
+    if (this.keyLight) {
+      const span = Math.max(v.dimensions.length, v.dimensions.width);
+      const half = Math.max(3.6, span * 0.95);
+      this.keyLight.shadow.camera.left = -half;
+      this.keyLight.shadow.camera.right = half;
+      this.keyLight.shadow.camera.top = half;
+      this.keyLight.shadow.camera.bottom = -half;
+      this.keyLight.shadow.camera.far = Math.max(36, span * 3.5);
+      this.keyLight.shadow.camera.updateProjectionMatrix();
+    }
   }
 
   public getCached(id: number): string | undefined {
@@ -776,6 +1016,7 @@ class OffscreenThumbnailRenderer {
 
     const built = buildCraftedVehicle(v, 2);
     scene.add(built.group);
+    this.fitShadowForVehicle(v);
 
     const widFactor = v.dimensions.width > 4.5 ? 1.06 : 1.55;
     const minSpan = v.dimensions.length < 2.2 ? 2.05 : 3.4;
@@ -806,6 +1047,7 @@ class OffscreenThumbnailRenderer {
 
     const built = buildCraftedVehicle(v, 4);
     scene.add(built.group);
+    this.fitShadowForVehicle(v);
 
     const widFactor = v.dimensions.width > 4.5 ? 1.08 : 1.6;
     const minSpan = v.dimensions.length < 2.2 ? 2.05 : 3.4;

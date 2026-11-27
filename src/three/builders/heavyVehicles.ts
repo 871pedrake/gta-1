@@ -5,6 +5,7 @@ import {
   BuiltVehicle,
   createBeveledHeadlightAssembly,
   createBeveledRoundHeadlightUnit,
+  createBeveledTaillightAssembly,
   createEngineBayAssembly,
   createExtrudedProfile,
   createHeadlightBeamMesh,
@@ -294,16 +295,20 @@ function addHeavyBumperAndLights(
     fog.position.set(side * (width * 0.36), groundClearance + 0.09, frontZ + 0.135);
     group.add(fog);
 
-    const tlGrp = new THREE.Group();
-    const tlFrame = new THREE.Mesh(createRoundedBoxGeo(0.14, 0.38, 0.05, 0.02, 2, 6), mats.grille);
-    tlGrp.add(tlFrame);
-    const tlRed = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.15, 0.062), mats.taillight);
-    tlRed.position.y = 0.085;
-    const tlAmber = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.085, 0.062), sigMat);
-    tlAmber.position.y = -0.035;
-    const tlRev = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.065, 0.062), mats.headlight);
-    tlRev.position.y = -0.125;
-    tlGrp.add(tlRed, tlAmber, tlRev);
+    const tlGrp = createBeveledTaillightAssembly(
+      {
+        width: 0.15,
+        height: 0.38,
+        depth: 0.060,
+        sweepZ: 0.012,
+        style: 'vertical_truck',
+        side: side as -1 | 1,
+        signalMat: sigMat,
+        frameMat: useChrome ? mats.chrome : mats.grille,
+      },
+      mats,
+      cityMode,
+    );
     tlGrp.position.set(side * (width * 0.42), groundClearance + 0.46, rearZ - 0.015);
     tagPart(tlGrp, side < 0 ? 'Lanterna Traseira Esquerda' : 'Lanterna Traseira Direita', side * 0.25, 0, -0.45);
     group.add(tlGrp);

@@ -233,7 +233,7 @@ export interface VehicleConcept {
   craftedParts: string[];
 }
 
-export type StudioCameraPreset = 'hero' | 'side' | 'front' | 'rear' | 'top';
+export type StudioCameraPreset = 'hero' | 'side' | 'front' | 'rear' | 'top' | 'interior';
 export type AppViewMode = 'city' | 'studio' | 'catalog' | 'compare' | 'unity';
 
 export type CityCameraPreset =

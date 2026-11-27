@@ -44,7 +44,45 @@ export const GDD_MAP_METRICS = [
   { label: 'Hidrologia & Botânica', value: 'Rio + Baía + Ilha', note: 'Nascente (84,114) → Rio (5 barcos) + Praia Oeste, Ilha do Sol & Reflorestamento' },
 ];
 
+export interface GddSupremePillar {
+  code: string;
+  title: string;
+  description: string;
+  unityStandard: string;
+}
+
+export const GDD_SUPREME_RULE: GddSupremePillar[] = [
+  {
+    code: 'PILAR 01',
+    title: 'Separe Tudo em Partes e Grupos Nomeados',
+    description:
+      'Mantenha rodas (5 raios duplos com disco/pinça), portas (com maçanetas, frisos e retrovisores), capô, faróis/lanternas/neblina, vidros e interior/volante em grupos separados e claramente nomeados.',
+    unityStandard: 'Grupo_Chassi (c/ Panel Gaps, Grade, Antena, Limpadores) · Grupo_Rodas · Grupo_Portas · Grupo_Capo · Grupo_Farois_Lanternas · Grupo_Vidros · Grupo_Interior',
+  },
+  {
+    code: 'PILAR 02',
+    title: 'Padronize Pivôs e Centros de Rotação',
+    description:
+      'Garanta que peças que giram ou abrem (rodas vazadas de 5 raios duplos, portas articuladas, capô, porta-malas e volante/guidão) nasçam com o ponto de rotação exatamente na dobradiça ou centro geométrico real.',
+    unityStandard: 'Roda_* no centro do pneu · Porta_* na dobradiça dianteira · Capo_Pivo na dobradiça do para-brisa · Volante_Pivo no eixo da coluna',
+  },
+  {
+    code: 'PILAR 03',
+    title: 'AI Studio como Protótipo de Visual, Acabamento e Código',
+    description:
+      'Use o AI Studio como protótipo ágil de visual, acabamento externo (grade texturizada com filetes, entrada inferior e neblina, frisos pretos nas janelas, antena e linhas de recorte) e lógica C# nativa para o Unity.',
+    unityStandard: 'ControleVeiculo50.cs · InteragirVeiculo50.cs · Fabrica50Veiculos.cs · TrafegoCidade50.cs · Gerador_<Veiculo>.cs',
+  },
+];
+
 export const GDD_EXPLICIT_RULES: GddExplicitRule[] = [
+  {
+    code: 'REGRA-00 [SUPREMA]',
+    title: 'Partes Nomeadas Separadas, Pivôs Padronizados, Acabamento Externo & Protótipo Unity',
+    scope: 'Regra Suprema Permanente · Web 3D + Scripts C# + Toda Atualização Nova',
+    rule: 'Todo veículo e atualização nova deve: (1) manter rodas (vazadas em 5 raios duplos mostrando disco e pinça), portas (c/ maçanetas, frisos pretos e retrovisores aerodinâmicos), capô, faróis/lanternas/neblina, vidros e interior/volante separados em grupos bem nomeados; (2) posicionar pivôs exatamente no ponto real de rotação/abertura; e (3) manter o acabamento externo completo (grade preta texturizada com filetes horizontais, entrada de ar inferior, limpadores articulados, frisos pretos nas janelas, antena no teto e linhas finas de recorte panel gaps) estruturando scripts C# nativamente para o Unity.',
+    unityRequirement: 'Preservar Grupo_Rodas (5 raios duplos + Disco_Freio + Pinca_Freio), Grupo_Portas, Grupo_Capo, Grupo_Farois_Lanternas (Farol + Farol_Neblina + Lanterna), Grupo_Vidros e Grupo_Interior fora do batch estático de Grupo_Chassi em Fabrica50Veiculos.cs e Gerador_<Veiculo>.cs.',
+  },
   {
     code: 'REGRA-01',
     title: 'Relevo Escalonado com Parte Mais Baixa (-0,85m) e Parte Mais Alta (+13,8m)',
@@ -444,6 +482,15 @@ export const GDD_SEPARATION_RULES: GddSeparationRule[] = [
 
 export const GDD_UNITY_CHECKLIST = [
   {
+    phase: '00 · REGRA SUPREMA: Partes Nomeadas, Pivôs & Fluxo Unity',
+    script: 'ControleVeiculo50.cs · Fabrica50Veiculos.cs · Gerador_<Veiculo>.cs',
+    tasks: [
+      'Separar todo veículo em grupos nomeados (Grupo_Chassi, Grupo_Rodas, Grupo_Portas, Grupo_Capo, Grupo_Farois_Lanternas, Grupo_Vidros e Grupo_Interior) sem fundir peças animáveis ou funcionais',
+      'Padronizar pivôs de rotação/abertura: rodas no centro geométrico, portas na dobradiça frontal, capô na dobradiça junto ao para-brisa e Volante_Pivo / Guidao_Pivo no eixo da coluna',
+      'Manter scripts C# estruturados nativamente para Unity URP tratando o AI Studio como protótipo rápido de visual, proporções e lógica',
+    ],
+  },
+  {
     phase: '01 · Relevo Extremo (-0,85m → +13,8m) & Hidrologia',
     script: 'GeradorCidadeInicial.Rio.cs / cityElevation',
     tasks: [
@@ -490,6 +537,9 @@ export function buildGddMarkdown(): string {
     '**Projeto:** Garagem Conceito 50 · Cidade Nova (Mundo Aberto Estilo GTA)',
     '**Escala:** `1 unidade = 1 metro` (`1u = 1m`) · Malha Expandida `X ∈ [-153, +153]` · Bulevares Externos `X = ±148` · Quadras `23m × 23m` & `33m × 23m`',
     '**Relevo Urbano Completo:** Cais Baixo (`-0,85m`) / Rio (`-1,25m`) → Baixada (`0,0m`) → Terraço (`+2,25m`) → Av. Média (`+4,5m`) → Cidade Alta (`+6,75m` / `+9,0m`) → **Mirante Alto da Serra Sul (`+13,8m`)** e **Morro Norte (`+26m`)**',
+    '',
+    '## 0. REGRA SUPREMA — Arquitetura Modular, Pivôs Padronizados & Fluxo AI Studio → Unity',
+    ...GDD_SUPREME_RULE.map((p) => `- **${p.code} — ${p.title}:** ${p.description} (\`${p.unityStandard}\`)`),
     '',
     '## 1. Métricas Gerais do Mapa',
     ...GDD_MAP_METRICS.map((m) => `- **${m.label}:** ${m.value} (${m.note})`),

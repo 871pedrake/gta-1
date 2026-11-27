@@ -26,6 +26,7 @@ public class ControleVeiculo50 : MonoBehaviour
         semaforosCache.Clear();
         semaforosCarregados = false;
         mpb = null;
+        camMainCache = null;
     }
 
     [Header("Identificação")]
@@ -74,6 +75,7 @@ public class ControleVeiculo50 : MonoBehaviour
 
     [Header("Peças Animadas (preenchido pela Fábrica)")]
     public bool ehBicicleta = false;
+    public Transform volantePivo;
     public Transform guidaoPivo;
     public Transform pedivelaPivo;
     public List<Transform> pedais = new List<Transform>();
@@ -155,11 +157,24 @@ public class ControleVeiculo50 : MonoBehaviour
     private int rioSentido = 1;
     private float rioMaxS = 70f;
 
+    private readonly Vector3[] pontosSuspLocal = new Vector3[4];
+    private readonly Vector3[] candDirBuf = new Vector3[4];
+    private int ultimoEstadoLuzes = -1;
+    private float distCamSqCache = 0f;
+
     private static readonly RaycastHit[] bufSensor = new RaycastHit[16];
     private static readonly RaycastHit[] bufSusp = new RaycastHit[8];
     private static readonly List<CidadeSemaforoControlador> semaforosCache = new List<CidadeSemaforoControlador>();
     private static bool semaforosCarregados = false;
     private static MaterialPropertyBlock mpb;
+    private static Camera camMainCache;
+
+    private static Camera PegarCameraPrincipal()
+    {
+        if (camMainCache == null || !camMainCache.isActiveAndEnabled)
+            camMainCache = Camera.main;
+        return camMainCache;
+    }
 
     private Vector3 Vel
     {
@@ -273,6 +288,7 @@ public class ControleVeiculo50 : MonoBehaviour
                 if (sems[i] != null) semaforosCache.Add(sems[i]);
         }
 
+        ultimoEstadoLuzes = -1;
         AtualizarEmissivoLuzes(false);
     }
 
@@ -361,6 +377,9 @@ public class ControleVeiculo50 : MonoBehaviour
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
 
+        Camera cam = PegarCameraPrincipal();
+        distCamSqCache = cam != null ? (cam.transform.position - transform.position).sqrMagnitude : 0f;
+
         if (!modoIA && emVooPatrulhaIA)
         {
             emVooPatrulhaIA = false;
@@ -428,7 +447,7 @@ public class ControleVeiculo50 : MonoBehaviour
         timerSensorIA -= dt;
         if (timerSensorIA <= 0f)
         {
-            timerSensorIA = 0.12f;
+            timerSensorIA = distCamSqCache > 8100f ? 0.24f : (distCamSqCache > 2500f ? 0.16f : 0.11f);
             DetectarPistaEObstaculos();
         }
 
@@ -518,7 +537,7 @@ public class ControleVeiculo50 : MonoBehaviour
         timerSensorIA -= dt;
         if (timerSensorIA <= 0f)
         {
-            timerSensorIA = 0.09f;
+            timerSensorIA = distCamSqCache > 8100f ? 0.22f : (distCamSqCache > 2500f ? 0.14f : 0.09f);
             DetectarObstaculosESemaforo();
         }
 
@@ -763,13 +782,26 @@ public class ControleVeiculo50 : MonoBehaviour
         Vector3 direita = Vector3.Cross(Vector3.up, dirAtual).normalized;
         Vector3 esquerda = -direita;
 
-        Vector3[] candidatas = forcarGiro
-            ? new[] { direita, esquerda, -dirAtual, dirAtual }
-            : (Random.value < 0.5f ? new[] { direita, esquerda, -dirAtual } : new[] { esquerda, direita, -dirAtual });
-
-        for (int i = 0; i < candidatas.Length; i++)
+        int totalCand;
+        if (forcarGiro)
         {
-            Vector3 d = ArredondarEixo(candidatas[i]);
+            candDirBuf[0] = direita; candDirBuf[1] = esquerda; candDirBuf[2] = -dirAtual; candDirBuf[3] = dirAtual;
+            totalCand = 4;
+        }
+        else if (Random.value < 0.5f)
+        {
+            candDirBuf[0] = direita; candDirBuf[1] = esquerda; candDirBuf[2] = -dirAtual;
+            totalCand = 3;
+        }
+        else
+        {
+            candDirBuf[0] = esquerda; candDirBuf[1] = direita; candDirBuf[2] = -dirAtual;
+            totalCand = 3;
+        }
+
+        for (int i = 0; i < totalCand; i++)
+        {
+            Vector3 d = ArredondarEixo(candDirBuf[i]);
             if (TemAsfalto(transform.position + d * 8f) && TemAsfalto(transform.position + d * 14f))
             {
                 dirAlvoIA = d;
@@ -833,26 +865,42 @@ public class ControleVeiculo50 : MonoBehaviour
 
     private void AtualizarFisicaTerrestreGTA(float dt, float velMs)
     {
+        if (!MotorLigado && !modoIA)
+        {
+            if (rb.IsSleeping()) return;
+            if (EstaNoChao && Vel.sqrMagnitude < 0.012f && rb.angularVelocity.sqrMagnitude < 0.012f && Vector3.Dot(transform.up, Vector3.up) > 0.97f)
+            {
+                SetVelocity(Vector3.zero);
+                rb.angularVelocity = Vector3.zero;
+                rb.Sleep();
+                return;
+            }
+        }
+
         bool motoInline = tipoFisica == TipoFisicaVeiculo50.Moto && !ehQuadriciclo;
-        int numRodas = motoInline ? 2 : 4;
+        bool lodSuspSimples = modoIA && distCamSqCache > 5625f;
+        int numRodas = lodSuspSimples ? 1 : (motoInline ? 2 : 4);
 
         float xOff = motoInline ? 0f : Mathf.Max(0.45f, largura * 0.42f);
         float zF = Mathf.Abs(zEixoDianteiro) > 0.2f ? zEixoDianteiro : Mathf.Max(0.65f, distanciaEixos * 0.5f);
         float zT = Mathf.Abs(zEixoTraseiro) > 0.2f ? zEixoTraseiro : -Mathf.Max(0.65f, distanciaEixos * 0.5f);
 
-        Vector3[] pontosLocais = motoInline
-            ? new[]
-            {
-                new Vector3(0f, suspRepouso, zF),
-                new Vector3(0f, suspRepouso, zT)
-            }
-            : new[]
-            {
-                new Vector3(-xOff, suspRepouso, zF),
-                new Vector3( xOff, suspRepouso, zF),
-                new Vector3(-xOff, suspRepouso, zT),
-                new Vector3( xOff, suspRepouso, zT)
-            };
+        if (lodSuspSimples)
+        {
+            pontosSuspLocal[0] = new Vector3(0f, suspRepouso, 0f);
+        }
+        else if (motoInline)
+        {
+            pontosSuspLocal[0] = new Vector3(0f, suspRepouso, zF);
+            pontosSuspLocal[1] = new Vector3(0f, suspRepouso, zT);
+        }
+        else
+        {
+            pontosSuspLocal[0] = new Vector3(-xOff, suspRepouso, zF);
+            pontosSuspLocal[1] = new Vector3( xOff, suspRepouso, zF);
+            pontosSuspLocal[2] = new Vector3(-xOff, suspRepouso, zT);
+            pontosSuspLocal[3] = new Vector3( xOff, suspRepouso, zT);
+        }
 
         float springK = (rb.mass * 9.81f / numRodas) / Mathf.Max(0.05f, suspCurso * 0.5f);
         float damperC = 0.78f * 2f * Mathf.Sqrt(springK * (rb.mass / numRodas));
@@ -865,7 +913,7 @@ public class ControleVeiculo50 : MonoBehaviour
 
         for (int i = 0; i < numRodas; i++)
         {
-            Vector3 origem = transform.TransformPoint(pontosLocais[i]);
+            Vector3 origem = transform.TransformPoint(pontosSuspLocal[i]);
             bool achou = RaycastChaoSemSi(origem, -transform.up, suspMaxRay, out RaycastHit hit);
 
             if (achou)
@@ -882,9 +930,17 @@ public class ControleVeiculo50 : MonoBehaviour
                 rb.AddForceAtPosition(transform.up * forcaMola, origem, ForceMode.Force);
 
                 float deltaVis = Mathf.Clamp(suspRepouso - hit.distance, -suspCurso * 0.40f, suspCurso * 0.45f);
-                bool ehDianteira = motoInline ? (i == 0) : (i < 2);
-                if (ehDianteira) { somaDeltaF += deltaVis; hitsF++; }
-                else { somaDeltaT += deltaVis; hitsT++; }
+                if (lodSuspSimples)
+                {
+                    somaDeltaF += deltaVis; hitsF++;
+                    somaDeltaT += deltaVis; hitsT++;
+                }
+                else
+                {
+                    bool ehDianteira = motoInline ? (i == 0) : (i < 2);
+                    if (ehDianteira) { somaDeltaF += deltaVis; hitsF++; }
+                    else { somaDeltaT += deltaVis; hitsT++; }
+                }
             }
             else
             {
@@ -898,20 +954,20 @@ public class ControleVeiculo50 : MonoBehaviour
         EstaNoChao = rodasNoChao > 0;
 
         // Barra estabilizadora (Anti-Roll) só atua quando as duas rodas do mesmo eixo estão apoiadas
-        if (!motoInline)
+        if (!motoInline && !lodSuspSimples)
         {
             float antiRollK = springK * 0.55f;
             if (hitRodas[0] && hitRodas[1])
             {
                 float diffF = (compRodas[0] - compRodas[1]) * antiRollK;
-                rb.AddForceAtPosition(transform.up * (-diffF), transform.TransformPoint(pontosLocais[0]), ForceMode.Force);
-                rb.AddForceAtPosition(transform.up * ( diffF), transform.TransformPoint(pontosLocais[1]), ForceMode.Force);
+                rb.AddForceAtPosition(transform.up * (-diffF), transform.TransformPoint(pontosSuspLocal[0]), ForceMode.Force);
+                rb.AddForceAtPosition(transform.up * ( diffF), transform.TransformPoint(pontosSuspLocal[1]), ForceMode.Force);
             }
             if (hitRodas[2] && hitRodas[3])
             {
                 float diffT = (compRodas[2] - compRodas[3]) * antiRollK;
-                rb.AddForceAtPosition(transform.up * (-diffT), transform.TransformPoint(pontosLocais[2]), ForceMode.Force);
-                rb.AddForceAtPosition(transform.up * ( diffT), transform.TransformPoint(pontosLocais[3]), ForceMode.Force);
+                rb.AddForceAtPosition(transform.up * (-diffT), transform.TransformPoint(pontosSuspLocal[2]), ForceMode.Force);
+                rb.AddForceAtPosition(transform.up * ( diffT), transform.TransformPoint(pontosSuspLocal[3]), ForceMode.Force);
             }
         }
 
@@ -1240,8 +1296,7 @@ public class ControleVeiculo50 : MonoBehaviour
 
     private void AnimarComponentes(float dt)
     {
-        Camera cam = Camera.main;
-        if (cam != null && (cam.transform.position - transform.position).sqrMagnitude > 9025f)
+        if (distCamSqCache > 9025f)
             return;
 
         float velMs = Vector3.Dot(Vel, transform.forward);
@@ -1249,6 +1304,10 @@ public class ControleVeiculo50 : MonoBehaviour
         anguloRodas += (velMs / rVis) * Mathf.Rad2Deg * dt;
         AnguloGuidaoAtual = Mathf.Lerp(AnguloGuidaoAtual, steerSuave * 30f, 12f * dt);
 
+        if (volantePivo != null)
+        {
+            volantePivo.localRotation = Quaternion.Euler(24f, 0f, -AnguloGuidaoAtual * 2.4f);
+        }
         if (guidaoPivo != null)
         {
             guidaoPivo.localRotation = Quaternion.Euler(0f, AnguloGuidaoAtual, 0f);
@@ -1356,6 +1415,10 @@ public class ControleVeiculo50 : MonoBehaviour
 
     private void AtualizarEmissivoLuzes(bool freando)
     {
+        int estado = (luzesLigadas ? 1 : 0) | (freando ? 2 : 0);
+        if (estado == ultimoEstadoLuzes) return;
+        ultimoEstadoLuzes = estado;
+
         Color farolBase = luzesLigadas ? new Color(1f, 0.97f, 0.85f) : new Color(0.75f, 0.78f, 0.82f);
         SetEmissao(farois, farolBase, luzesLigadas ? new Color(1f, 0.95f, 0.75f) * 1.6f : Color.black);
         SetEmissao(lanternas, new Color(0.65f, 0.05f, 0.05f), Color.red * (freando ? 2.4f : (luzesLigadas ? 1.2f : 0f)));
@@ -1757,13 +1820,14 @@ export function generateFabrica50VeiculosCs(vehicles: VehicleConcept[]): string 
 
   return `using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
 /// <summary>
 /// FÁBRICA OTIMIZADA DOS ${vehicles.length} VEÍCULOS CONCEITO (VHC-01 a VHC-${vehicles.length})
-/// Com classificação por classe Unity, portas articuladas (tecla G) e cache compartilhado de materiais.
+/// Com classificação por classe Unity, portas articuladas (tecla G), cache compartilhado e batching estático de malhas.
 /// </summary>
 public class Fabrica50Veiculos : MonoBehaviour
 {
@@ -1781,6 +1845,7 @@ public class Fabrica50Veiculos : MonoBehaviour
     private static Shader shaderBase;
     private static readonly Dictionary<long, Material> cacheMateriais = new Dictionary<long, Material>();
     private static Material matEmissivoCompartilhado;
+    private static Material matChamaCompartilhado;
 #if UNITY_6000_0_OR_NEWER
     private static PhysicsMaterial matFisicaSemAtrito;
 #else
@@ -1792,6 +1857,7 @@ public class Fabrica50Veiculos : MonoBehaviour
     {
         cacheMateriais.Clear();
         matEmissivoCompartilhado = null;
+        matChamaCompartilhado = null;
         shaderBase = null;
         matFisicaSemAtrito = null;
     }
@@ -1896,6 +1962,8 @@ ${rows}
         else
             MontarVeiculoTerrestre(raiz.transform, d, ctrl, cPrim, cSec, cDest, cVidro, cPneu, cAro, cCromo);
 
+        Transform grupoChassi = OrganizarGruposPadronizados(raiz.transform, ctrl);
+        CombinarMalhasEstaticas(grupoChassi, ctrl);
         return raiz;
     }
 
@@ -2257,27 +2325,107 @@ ${rows}
                     new Vector3(0f, beltY + cabH * 0.45f, cabZ),
                     new Vector3(d.larg * 0.76f, cabH * 0.62f, cabL * 1.02f), cVidro, 0.92f);
             }
+
+            // Volante com pivô exato na coluna de direção + Capô com pivô exato na dobradiça junto ao para-brisa
+            if (d.arquetipo != "formula")
+            {
+                float volZ = (d.arquetipo == "roadster" || d.arquetipo == "convertible") ? cabL * 0.14f : (ehPicape ? hl * 0.24f : 0.22f);
+                GameObject volPivo = new GameObject("Volante_Pivo");
+                volPivo.transform.SetParent(raiz, false);
+                volPivo.transform.localPosition = new Vector3(-d.larg * 0.21f, beltY + 0.08f, volZ);
+                volPivo.transform.localRotation = Quaternion.Euler(24f, 0f, 0f);
+                Peca(PrimitiveType.Cylinder, "Volante_Aro", volPivo.transform, Vector3.zero, new Vector3(0.32f, 0.025f, 0.32f), new Color(0.14f, 0.15f, 0.18f), 0.35f)
+                    .localRotation = Quaternion.Euler(90f, 0f, 0f);
+                Peca(PrimitiveType.Cube, "Volante_Raio", volPivo.transform, Vector3.zero, new Vector3(0.28f, 0.03f, 0.02f), cCromo, 0.75f);
+                ctrl.volantePivo = volPivo.transform;
+
+                float capoHingeZ = Mathf.Max(0.45f, hl * 0.32f);
+                float capoLen = Mathf.Max(0.48f, hl - capoHingeZ - 0.05f);
+                Transform capoPivo = CriarPivoArticulado(raiz, "Capo_Pivo", new Vector3(0f, beltY - 0.01f, capoHingeZ), new Vector3(-42f, 0f, 0f), Vector3.zero, ctrl);
+                Peca(PrimitiveType.Cube, "Capo_Motor", capoPivo, new Vector3(0f, 0f, capoLen * 0.5f), new Vector3(d.larg * 0.78f, 0.035f, capoLen), cPrim, 0.76f);
+            }
         }
 
-        // 3. Grade, Para-choques, Faróis, Lanternas e Portas Flush (100% rentes à lataria e salientes)
+        // 3. Grade Texturizada com Filetes, Entrada Inferior, Faróis de Neblina, Retrovisores, Maçanetas, Limpadores, Frisos, Antena & Panel Gaps
         float frontMaskZ = hl - 0.005f;
+        Color corPretoFosco = new Color(0.08f, 0.08f, 0.10f);
         Peca(PrimitiveType.Cube, "Grade_Frontal", raiz,
-            new Vector3(0f, d.vao + corpoH * 0.52f, frontMaskZ + 0.015f),
-            new Vector3(d.larg * 0.48f, corpoH * 0.35f, 0.06f), new Color(0.08f, 0.08f, 0.1f), 0.4f);
+            new Vector3(0f, d.vao + corpoH * 0.54f, frontMaskZ + 0.015f),
+            new Vector3(d.larg * 0.48f, corpoH * 0.30f, 0.055f), corPretoFosco, 0.38f);
+        for (int fg = -1; fg <= 1; fg++)
+        {
+            Peca(PrimitiveType.Cube, "Filete_Grade_" + (fg + 1), raiz,
+                new Vector3(0f, d.vao + corpoH * 0.54f + fg * (corpoH * 0.09f), frontMaskZ + 0.024f),
+                new Vector3(d.larg * 0.45f, 0.014f, 0.048f), new Color(0.11f, 0.12f, 0.14f), 0.45f);
+        }
 
         Color corPara = d.extras.Contains("chrome_bumpers") ? cCromo : cSec;
-        Peca(PrimitiveType.Cube, "Parachoque_F", raiz, new Vector3(0f, d.vao + 0.10f, hl + 0.035f), new Vector3(d.larg * 0.98f, 0.14f, 0.12f), corPara, 0.5f);
-        Peca(PrimitiveType.Cube, "Parachoque_T", raiz, new Vector3(0f, d.vao + 0.10f, -hl - 0.03f), new Vector3(d.larg * 0.98f, 0.14f, 0.12f), corPara, 0.5f);
+        Peca(PrimitiveType.Cube, "Parachoque_F", raiz, new Vector3(0f, d.vao + 0.09f, hl - 0.02f), new Vector3(d.larg * 0.96f, 0.14f, 0.12f), corPara, 0.5f);
+        Peca(PrimitiveType.Cube, "Parachoque_T", raiz, new Vector3(0f, d.vao + 0.09f, -hl + 0.02f), new Vector3(d.larg * 0.96f, 0.14f, 0.12f), corPara, 0.5f);
+
+        // Entrada de ar inferior do para-choque + filetes horizontais
+        Peca(PrimitiveType.Cube, "Entrada_Ar_Inferior", raiz,
+            new Vector3(0f, d.vao + 0.085f, hl + 0.025f),
+            new Vector3(d.larg * 0.52f, 0.075f, 0.055f), corPretoFosco, 0.35f);
+        Peca(PrimitiveType.Cube, "Filete_Entrada_Inferior", raiz,
+            new Vector3(0f, d.vao + 0.085f, hl + 0.032f),
+            new Vector3(d.larg * 0.48f, 0.012f, 0.048f), new Color(0.13f, 0.14f, 0.16f), 0.42f);
+
+        // Antena Shark-Fin no teto + Frisos pretos das janelas + Limpadores de para-brisa + Panel Gaps
+        if (!ehOnibus && d.arquetipo != "convertible" && d.arquetipo != "roadster" && d.arquetipo != "buggy" && d.arquetipo != "formula")
+        {
+            Peca(PrimitiveType.Cube, "Antena_Teto", raiz,
+                new Vector3(0f, d.alt + 0.032f, -cabL * 0.24f),
+                new Vector3(0.032f, 0.068f, 0.15f), corPretoFosco, 0.45f);
+            Peca(PrimitiveType.Cube, "Friso_Janela_Superior_PB", raiz,
+                new Vector3(0f, d.alt - 0.03f, cabL * 0.22f),
+                new Vector3(d.larg * 0.78f, 0.020f, 0.030f), corPretoFosco, 0.38f);
+        }
+        if (d.arquetipo != "formula")
+        {
+            for (int w = -1; w <= 1; w += 2)
+            {
+                Peca(PrimitiveType.Cube, w < 0 ? "Limpador_Parabrisa_E" : "Limpador_Parabrisa_D", raiz,
+                    new Vector3(w * d.larg * 0.17f, beltY + 0.03f, Mathf.Max(0.42f, hl * 0.30f)),
+                    new Vector3(0.28f, 0.014f, 0.020f), corPretoFosco, 0.35f)
+                    .localRotation = Quaternion.Euler(0f, 0f, 5f);
+            }
+            // Linhas finas de recorte (Panel Gaps) separando capô e portas
+            Color corRecorte = new Color(0.03f, 0.03f, 0.04f);
+            float zCapoHinge = Mathf.Max(0.45f, hl * 0.32f);
+            float lenCapo = Mathf.Max(0.48f, hl - zCapoHinge - 0.05f);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Peca(PrimitiveType.Cube, s < 0 ? "Recorte_Capo_E" : "Recorte_Capo_D", raiz,
+                    new Vector3(s * d.larg * 0.39f, beltY + 0.015f, zCapoHinge + lenCapo * 0.5f),
+                    new Vector3(0.008f, 0.008f, lenCapo), corRecorte, 0.2f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Recorte_Porta_F_E" : "Recorte_Porta_F_D", raiz,
+                    new Vector3(s * (d.larg * 0.498f), d.vao + corpoH * 0.52f, 0.48f),
+                    new Vector3(0.008f, corpoH * 0.80f, 0.008f), corRecorte, 0.2f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Recorte_Porta_T_E" : "Recorte_Porta_T_D", raiz,
+                    new Vector3(s * (d.larg * 0.498f), d.vao + corpoH * 0.52f, 0.48f - ((ehCaminhao || ehFurgao) ? 0.78f : 0.96f)),
+                    new Vector3(0.008f, corpoH * 0.80f, 0.008f), corRecorte, 0.2f);
+            }
+        }
 
         for (int s = -1; s <= 1; s += 2)
         {
             Transform f = PecaEmissiva(PrimitiveType.Cube, s < 0 ? "Farol_E" : "Farol_D", raiz,
-                new Vector3(s * d.larg * 0.35f, d.vao + corpoH * 0.62f, frontMaskZ + 0.015f),
+                new Vector3(s * d.larg * 0.35f, d.vao + corpoH * 0.62f, frontMaskZ + 0.025f),
                 new Vector3(d.larg * 0.18f, 0.10f, 0.07f));
             ctrl.farois.Add(f.GetComponent<Renderer>());
 
+            if (!ehSuper && d.arquetipo != "formula")
+            {
+                Transform fn = PecaEmissiva(PrimitiveType.Cylinder, s < 0 ? "Farol_Neblina_E" : "Farol_Neblina_D", raiz,
+                    new Vector3(s * d.larg * 0.36f, d.vao + 0.088f, hl + 0.028f),
+                    new Vector3(0.055f, 0.022f, 0.055f));
+                fn.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                ctrl.farois.Add(fn.GetComponent<Renderer>());
+            }
+
             Transform l = PecaEmissiva(PrimitiveType.Cube, s < 0 ? "Lanterna_E" : "Lanterna_D", raiz,
-                new Vector3(s * d.larg * 0.35f, d.vao + corpoH * 0.64f, -hl + 0.01f),
+                new Vector3(s * d.larg * 0.35f, d.vao + corpoH * 0.64f, -hl - 0.015f),
                 new Vector3(d.larg * 0.20f, 0.09f, 0.07f));
             ctrl.lanternas.Add(l.GetComponent<Renderer>());
 
@@ -2290,7 +2438,9 @@ ${rows}
                     ehSuper ? new Vector3(-56f, s * 14f, s * 16f) : new Vector3(0f, s * -64f, 0f),
                     Vector3.zero, ctrl);
                 Peca(PrimitiveType.Cube, "Folha_Porta", pivoPorta, new Vector3(0f, 0f, -compPorta * 0.5f), new Vector3(0.056f, corpoH * 0.80f, compPorta), cPrim, 0.75f);
-                Peca(PrimitiveType.Cube, "Friso_Porta", pivoPorta, new Vector3(s * 0.025f, corpoH * 0.36f, -compPorta * 0.5f), new Vector3(0.015f, 0.03f, compPorta * 0.96f), new Color(0.12f, 0.13f, 0.15f), 0.35f);
+                Peca(PrimitiveType.Cube, "Friso_Porta", pivoPorta, new Vector3(s * 0.025f, corpoH * 0.36f, -compPorta * 0.5f), new Vector3(0.015f, 0.03f, compPorta * 0.96f), corPretoFosco, 0.35f);
+                Peca(PrimitiveType.Cube, s < 0 ? "Macaneta_E" : "Macaneta_D", pivoPorta, new Vector3(s * 0.034f, corpoH * 0.26f, -compPorta * 0.76f), new Vector3(0.022f, 0.024f, 0.13f), cCromo, 0.86f);
+                Peca(PrimitiveType.Cube, "Friso_Janela_Porta", pivoPorta, new Vector3(s * 0.012f, corpoH * 0.41f, -compPorta * 0.5f), new Vector3(0.018f, 0.022f, compPorta * 0.96f), corPretoFosco, 0.38f);
                 Peca(PrimitiveType.Cube, "Retrovisor", pivoPorta, new Vector3(s * 0.09f, corpoH * 0.42f, -0.14f), new Vector3(0.14f, 0.08f, 0.10f), cPrim, 0.7f);
             }
             else
@@ -3452,14 +3602,44 @@ ${rows}
         GameObject pivo = new GameObject(nome);
         pivo.transform.SetParent(pai, false);
         pivo.transform.localPosition = pos;
+        float lado = pos.x < 0f ? -1f : 1f;
 
-        Transform t = Peca(PrimitiveType.Cylinder, "Pneu", pivo.transform, Vector3.zero, new Vector3(raio * 2f, larg * 0.5f, raio * 2f), pneu, 0.15f);
+        Transform t = Peca(PrimitiveType.Cylinder, "Pneu", pivo.transform, Vector3.zero, new Vector3(raio * 2f, larg * 0.42f, raio * 2f), pneu, 0.15f);
         t.localRotation = Quaternion.Euler(0f, 0f, 90f);
 
-        Transform a = Peca(PrimitiveType.Cylinder, "Aro_LigaLeve", pivo.transform, Vector3.zero, new Vector3(raio * 1.24f, larg * 0.54f, raio * 1.24f), aro, 0.85f);
-        a.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        // Disco de freio ventilado + pinça atrás dos 5 raios duplos
+        Transform disco = Peca(PrimitiveType.Cylinder, "Disco_Freio", pivo.transform, new Vector3(lado * larg * 0.43f, 0f, 0f), new Vector3(raio * 1.16f, 0.012f, raio * 1.16f), new Color(0.76f, 0.79f, 0.83f), 0.88f);
+        disco.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        Peca(PrimitiveType.Cube, "Pinca_Freio", pivo.transform, new Vector3(lado * larg * 0.44f, raio * 0.24f, -raio * 0.32f), new Vector3(0.036f, raio * 0.30f, raio * 0.22f), pinca, 0.65f);
 
-        Peca(PrimitiveType.Cube, "Pinca_Freio", pivo.transform, new Vector3(0f, raio * 0.22f, -raio * 0.30f), new Vector3(larg * 0.4f, raio * 0.32f, raio * 0.24f), pinca, 0.6f);
+        Transform cubo = Peca(PrimitiveType.Cylinder, "Cubo_Central", pivo.transform, new Vector3(lado * larg * 0.46f, 0f, 0f), new Vector3(raio * 0.34f, 0.020f, raio * 0.34f), aro, 0.85f);
+        cubo.localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+        // 5 raios duplos (10 hastes em Y) + anel externo da roda deixando o disco visível
+        float aroRaio = raio * 0.66f;
+        for (int i = 0; i < 5; i++)
+        {
+            float baseAng = i * 72f;
+            for (int pair = -1; pair <= 1; pair += 2)
+            {
+                float angRad = (baseAng + pair * 11f) * Mathf.Deg2Rad;
+                float cy = Mathf.Cos(angRad) * (aroRaio * 0.56f);
+                float cz = Mathf.Sin(angRad) * (aroRaio * 0.56f);
+                Transform raioMesh = Peca(PrimitiveType.Cube, "Raio_Duplo_" + i + "_" + (pair < 0 ? "A" : "B"), pivo.transform,
+                    new Vector3(lado * larg * 0.47f, cy, cz),
+                    new Vector3(0.022f, aroRaio * 0.84f, 0.024f), aro, 0.86f);
+                raioMesh.localRotation = Quaternion.Euler(-(baseAng + pair * 11f), 0f, 0f);
+            }
+        }
+        for (int seg = 0; seg < 10; seg++)
+        {
+            float segAng = seg * 36f;
+            float segRad = segAng * Mathf.Deg2Rad;
+            Transform borda = Peca(PrimitiveType.Cube, "Aro_Borda_" + seg, pivo.transform,
+                new Vector3(lado * larg * 0.46f, Mathf.Cos(segRad) * aroRaio, Mathf.Sin(segRad) * aroRaio),
+                new Vector3(0.040f, 0.032f, aroRaio * 0.68f), aro, 0.86f);
+            borda.localRotation = Quaternion.Euler(-segAng, 0f, 0f);
+        }
         return pivo.transform;
     }
 
@@ -3476,7 +3656,9 @@ ${rows}
         go.transform.SetParent(pai, false);
         go.transform.localPosition = pos;
         go.transform.localScale = esc;
-        go.GetComponent<Renderer>().sharedMaterial = PegarMaterial(cor, smoothness);
+        Renderer rend = go.GetComponent<Renderer>();
+        rend.sharedMaterial = PegarMaterial(cor, smoothness);
+        if (cor.a < 0.99f) rend.shadowCastingMode = ShadowCastingMode.Off;
         return go.transform;
     }
 
@@ -3493,19 +3675,182 @@ ${rows}
         go.transform.SetParent(pai, false);
         go.transform.localPosition = pos;
         go.transform.localScale = esc;
-        go.GetComponent<Renderer>().sharedMaterial = PegarMaterialEmissivo();
+        Renderer rend = go.GetComponent<Renderer>();
+        rend.sharedMaterial = PegarMaterialEmissivo();
+        rend.shadowCastingMode = ShadowCastingMode.Off;
         return go.transform;
     }
 
     private static Transform PecaChama(string nome, Transform pai, Vector3 pos, Vector3 esc)
     {
         Transform t = PecaEmissiva(PrimitiveType.Capsule, nome, pai, pos, esc);
-        Material m = new Material(PegarMaterialEmissivo());
-        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", new Color(1f, 0.55f, 0.08f, 0.85f));
-        if (m.HasProperty("_Color")) m.SetColor("_Color", new Color(1f, 0.55f, 0.08f, 0.85f));
-        if (m.HasProperty("_EmissionColor")) m.SetColor("_EmissionColor", new Color(1f, 0.45f, 0.05f) * 2.8f);
-        t.GetComponent<Renderer>().sharedMaterial = m;
+        if (matChamaCompartilhado == null)
+        {
+            matChamaCompartilhado = new Material(PegarMaterialEmissivo()) { enableInstancing = true };
+            if (matChamaCompartilhado.HasProperty("_BaseColor")) matChamaCompartilhado.SetColor("_BaseColor", new Color(1f, 0.55f, 0.08f, 0.85f));
+            if (matChamaCompartilhado.HasProperty("_Color")) matChamaCompartilhado.SetColor("_Color", new Color(1f, 0.55f, 0.08f, 0.85f));
+            if (matChamaCompartilhado.HasProperty("_EmissionColor")) matChamaCompartilhado.SetColor("_EmissionColor", new Color(1f, 0.45f, 0.05f) * 2.8f);
+        }
+        t.GetComponent<Renderer>().sharedMaterial = matChamaCompartilhado;
         return t;
+    }
+
+    private static Transform CriarGrupo(Transform pai, string nome)
+    {
+        GameObject g = new GameObject(nome);
+        g.transform.SetParent(pai, false);
+        return g.transform;
+    }
+
+    private static Transform OrganizarGruposPadronizados(Transform raiz, ControleVeiculo50 ctrl)
+    {
+        Transform grupoChassi = CriarGrupo(raiz, "Grupo_Chassi");
+        Transform grupoRodas = CriarGrupo(raiz, "Grupo_Rodas");
+        Transform grupoPortas = CriarGrupo(raiz, "Grupo_Portas");
+        Transform grupoCapo = CriarGrupo(raiz, "Grupo_Capo");
+        Transform grupoLuzes = CriarGrupo(raiz, "Grupo_Farois_Lanternas");
+        Transform grupoVidros = CriarGrupo(raiz, "Grupo_Vidros");
+        Transform grupoInterior = CriarGrupo(raiz, "Grupo_Interior");
+
+        HashSet<Transform> rodasSet = new HashSet<Transform>();
+        for (int i = 0; i < ctrl.rodasDianteiras.Count; i++) if (ctrl.rodasDianteiras[i] != null) rodasSet.Add(ctrl.rodasDianteiras[i]);
+        for (int i = 0; i < ctrl.rodasTraseiras.Count; i++) if (ctrl.rodasTraseiras[i] != null) rodasSet.Add(ctrl.rodasTraseiras[i]);
+
+        HashSet<Transform> luzesSet = new HashSet<Transform>();
+        for (int i = 0; i < ctrl.farois.Count; i++) if (ctrl.farois[i] != null) luzesSet.Add(ctrl.farois[i].transform);
+        for (int i = 0; i < ctrl.lanternas.Count; i++) if (ctrl.lanternas[i] != null) luzesSet.Add(ctrl.lanternas[i].transform);
+        for (int i = 0; i < ctrl.giroflexVermelho.Count; i++) if (ctrl.giroflexVermelho[i] != null) luzesSet.Add(ctrl.giroflexVermelho[i].transform);
+        for (int i = 0; i < ctrl.giroflexAzul.Count; i++) if (ctrl.giroflexAzul[i] != null) luzesSet.Add(ctrl.giroflexAzul[i].transform);
+        for (int i = 0; i < ctrl.giroflexAmbar.Count; i++) if (ctrl.giroflexAmbar[i] != null) luzesSet.Add(ctrl.giroflexAmbar[i].transform);
+
+        List<Transform> filhos = new List<Transform>(raiz.childCount);
+        for (int i = 0; i < raiz.childCount; i++)
+        {
+            Transform ch = raiz.GetChild(i);
+            if (ch == grupoChassi || ch == grupoRodas || ch == grupoPortas || ch == grupoCapo ||
+                ch == grupoLuzes || ch == grupoVidros || ch == grupoInterior)
+                continue;
+            filhos.Add(ch);
+        }
+
+        for (int i = 0; i < filhos.Count; i++)
+        {
+            Transform ch = filhos[i];
+            string nm = ch.name;
+
+            if (rodasSet.Contains(ch) || nm.StartsWith("Roda_") || nm.StartsWith("Trem_") || nm.StartsWith("Estepe_"))
+                ch.SetParent(grupoRodas, false);
+            else if (nm.StartsWith("Porta_") || nm.StartsWith("Persiana_") || nm.StartsWith("Cacamba_Basculante"))
+                ch.SetParent(grupoPortas, false);
+            else if (nm.StartsWith("Capo_") || nm.StartsWith("Escotilha_") || nm.StartsWith("Canopi_"))
+                ch.SetParent(grupoCapo, false);
+            else if (luzesSet.Contains(ch) || nm.StartsWith("Farol") || nm.StartsWith("Lanterna") || nm.StartsWith("Giroflex") || nm.StartsWith("Estrobo") || nm.StartsWith("Luminoso") || nm.StartsWith("Letreiro"))
+                ch.SetParent(grupoLuzes, false);
+            else if (nm.StartsWith("Vidro") || nm.StartsWith("Parabrisa") || nm.StartsWith("Janela"))
+                ch.SetParent(grupoVidros, false);
+            else if (ch == ctrl.volantePivo || ch == ctrl.guidaoPivo || nm.StartsWith("Volante") || nm.StartsWith("Guidao") || nm.StartsWith("Banco") || nm.StartsWith("Painel") || nm.StartsWith("Assento") || nm.StartsWith("Selim") || nm.StartsWith("Maca_") || nm == "Retrovisor_Interno")
+                ch.SetParent(grupoInterior, false);
+            else
+                ch.SetParent(grupoChassi, false);
+        }
+
+        return grupoChassi;
+    }
+
+    private static void CombinarMalhasEstaticas(Transform grupoChassi, ControleVeiculo50 ctrl)
+    {
+        if (grupoChassi == null || ctrl == null) return;
+
+        HashSet<Transform> pivosProtegidos = new HashSet<Transform>();
+        if (ctrl.volantePivo != null) pivosProtegidos.Add(ctrl.volantePivo);
+        if (ctrl.guidaoPivo != null) pivosProtegidos.Add(ctrl.guidaoPivo);
+        if (ctrl.pedivelaPivo != null) pivosProtegidos.Add(ctrl.pedivelaPivo);
+        if (ctrl.tamborBetoneira != null) pivosProtegidos.Add(ctrl.tamborBetoneira);
+        for (int i = 0; i < ctrl.pedais.Count; i++) if (ctrl.pedais[i] != null) pivosProtegidos.Add(ctrl.pedais[i]);
+        for (int i = 0; i < ctrl.rodasDianteiras.Count; i++) if (ctrl.rodasDianteiras[i] != null) pivosProtegidos.Add(ctrl.rodasDianteiras[i]);
+        for (int i = 0; i < ctrl.rodasTraseiras.Count; i++) if (ctrl.rodasTraseiras[i] != null) pivosProtegidos.Add(ctrl.rodasTraseiras[i]);
+        for (int i = 0; i < ctrl.rotores.Count; i++) if (ctrl.rotores[i] != null) pivosProtegidos.Add(ctrl.rotores[i]);
+        for (int i = 0; i < ctrl.helices.Count; i++) if (ctrl.helices[i] != null) pivosProtegidos.Add(ctrl.helices[i]);
+        for (int i = 0; i < ctrl.chamasJato.Count; i++) if (ctrl.chamasJato[i] != null) pivosProtegidos.Add(ctrl.chamasJato[i]);
+        for (int i = 0; i < ctrl.escovasVarredoura.Count; i++) if (ctrl.escovasVarredoura[i] != null) pivosProtegidos.Add(ctrl.escovasVarredoura[i]);
+        for (int i = 0; i < ctrl.portasArticuladas.Count; i++)
+            if (ctrl.portasArticuladas[i] != null && ctrl.portasArticuladas[i].pivo != null)
+                pivosProtegidos.Add(ctrl.portasArticuladas[i].pivo);
+
+        HashSet<Renderer> emissivosProtegidos = new HashSet<Renderer>();
+        for (int i = 0; i < ctrl.farois.Count; i++) if (ctrl.farois[i] != null) emissivosProtegidos.Add(ctrl.farois[i]);
+        for (int i = 0; i < ctrl.lanternas.Count; i++) if (ctrl.lanternas[i] != null) emissivosProtegidos.Add(ctrl.lanternas[i]);
+        for (int i = 0; i < ctrl.giroflexVermelho.Count; i++) if (ctrl.giroflexVermelho[i] != null) emissivosProtegidos.Add(ctrl.giroflexVermelho[i]);
+        for (int i = 0; i < ctrl.giroflexAzul.Count; i++) if (ctrl.giroflexAzul[i] != null) emissivosProtegidos.Add(ctrl.giroflexAzul[i]);
+        for (int i = 0; i < ctrl.giroflexAmbar.Count; i++) if (ctrl.giroflexAmbar[i] != null) emissivosProtegidos.Add(ctrl.giroflexAmbar[i]);
+
+        MeshFilter[] filtros = grupoChassi.GetComponentsInChildren<MeshFilter>(true);
+        Dictionary<Material, List<CombineInstance>> grupos = new Dictionary<Material, List<CombineInstance>>();
+        List<MeshFilter> candidatos = new List<MeshFilter>();
+        Matrix4x4 invChassi = grupoChassi.worldToLocalMatrix;
+
+        for (int i = 0; i < filtros.Length; i++)
+        {
+            MeshFilter mf = filtros[i];
+            if (mf == null || mf.sharedMesh == null) continue;
+            Transform t = mf.transform;
+            if (t == grupoChassi || t.childCount > 0 || t.GetComponents<Component>().Length > 3) continue;
+
+            string nm = t.name;
+            if (nm.Contains("Vidro") || nm.Contains("Parabrisa") || nm.Contains("Janela") || nm.Contains("Banco") ||
+                nm.Contains("Painel") || nm.Contains("Volante") || nm.Contains("Guidao") || nm.Contains("Capo") ||
+                nm.Contains("Porta") || nm.Contains("Farol") || nm.Contains("Lanterna") || nm.Contains("Roda"))
+                continue;
+
+            bool protegido = false;
+            for (Transform cur = t; cur != null && cur != grupoChassi; cur = cur.parent)
+            {
+                if (pivosProtegidos.Contains(cur)) { protegido = true; break; }
+            }
+            if (protegido) continue;
+
+            MeshRenderer mr = mf.GetComponent<MeshRenderer>();
+            if (mr == null || mr.sharedMaterial == null || emissivosProtegidos.Contains(mr)) continue;
+
+            if (!grupos.TryGetValue(mr.sharedMaterial, out List<CombineInstance> lista))
+            {
+                lista = new List<CombineInstance>();
+                grupos[mr.sharedMaterial] = lista;
+            }
+            lista.Add(new CombineInstance
+            {
+                mesh = mf.sharedMesh,
+                transform = invChassi * t.localToWorldMatrix
+            });
+            candidatos.Add(mf);
+        }
+
+        int lote = 0;
+        foreach (var kv in grupos)
+        {
+            if (kv.Value.Count < 2) continue;
+            Mesh combinada = new Mesh { name = grupoChassi.name + "_Lote_" + lote };
+            combinada.CombineMeshes(kv.Value.ToArray(), true, true);
+            combinada.Optimize();
+
+            GameObject goLote = new GameObject("Chassi_Lote_" + lote++);
+            goLote.transform.SetParent(grupoChassi, false);
+            goLote.AddComponent<MeshFilter>().sharedMesh = combinada;
+            MeshRenderer mrLote = goLote.AddComponent<MeshRenderer>();
+            mrLote.sharedMaterial = kv.Key;
+            if (kv.Key.renderQueue >= 3000) mrLote.shadowCastingMode = ShadowCastingMode.Off;
+        }
+
+        for (int i = 0; i < candidatos.Count; i++)
+        {
+            MeshFilter mf = candidatos[i];
+            if (mf == null) continue;
+            MeshRenderer mr = mf.GetComponent<MeshRenderer>();
+            if (mr != null && mr.sharedMaterial != null && grupos.TryGetValue(mr.sharedMaterial, out var lst) && lst.Count < 2)
+                continue;
+            if (Application.isPlaying) Destroy(mf.gameObject);
+            else DestroyImmediate(mf.gameObject);
+        }
     }
 
     private static void GarantirShader()
@@ -3586,6 +3931,7 @@ export function generateTrafegoCidade50Cs(): string {
   return `using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// Sistema inteligente de circulação dos 50 novos veículos:
@@ -3593,6 +3939,7 @@ using UnityEngine;
 /// - Respeitam semáforos e fazem curvas suaves nos cruzamentos
 /// - Helicópteros voando em patrulha lá no alto em cima dos prédios
 /// - Barcos navegando suavemente no rio
+/// - Spawn distribuído entre frames e redução de custo de sombra para manter FPS alto
 /// </summary>
 [DisallowMultipleComponent]
 public class TrafegoCidade50 : MonoBehaviour
@@ -3602,9 +3949,12 @@ public class TrafegoCidade50 : MonoBehaviour
     public bool apagarCarrosAntigosNaCena = true;
 
     [Header("Frota Organizada nas Ruas")]
-    [Range(8, 45)] public int quantidadeNaPista = 28;
+    [Range(8, 45)] public int quantidadeNaPista = 24;
     public float distanciaMinimaEntreVeiculos = 22f;
     public float velocidadeMediaTrafegoKmh = 36f;
+
+    [Header("Otimização de Renderização")]
+    public bool desabilitarSombrasEmMotos = true;
 
     [Header("Aéreos (em cima dos prédios) e Rio")]
     public bool spawnarHelicopterosNoCeu = true;
@@ -3652,7 +4002,7 @@ public class TrafegoCidade50 : MonoBehaviour
         GeradorCidadeInicial cidade = FindObjectOfType<GeradorCidadeInicial>();
 #endif
 
-        GerarFrotaOrganizada(cidade, asfalto);
+        yield return StartCoroutine(GerarFrotaOrganizada(cidade, asfalto));
     }
 
     private static void RemoverVeiculosAntigos()
@@ -3685,7 +4035,7 @@ public class TrafegoCidade50 : MonoBehaviour
         }
     }
 
-    private void GerarFrotaOrganizada(GeradorCidadeInicial cidade, GameObject asfalto)
+    private IEnumerator GerarFrotaOrganizada(GeradorCidadeInicial cidade, GameObject asfalto)
     {
         container = new GameObject("Frota_50_Circulacao");
 
@@ -3750,6 +4100,13 @@ public class TrafegoCidade50 : MonoBehaviour
             GameObject v = Fabrica50Veiculos.CriarVeiculo(idxModelo, posSpawn, Quaternion.LookRotation(vaga.dir));
             v.transform.SetParent(container.transform, true);
 
+            if (desabilitarSombrasEmMotos && def.tipo == TipoFisicaVeiculo50.Moto)
+            {
+                Renderer[] rends = v.GetComponentsInChildren<Renderer>(true);
+                for (int r = 0; r < rends.Length; r++)
+                    rends[r].shadowCastingMode = ShadowCastingMode.Off;
+            }
+
             ControleVeiculo50 ctrl = v.GetComponent<ControleVeiculo50>();
             if (ctrl != null)
             {
@@ -3767,6 +4124,7 @@ public class TrafegoCidade50 : MonoBehaviour
 
             usados.Add(vaga.pos);
             colocados++;
+            if (colocados % 6 == 0) yield return null;
         }
 
         if (spawnarHelicopterosNoCeu)

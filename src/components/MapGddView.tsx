@@ -22,6 +22,7 @@ import {
   GDD_MAP_METRICS,
   GDD_MORRO_FIXES,
   GDD_SEPARATION_RULES,
+  GDD_SUPREME_RULE,
   GDD_UNITY_CHECKLIST,
   GDD_ZONES,
   GddZoneSpec,
@@ -166,6 +167,37 @@ export const MapGddView: React.FC<MapGddViewProps> = ({ onClose, onJumpToZone })
                 <div className="text-[11px] text-zinc-500 mt-0.5 leading-snug">{m.note}</div>
               </div>
             ))}
+          </div>
+
+          {/* Supreme Rule Permanent Banner */}
+          <div className="p-4 sm:p-5 bg-amber-500/10 border border-amber-500/40 rounded-xl space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono-tech font-bold text-amber-400">
+                  REGRA SUPREMA DO PROJETO (PERMANENTE EM TODAS AS ATUALIZAÇÕES)
+                </span>
+              </div>
+              <span className="text-[11px] font-mono-tech text-zinc-400">
+                AI Studio (Protótipo Visual/Lógica) → Unity URP
+              </span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              {GDD_SUPREME_RULE.map((pillar) => (
+                <div
+                  key={pillar.code}
+                  className="p-3.5 bg-zinc-950/80 border border-zinc-800/90 rounded-lg space-y-1.5"
+                >
+                  <div className="font-mono-tech text-[11px] font-semibold text-amber-400">
+                    {pillar.code}
+                  </div>
+                  <div className="text-sm font-semibold text-zinc-100">{pillar.title}</div>
+                  <p className="text-xs text-zinc-400 leading-relaxed">{pillar.description}</p>
+                  <div className="pt-1 font-mono-tech text-[10px] text-emerald-400">
+                    {pillar.unityStandard}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* SECTION 1: INTERACTIVE 2D BLUEPRINT + ZONE INSPECTOR */}
