@@ -10,6 +10,7 @@ import {
   createHeadlightBeamMesh,
   createLicensePlateGroup,
   createRoundedBoxGeo,
+  createSculptedPanelGeo,
   enableShadows,
   makeStrutBetween,
   registerOpenable,
@@ -238,6 +239,27 @@ function buildConnectedHandlebar(
         6,
       );
       barGrp.add(switchHousing, lever);
+      if (side > 0 && opts.style !== 'scooter') {
+        const resStem = makeStrutBetween(
+          new THREE.Vector3(gStart.x - 0.012, gStart.y + 0.01, gStart.z + 0.01),
+          new THREE.Vector3(gStart.x - 0.018, gStart.y + 0.042, gStart.z + 0.022),
+          0.004,
+          0.004,
+          mats.trim,
+          6,
+        );
+        const resCup = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.014, 0.024, 10),
+          mats.glass,
+        );
+        resCup.position.set(gStart.x - 0.018, gStart.y + 0.050, gStart.z + 0.022);
+        const resCap = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.016, 0.016, 0.008, 10),
+          mats.trim,
+        );
+        resCap.position.set(gStart.x - 0.018, gStart.y + 0.063, gStart.z + 0.022);
+        barGrp.add(resStem, resCup, resCap);
+      }
 
       if (opts.hasHandguards) {
         const guardMount = makeStrutBetween(
@@ -274,33 +296,181 @@ function buildConnectedHandlebar(
         opts.style === 'sport_clipon'
           ? new THREE.Vector3(side * (halfW * 0.62), gripEndY * 0.5 + 0.01, locBarZ - sweep * 0.45)
           : new THREE.Vector3(side * perchX, perchY + 0.012, perchZ);
-      const mirTop = new THREE.Vector3(mBase.x + side * 0.075, mBase.y + 0.105, mBase.z - 0.025);
+      const mirMid = new THREE.Vector3(mBase.x + side * 0.032, mBase.y + 0.078, mBase.z - 0.008);
+      const mirTop = new THREE.Vector3(mBase.x + side * 0.088, mBase.y + 0.118, mBase.z - 0.032);
 
       const clampBoss = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.02, 0.02, 0.032, 8),
+        new THREE.CylinderGeometry(0.019, 0.021, 0.032, 10),
         mats.trim,
       );
       clampBoss.position.copy(mBase);
-      const stalk = makeStrutBetween(mBase, mirTop, 0.009, 0.009, mats.chrome, cityMode ? 6 : 10);
-      const pod = new THREE.Mesh(
-        createRoundedBoxGeo(0.105, 0.058, 0.032, 0.014, 2, 8),
-        mats.trim,
+      const lockNut = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.013, 0.015, 0.016, 6),
+        mats.chrome,
       );
-      pod.position.set(mirTop.x + side * 0.028, mirTop.y + 0.006, mirTop.z);
-      pod.rotation.y = side * -0.18;
+      lockNut.position.set(mBase.x, mBase.y + 0.018, mBase.z);
+
+      const stalkCurve = new THREE.CatmullRomCurve3([mBase, mirMid, mirTop]);
+      const stalkMat = opts.style === 'cruiser' ? mats.chrome : mats.trim;
+      const stalk = new THREE.Mesh(
+        new THREE.TubeGeometry(stalkCurve, cityMode ? 8 : 14, 0.0075, 8, false),
+        stalkMat,
+      );
+      const ballJoint = new THREE.Mesh(
+        new THREE.SphereGeometry(0.013, 10, 8),
+        mats.alloy,
+      );
+      ballJoint.position.copy(mirTop);
+
+      const podGrp = new THREE.Group();
+      podGrp.position.set(mirTop.x + side * 0.034, mirTop.y + 0.006, mirTop.z - 0.006);
+      podGrp.rotation.y = side * -0.22;
+      podGrp.rotation.z = side * 0.06;
+
+      const shellGeo = createSculptedPanelGeo(
+        0.122,
+        0.064,
+        0.038,
+        8,
+        5,
+        4,
+        0.018,
+        (pos, idx, hx, hy) => {
+          const px = pos.getX(idx);
+          const py = pos.getY(idx);
+          const pz = pos.getZ(idx);
+          const nx = THREE.MathUtils.clamp((px * side) / Math.max(0.02, hx), -1, 1);
+          const ny = THREE.MathUtils.clamp(py / Math.max(0.01, hy), -1, 1);
+          // Teardrop taper toward outer tip + aerodynamic nose dome forward
+          const outerTaper = nx > 0 ? 1 - Math.pow(nx, 1.5) * 0.34 : 1 - Math.pow(-nx, 1.8) * 0.14;
+          const domeFwd = pz > 0 ? (1 - Math.abs(ny) * 0.55) * (1 - Math.abs(nx) * 0.45) * 0.016 : 0;
+          pos.setXYZ(idx, px, py * outerTaper, pz + domeFwd);
+        },
+      );
+      const podShell = new THREE.Mesh(shellGeo, opts.style === 'cruiser' ? mats.chrome : mats.trim);
+      const podBezel = new THREE.Mesh(
+        createRoundedBoxGeo(0.104, 0.052, 0.010, 0.006, 2, 8),
+        mats.grille,
+      );
+      podBezel.position.z = -0.015;
       const face = new THREE.Mesh(
-        createRoundedBoxGeo(0.088, 0.044, 0.01, 0.008, 2, 6),
+        createRoundedBoxGeo(0.094, 0.044, 0.008, 0.006, 2, 8),
         mats.mirrorGlass,
       );
-      face.position.set(pod.position.x, pod.position.y, pod.position.z - 0.016);
-      face.rotation.y = pod.rotation.y;
-      barGrp.add(clampBoss, stalk, pod, face);
+      face.position.z = -0.018;
+      podGrp.add(podShell, podBezel, face);
+      barGrp.add(clampBoss, lockNut, stalk, ballJoint, podGrp);
     }
   });
 
   tagPart(barGrp, 'Guidão Conectado, Mesa & Retrovisores', 0, 0.48, 0.18);
   group.add(barGrp);
   return barGrp;
+}
+
+interface MotoLoftStation {
+  z: number;
+  cy: number;
+  rx: number;
+  ryTop: number;
+  ryBot: number;
+  topTaper?: number;
+  botTaper?: number;
+  bottomArch?: number;
+}
+
+function createLoftedMotoShell(
+  stations: MotoLoftStation[],
+  radialSegs = 16,
+  longSegs = 14,
+): THREE.BufferGeometry {
+  const nSt = stations.length;
+  const lerpStation = (t: number): MotoLoftStation => {
+    const s = THREE.MathUtils.clamp(t, 0, 1) * (nSt - 1);
+    const i0 = Math.min(nSt - 2, Math.floor(s));
+    const i1 = i0 + 1;
+    const f = s - i0;
+    // Smooth cosine blend for silky aerodynamic longitudinal curvature
+    const u = f * f * (3 - 2 * f);
+    const a = stations[i0];
+    const b = stations[i1];
+    return {
+      z: THREE.MathUtils.lerp(a.z, b.z, u),
+      cy: THREE.MathUtils.lerp(a.cy, b.cy, u),
+      rx: THREE.MathUtils.lerp(a.rx, b.rx, u),
+      ryTop: THREE.MathUtils.lerp(a.ryTop, b.ryTop, u),
+      ryBot: THREE.MathUtils.lerp(a.ryBot, b.ryBot, u),
+      topTaper: THREE.MathUtils.lerp(a.topTaper ?? 0, b.topTaper ?? 0, u),
+      botTaper: THREE.MathUtils.lerp(a.botTaper ?? 0, b.botTaper ?? 0, u),
+      bottomArch: THREE.MathUtils.lerp(a.bottomArch ?? 0, b.bottomArch ?? 0, u),
+    };
+  };
+
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  for (let i = 0; i <= longSegs; i++) {
+    const v = i / longSegs;
+    const st = lerpStation(v);
+    const topTap = st.topTaper ?? 0;
+    const botTap = st.botTaper ?? 0;
+    const arch = st.bottomArch ?? 0;
+    for (let j = 0; j < radialSegs; j++) {
+      const theta = (j / radialSegs) * Math.PI * 2;
+      const sinT = Math.sin(theta);
+      const cosT = Math.cos(theta);
+      const widthScale =
+        1 - Math.max(0, cosT) * topTap - Math.max(0, -cosT) * botTap;
+      const x = sinT * st.rx * Math.max(0.15, widthScale);
+      let y = st.cy + (cosT >= 0 ? cosT * st.ryTop : cosT * st.ryBot);
+      if (cosT < 0 && arch > 0) {
+        y += arch * Math.pow(-cosT, 1.3) * (1 - Math.abs(sinT) * 0.45);
+      }
+      positions.push(x, y, st.z);
+      uvs.push(j / radialSegs, v);
+    }
+  }
+
+  for (let i = 0; i < longSegs; i++) {
+    const rowA = i * radialSegs;
+    const rowB = (i + 1) * radialSegs;
+    for (let j = 0; j < radialSegs; j++) {
+      const jNext = (j + 1) % radialSegs;
+      const a = rowA + j;
+      const b = rowA + jNext;
+      const c = rowB + j;
+      const d = rowB + jNext;
+      indices.push(a, c, b);
+      indices.push(c, d, b);
+    }
+  }
+
+  // Rear & Front end caps
+  const rearCenterIdx = positions.length / 3;
+  positions.push(0, stations[0].cy, stations[0].z);
+  uvs.push(0.5, 0);
+  for (let j = 0; j < radialSegs; j++) {
+    const jNext = (j + 1) % radialSegs;
+    indices.push(rearCenterIdx, j, jNext);
+  }
+
+  const frontCenterIdx = positions.length / 3;
+  const lastSt = stations[nSt - 1];
+  const lastRow = longSegs * radialSegs;
+  positions.push(0, lastSt.cy, lastSt.z);
+  uvs.push(0.5, 1);
+  for (let j = 0; j < radialSegs; j++) {
+    const jNext = (j + 1) % radialSegs;
+    indices.push(frontCenterIdx, lastRow + jNext, lastRow + j);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
 }
 
 // =========================================================================
@@ -451,9 +621,30 @@ export function buildMotorcycleOrAtv(
         side > 0,
         false,
         cityMode,
+        true,
       );
       tagPart(fw, 'Roda Dianteira Trike', side * 0.45, -0.05, 0);
       steerPivot.add(fw);
+      // Knuckle upright + inner brake disc & caliper anchored to steerPivot
+      const knuckle = makeStrutBetween(
+        new THREE.Vector3(-side * 0.04, -0.04, 0),
+        new THREE.Vector3(-side * 0.02, 0.08, 0),
+        0.018,
+        0.016,
+        mats.alloy,
+        8,
+      );
+      const tDisc = new THREE.Mesh(
+        new THREE.CylinderGeometry(g.wheelRadius * 0.48, g.wheelRadius * 0.48, 0.014, 18).rotateZ(Math.PI / 2),
+        mats.brakeDisc,
+      );
+      tDisc.position.x = -side * (g.wheelWidth * 0.36);
+      const tCal = new THREE.Mesh(
+        createRoundedBoxGeo(0.038, 0.075, 0.052, 0.01, 2, 6),
+        mats.caliper,
+      );
+      tCal.position.set(-side * (g.wheelWidth * 0.36), g.wheelRadius * 0.28, -g.wheelRadius * 0.28);
+      steerPivot.add(knuckle, tDisc, tCal);
       group.add(steerPivot);
       animated.steeringPivots.push(steerPivot);
       animated.wheels.push(fw);
@@ -491,11 +682,33 @@ export function buildMotorcycleOrAtv(
       true,
       false,
       cityMode,
+      true,
     );
     rearW.position.set(0, g.wheelRadius * 1.06, rZ);
     tagPart(rearW, 'Roda Traseira Larga', 0, -0.05, -0.4);
     group.add(rearW);
     animated.wheels.push(rearW);
+
+    // Connected Trike rear swingarm + rear axle connecting hull cleanly to rearW
+    const trikeRearW = g.wheelWidth * 1.45;
+    [-1, 1].forEach((side) => {
+      group.add(
+        makeStrutBetween(
+          new THREE.Vector3(side * 0.14, g.groundClearance + 0.16, -length * 0.18),
+          new THREE.Vector3(side * (trikeRearW * 0.56 + 0.025), g.wheelRadius * 1.06, rZ),
+          0.024,
+          0.024,
+          mats.alloy,
+          8,
+        ),
+      );
+    });
+    const trikeRearAxle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.018, trikeRearW + 0.09, 10).rotateZ(Math.PI / 2),
+      mats.chrome,
+    );
+    trikeRearAxle.position.set(0, g.wheelRadius * 1.06, rZ);
+    group.add(trikeRearAxle);
 
     const rearTl = new THREE.Mesh(
       createRoundedBoxGeo(0.22, 0.055, 0.045, 0.015, 2, 8),
@@ -680,6 +893,15 @@ export function buildMotorcycleOrAtv(
         mats.accent,
         cityMode,
       );
+      const knuckle = makeStrutBetween(hubPtL, hubPtU, 0.018, 0.016, mats.trim, 8);
+      const hubSpindle = makeStrutBetween(
+        new THREE.Vector3(side * (wheelX - 0.06), g.wheelRadius, fZ),
+        new THREE.Vector3(side * wheelX, g.wheelRadius, fZ),
+        0.022,
+        0.022,
+        mats.alloy,
+        8,
+      );
       const rSwing = makeStrutBetween(
         new THREE.Vector3(side * 0.13, baseChassisY + 0.10, -0.18),
         new THREE.Vector3(side * (wheelX - 0.06), g.wheelRadius, rZ),
@@ -688,7 +910,7 @@ export function buildMotorcycleOrAtv(
         mats.alloy,
         8,
       );
-      group.add(fArmL, fArmU, fShock, rSwing);
+      group.add(fArmL, fArmU, fShock, knuckle, hubSpindle, rSwing);
     });
     const rShock = buildCoilShockMesh(
       new THREE.Vector3(0, g.wheelRadius + 0.04, rZ + 0.12),
@@ -858,6 +1080,7 @@ export function buildMotorcycleOrAtv(
           side > 0,
           false,
           cityMode,
+          true,
         );
         if (isFront) {
           const steerPivot = new THREE.Group();
@@ -931,8 +1154,16 @@ export function buildMotorcycleOrAtv(
   const isElectricMoto = g.exhaustStyle === 'none';
 
   const headZ = isCruiser ? fZ * 0.52 : isDirt ? fZ * 0.62 : isScooter ? fZ * 0.66 : fZ * 0.65;
-  const headY = isCruiser ? g.groundClearance + 0.68 : isDirt ? g.groundClearance + 0.78 : g.groundClearance + 0.70;
-  const forkSpanX = isScooter ? 0.085 : 0.105;
+  const headY = isCruiser
+    ? g.groundClearance + 0.68
+    : isDirt
+      ? g.groundClearance + 0.78
+      : isFairedSport
+        ? g.groundClearance + 0.62
+        : g.groundClearance + 0.70;
+  const rearWidth = g.wheelWidth * (isFairedSport || isCruiser ? 1.32 : 1.2);
+  const forkSpanX = Math.max(isScooter ? 0.095 : 0.114, g.wheelWidth * 0.5 + 0.030);
+  const rearSwingSpanX = Math.max(0.134, rearWidth * 0.5 + 0.032);
   const forkMat = isFairedSport || isDirt ? mats.accent : mats.chrome;
   const sliderMat = isCruiser || isNaked ? mats.trim : mats.alloy;
 
@@ -941,7 +1172,9 @@ export function buildMotorcycleOrAtv(
   group.add(frontForkPivot);
   animated.steeringPivots.push(frontForkPivot);
 
-  // 1. Front & Rear Crafted Wheels + Brake Discs + Calipers + Drive Chain / Sprocket
+  const frontAxleLocal = new THREE.Vector3(0, g.wheelRadius - headY, fZ - headZ);
+
+  // 1. Front & Rear Crafted Wheels + Connected Axles + Floating Brake Discs + Fork/Swingarm Calipers + Chain/Sprocket
   const frontW = createCraftedWheel(
     g.wheelRadius,
     g.wheelWidth,
@@ -950,45 +1183,187 @@ export function buildMotorcycleOrAtv(
     true,
     false,
     cityMode,
+    true,
   );
-  frontW.position.set(0, g.wheelRadius - headY, fZ - headZ);
+  frontW.position.copy(frontAxleLocal);
   tagPart(frontW, 'Roda Dianteira', 0, -0.05, 0.35);
   frontForkPivot.add(frontW);
   animated.wheels.push(frontW);
 
   const rearW = createCraftedWheel(
     g.wheelRadius,
-    g.wheelWidth * (isFairedSport || isCruiser ? 1.32 : 1.2),
+    rearWidth,
     wheelStyle,
     mats,
     true,
     false,
     cityMode,
+    true,
   );
   rearW.position.set(0, g.wheelRadius, rZ);
   tagPart(rearW, 'Roda Traseira', 0, -0.05, -0.35);
   group.add(rearW);
   animated.wheels.push(rearW);
 
-  if (!cityMode && !isScooter) {
-    // Explicit perforated front & rear brake discs + rear drive sprocket & chain
-    const fDisc = new THREE.Mesh(
-      new THREE.CylinderGeometry(g.wheelRadius * 0.56, g.wheelRadius * 0.56, 0.016, 20),
-      mats.brakeDisc,
-    );
-    fDisc.rotation.z = Math.PI / 2;
-    fDisc.position.set(g.wheelWidth * 0.56, g.wheelRadius - headY, fZ - headZ);
-    const rSprocket = new THREE.Mesh(
-      new THREE.CylinderGeometry(g.wheelRadius * 0.38, g.wheelRadius * 0.38, 0.018, 18),
+  // Front Through-Axle Shaft + Hub Spacers + Dual/Single Floating Brake Rotors & Fork-Mounted Radial Calipers
+  const fAxleShaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.015, 0.015, forkSpanX * 2 + 0.032, 12).rotateZ(Math.PI / 2),
+    mats.chrome,
+  );
+  fAxleShaft.position.copy(frontAxleLocal);
+  frontForkPivot.add(fAxleShaft);
+
+  const frontDiscSides = isFairedSport || v.id === 72 || v.id === 78 ? [-1, 1] : [1];
+  const fDiscR = g.wheelRadius * (isScooter ? 0.46 : 0.56);
+  const fDiscXOffset = g.wheelWidth * 0.5 + 0.011;
+
+  [-1, 1].forEach((side) => {
+    const fSpacer = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.024, 0.024, Math.max(0.014, forkSpanX - g.wheelWidth * 0.34), 12).rotateZ(Math.PI / 2),
       mats.alloy,
     );
-    rSprocket.rotation.z = Math.PI / 2;
-    rSprocket.position.set(-g.wheelWidth * 0.72, g.wheelRadius, rZ);
-    frontForkPivot.add(fDisc);
-    group.add(rSprocket);
+    fSpacer.position.set(
+      side * ((forkSpanX + g.wheelWidth * 0.34) * 0.5),
+      frontAxleLocal.y,
+      frontAxleLocal.z,
+    );
+    const axleNut = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.019, 0.019, 0.022, 6).rotateZ(Math.PI / 2),
+      mats.alloy,
+    );
+    axleNut.position.set(side * (forkSpanX + 0.012), frontAxleLocal.y, frontAxleLocal.z);
+    frontForkPivot.add(fSpacer, axleNut);
+  });
+
+  frontDiscSides.forEach((side) => {
+    const fDiscX = side * fDiscXOffset;
+    const fDisc = new THREE.Mesh(
+      new THREE.CylinderGeometry(fDiscR, fDiscR, 0.010, cityMode ? 14 : 24).rotateZ(Math.PI / 2),
+      mats.brakeDisc,
+    );
+    fDisc.position.set(fDiscX, frontAxleLocal.y, frontAxleLocal.z);
+    const fCarrier = new THREE.Mesh(
+      new THREE.CylinderGeometry(fDiscR * 0.52, fDiscR * 0.56, 0.014, 16).rotateZ(Math.PI / 2),
+      mats.trim,
+    );
+    fCarrier.position.set(fDiscX, frontAxleLocal.y, frontAxleLocal.z);
+    frontForkPivot.add(fDisc, fCarrier);
+
+    if (!cityMode) {
+      for (let b = 0; b < 4; b++) {
+        const ang = (b / 4) * Math.PI * 2;
+        const bobbin = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.007, 0.007, 0.016, 6).rotateZ(Math.PI / 2),
+          mats.accent,
+        );
+        bobbin.position.set(
+          fDiscX,
+          frontAxleLocal.y + Math.cos(ang) * fDiscR * 0.55,
+          frontAxleLocal.z + Math.sin(ang) * fDiscR * 0.55,
+        );
+        frontForkPivot.add(bobbin);
+      }
+    }
+
+    // Radial Brake Caliper bolted via bracket directly onto lower fork lug behind axle
+    const calY = frontAxleLocal.y + fDiscR * 0.14;
+    const calZ = frontAxleLocal.z - fDiscR * 0.72;
+    const calBody = new THREE.Mesh(
+      createRoundedBoxGeo(0.036, 0.088, 0.056, 0.012, 2, 6),
+      isFairedSport || v.id === 72 ? mats.caliper : mats.alloy,
+    );
+    calBody.position.set(side * (fDiscXOffset + 0.004), calY, calZ);
+    calBody.rotation.x = 0.25;
+    const calMount = makeStrutBetween(
+      new THREE.Vector3(side * forkSpanX, frontAxleLocal.y, frontAxleLocal.z),
+      new THREE.Vector3(side * forkSpanX, calY, calZ),
+      0.014,
+      0.012,
+      sliderMat,
+      8,
+    );
+    frontForkPivot.add(calBody, calMount);
+
+    if (!cityMode) {
+      const hoseCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * (fDiscXOffset + 0.008), calY + 0.035, calZ),
+        new THREE.Vector3(side * (forkSpanX + 0.016), frontAxleLocal.y + 0.22, frontAxleLocal.z - 0.04),
+        new THREE.Vector3(side * (forkSpanX * 0.85), -0.12, 0.03),
+      ]);
+      const brakeHose = new THREE.Mesh(
+        new THREE.TubeGeometry(hoseCurve, 12, 0.0045, 6, false),
+        mats.trim,
+      );
+      frontForkPivot.add(brakeHose);
+    }
+  });
+
+  // Rear Through-Axle Shaft, Chain Adjuster Blocks, Countershaft + Rear Sprocket, Rear Brake Disc & Caliper
+  const sprocketX = -(rearWidth * 0.5 + 0.014);
+  const rAxleShaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.016, 0.016, rearSwingSpanX * 2 + 0.034, 12).rotateZ(Math.PI / 2),
+    mats.chrome,
+  );
+  rAxleShaft.position.set(0, g.wheelRadius, rZ);
+  group.add(rAxleShaft);
+
+  [-1, 1].forEach((side) => {
+    const rSpacer = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.026, 0.026, Math.max(0.014, rearSwingSpanX - rearWidth * 0.34), 12).rotateZ(Math.PI / 2),
+      mats.alloy,
+    );
+    rSpacer.position.set(side * ((rearSwingSpanX + rearWidth * 0.34) * 0.5), g.wheelRadius, rZ);
+    const adjBlock = new THREE.Mesh(
+      createRoundedBoxGeo(0.024, 0.046, 0.068, 0.008, 2, 6),
+      mats.trim,
+    );
+    adjBlock.position.set(side * rearSwingSpanX, g.wheelRadius, rZ);
+    const rNut = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.020, 0.020, 0.022, 6).rotateZ(Math.PI / 2),
+      mats.alloy,
+    );
+    rNut.position.set(side * (rearSwingSpanX + 0.014), g.wheelRadius, rZ);
+    group.add(rSpacer, adjBlock, rNut);
+  });
+
+  if (!isScooter) {
+    const rSprocket = new THREE.Mesh(
+      new THREE.CylinderGeometry(g.wheelRadius * 0.38, g.wheelRadius * 0.38, 0.014, 20).rotateZ(Math.PI / 2),
+      mats.alloy,
+    );
+    rSprocket.position.set(sprocketX, g.wheelRadius, rZ);
+    const sprocketCarrier = new THREE.Mesh(
+      new THREE.CylinderGeometry(g.wheelRadius * 0.24, g.wheelRadius * 0.26, 0.020, 14).rotateZ(Math.PI / 2),
+      mats.trim,
+    );
+    sprocketCarrier.position.set(sprocketX + 0.006, g.wheelRadius, rZ);
+    group.add(rSprocket, sprocketCarrier);
   }
 
-  // 2. Steering Head, Upper & Lower Triple Clamps, USD/Telescopic Forks & Front Fender
+  // Rear Drilled Brake Disc + Swingarm-Mounted Rear Caliper on Right Side
+  const rDiscX = rearWidth * 0.5 + 0.012;
+  const rDiscR = g.wheelRadius * 0.42;
+  const rDisc = new THREE.Mesh(
+    new THREE.CylinderGeometry(rDiscR, rDiscR, 0.010, 18).rotateZ(Math.PI / 2),
+    mats.brakeDisc,
+  );
+  rDisc.position.set(rDiscX, g.wheelRadius, rZ);
+  const rCal = new THREE.Mesh(
+    createRoundedBoxGeo(0.034, 0.062, 0.048, 0.01, 2, 6),
+    isFairedSport || v.id === 72 ? mats.caliper : mats.alloy,
+  );
+  rCal.position.set(rDiscX + 0.004, g.wheelRadius + rDiscR * 0.72, rZ + rDiscR * 0.28);
+  const rCalBracket = makeStrutBetween(
+    new THREE.Vector3(rearSwingSpanX, g.wheelRadius, rZ),
+    new THREE.Vector3(rearSwingSpanX, g.wheelRadius + rDiscR * 0.72, rZ + rDiscR * 0.28),
+    0.012,
+    0.012,
+    mats.alloy,
+    6,
+  );
+  group.add(rDisc, rCal, rCalBracket);
+
+  // 2. Steering Head, Upper & Lower Triple Clamps, Stem Nut, USD/Telescopic Forks & Front Fender
   const neck = makeStrutBetween(
     new THREE.Vector3(0, -0.14, 0.05),
     new THREE.Vector3(0, 0.04, -0.02),
@@ -997,11 +1372,16 @@ export function buildMotorcycleOrAtv(
     mats.trim,
     10,
   );
-  frontForkPivot.add(neck);
+  const stemNut = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.020, 0.022, 0.018, 6),
+    mats.chrome,
+  );
+  stemNut.position.set(0, 0.042, -0.012);
+  frontForkPivot.add(neck, stemNut);
 
   [0.02, -0.13].forEach((dy, idx) => {
     const clamp = new THREE.Mesh(
-      createRoundedBoxGeo(forkSpanX * 2.5, 0.032, 0.085, 0.012, 2, 8),
+      createRoundedBoxGeo(forkSpanX * 2.45, 0.032, 0.085, 0.012, 2, 8),
       mats.alloy,
     );
     clamp.position.set(0, dy, idx === 1 ? 0.045 : -0.01);
@@ -1018,11 +1398,34 @@ export function buildMotorcycleOrAtv(
     const topPt = new THREE.Vector3(side * forkSpanX, 0.04, -0.015);
     const lowerTube = makeStrutBetween(botPt, midPt, 0.022, 0.020, sliderMat, cityMode ? 6 : 12);
     const upperStanchion = makeStrutBetween(midPt, topPt, 0.027, 0.027, forkMat, cityMode ? 6 : 12);
+    const axleLug = new THREE.Mesh(
+      createRoundedBoxGeo(0.040, 0.056, 0.058, 0.012, 2, 6),
+      sliderMat,
+    );
+    axleLug.position.copy(botPt);
+    const preloadCap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.020, 0.022, 0.016, 10),
+      mats.accent,
+    );
+    preloadCap.position.set(topPt.x, topPt.y + 0.008, topPt.z);
     tagPart(upperStanchion, 'Suspensão Dianteira (Garfo)', side * 0.25, 0.2, 0.25);
-    frontForkPivot.add(lowerTube, upperStanchion);
+    frontForkPivot.add(lowerTube, upperStanchion, axleLug, preloadCap);
+
+    if (!cityMode) {
+      const reflector = new THREE.Mesh(
+        createRoundedBoxGeo(0.010, 0.042, 0.022, 0.004, 1, 4),
+        mats.signalRight,
+      );
+      reflector.position.set(
+        side * (forkSpanX + 0.022),
+        THREE.MathUtils.lerp(botPt.y, midPt.y, 0.45),
+        THREE.MathUtils.lerp(botPt.z, midPt.z, 0.45),
+      );
+      frontForkPivot.add(reflector);
+    }
   });
 
-  // Front Fender (High motocross beak on dirtbikes, valanced arc on others)
+  // Front Fender (High motocross beak on dirtbikes, concentric sculpted hugger + stays on sportbikes, valanced arc + stays on others)
   if (isDirt) {
     const beakPts = new THREE.Shape();
     beakPts.moveTo(-0.08, 0.02);
@@ -1034,6 +1437,45 @@ export function buildMotorcycleOrAtv(
     const beak = new THREE.Mesh(beakGeo, mats.body);
     beak.position.set(0, -0.15, 0.05);
     frontForkPivot.add(beak);
+  } else if (isFairedSport) {
+    const fenderR = g.wheelRadius * 1.08;
+    const fFenderGeo = createSculptedPanelGeo(
+      g.wheelWidth * 1.14,
+      0.028,
+      g.wheelRadius * 1.32,
+      6,
+      2,
+      10,
+      0.012,
+      (pos, idx, hx, _hy, hz) => {
+        const px = pos.getX(idx);
+        const py = pos.getY(idx);
+        const pz = pos.getZ(idx);
+        const nx = THREE.MathUtils.clamp(Math.abs(px) / Math.max(0.02, hx), 0, 1);
+        const nz = THREE.MathUtils.clamp(pz / Math.max(0.05, hz), -1, 1);
+        const circArc = Math.sqrt(Math.max(0.002, fenderR * fenderR - pz * pz)) - fenderR;
+        const sideDrop = -Math.pow(nx, 2) * 0.038;
+        const tipTaper = nz > 0.38 ? 1 - ((nz - 0.38) / 0.62) * 0.28 : 1;
+        pos.setXYZ(idx, px * tipTaper, py + circArc + sideDrop, pz);
+      },
+    );
+    const fFender = new THREE.Mesh(fFenderGeo, mats.body);
+    fFender.position.set(0, frontAxleLocal.y + fenderR, frontAxleLocal.z);
+    fFender.rotation.x = 0.20;
+    frontForkPivot.add(fFender);
+
+    // Side fender stay brackets connecting fender wings down to lower fork sliders
+    [-1, 1].forEach((side) => {
+      const fStay = makeStrutBetween(
+        new THREE.Vector3(side * forkSpanX, frontAxleLocal.y + g.wheelRadius * 0.56, frontAxleLocal.z - 0.06),
+        new THREE.Vector3(side * (g.wheelWidth * 0.54), frontAxleLocal.y + fenderR * 0.86, frontAxleLocal.z + 0.04),
+        0.012,
+        0.010,
+        mats.trim,
+        6,
+      );
+      frontForkPivot.add(fStay);
+    });
   } else {
     const fenderArc = isCruiser ? Math.PI * 0.68 : Math.PI * 0.55;
     const fFender = new THREE.Mesh(
@@ -1041,19 +1483,44 @@ export function buildMotorcycleOrAtv(
       mats.body,
     );
     fFender.rotation.y = Math.PI / 2;
-    fFender.rotation.x = isCruiser ? -0.24 : -0.35;
-    fFender.position.set(0, g.wheelRadius - headY, fZ - headZ);
+    fFender.rotation.x = isCruiser ? 0.36 : 0.42;
+    fFender.position.set(0, frontAxleLocal.y, frontAxleLocal.z);
     frontForkPivot.add(fFender);
+
+    [-1, 1].forEach((side) => {
+      const fStay = makeStrutBetween(
+        new THREE.Vector3(side * forkSpanX, frontAxleLocal.y + g.wheelRadius * 0.50, frontAxleLocal.z - 0.04),
+        new THREE.Vector3(side * (g.wheelWidth * 0.52), frontAxleLocal.y + g.wheelRadius * 0.94, frontAxleLocal.z),
+        0.010,
+        0.009,
+        isCruiser ? mats.chrome : mats.trim,
+        6,
+      );
+      frontForkPivot.add(fStay);
+    });
   }
 
-  // 3. Tubular Cradle / Trellis Frame, Swingarm, Coil-Over Shocks & Kickstand
+  // 3. Tubular Cradle / Trellis Frame, Cast Pivot Plates, Triangulated Subframe, Swingarm, Shocks & Kickstand
   const swingPivotY = g.groundClearance + (isDirt ? 0.22 : 0.16);
   const swingPivotZ = -0.22;
-  const subRearY = g.groundClearance + (isDirt ? 0.68 : isCruiser ? 0.44 : 0.58);
+  const subRearY = g.groundClearance + (isDirt ? 0.68 : isCruiser ? 0.44 : 0.68);
   const subRearZ = rZ + 0.06;
 
+  // Swingarm pivot through-bolt & swingarm front cross-bridge
+  const pivotBolt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.022, 0.022, rearSwingSpanX * 2 + 0.02, 10).rotateZ(Math.PI / 2),
+    mats.chrome,
+  );
+  pivotBolt.position.set(0, swingPivotY, swingPivotZ);
+  const swingBridge = new THREE.Mesh(
+    createRoundedBoxGeo(rearSwingSpanX * 1.85, 0.042, 0.075, 0.012, 2, 8),
+    mats.alloy,
+  );
+  swingBridge.position.set(0, THREE.MathUtils.lerp(swingPivotY, g.wheelRadius, 0.28), swingPivotZ - 0.12);
+  group.add(pivotBolt, swingBridge);
+
   [-1, 1].forEach((side) => {
-    const sx = side * 0.11;
+    const sx = side * 0.115;
     // Lower cradle rail + upper perimeter / trellis backbone rail
     group.add(
       makeStrutBetween(
@@ -1078,61 +1545,138 @@ export function buildMotorcycleOrAtv(
     group.add(
       makeStrutBetween(
         new THREE.Vector3(sx, headY - 0.02, headZ - 0.04),
-        new THREE.Vector3(sx, g.groundClearance + 0.48, swingPivotZ - 0.02),
+        new THREE.Vector3(sx, g.groundClearance + 0.50, swingPivotZ - 0.02),
         0.024,
         0.022,
         isNaked ? mats.accent : mats.trim,
         10,
       ),
     );
-    // Subframe trellis strut supporting tail/seat
+    // Cast Aluminum Swingarm Pivot Plate uniting upper frame spar, lower rail & swingarm axle
+    const pivotPlate = new THREE.Mesh(
+      createRoundedBoxGeo(0.028, 0.34, 0.12, 0.012, 2, 8),
+      isNaked || isCruiser ? mats.trim : mats.alloy,
+    );
+    pivotPlate.position.set(side * 0.122, swingPivotY + 0.14, swingPivotZ - 0.01);
+    pivotPlate.rotation.x = 0.12;
+    group.add(pivotPlate);
+
+    // Triangulated Subframe (upper seat rail + lower diagonal compression strut) supporting seat & tail
     group.add(
       makeStrutBetween(
-        new THREE.Vector3(sx, g.groundClearance + 0.44, swingPivotZ - 0.02),
-        new THREE.Vector3(sx * 0.88, subRearY, subRearZ),
-        0.018,
-        0.018,
+        new THREE.Vector3(sx, g.groundClearance + 0.52, swingPivotZ - 0.02),
+        new THREE.Vector3(sx * 0.84, subRearY, subRearZ),
+        0.017,
+        0.015,
         isNaked ? mats.accent : mats.trim,
         8,
       ),
     );
-    // Box-section Rear Swingarm arms
+    group.add(
+      makeStrutBetween(
+        new THREE.Vector3(sx, swingPivotY + 0.16, swingPivotZ - 0.04),
+        new THREE.Vector3(sx * 0.84, subRearY - 0.04, subRearZ + 0.04),
+        0.015,
+        0.014,
+        isNaked ? mats.accent : mats.trim,
+        8,
+      ),
+    );
+
+    // Box-section Rear Swingarm arms spanning cleanly to rear axle
     const swingarm = makeStrutBetween(
-      new THREE.Vector3(sx * 1.12, swingPivotY, swingPivotZ),
-      new THREE.Vector3(side * (g.wheelWidth * 0.78), g.wheelRadius, rZ),
-      0.024,
-      0.028,
+      new THREE.Vector3(side * (rearSwingSpanX * 0.86), swingPivotY, swingPivotZ),
+      new THREE.Vector3(side * rearSwingSpanX, g.wheelRadius, rZ),
+      0.026,
+      0.030,
       mats.alloy,
       8,
     );
     tagPart(swingarm, 'Balança Traseira e Suspensão', side * 0.2, 0, -0.2);
     group.add(swingarm);
 
-    // Rider footpegs
-    const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.11, 8), mats.trim);
-    peg.rotation.z = Math.PI / 2;
-    peg.position.set(side * 0.21, g.groundClearance + 0.14, -0.10);
-    group.add(peg);
+    // Rider rearset bracket + footpeg + heel guard + gear/brake lever
+    const rearset = makeStrutBetween(
+      new THREE.Vector3(side * 0.122, swingPivotY + 0.04, swingPivotZ + 0.04),
+      new THREE.Vector3(side * 0.16, g.groundClearance + 0.14, -0.10),
+      0.015,
+      0.014,
+      mats.alloy,
+      6,
+    );
+    const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.095, 8).rotateZ(Math.PI / 2), mats.trim);
+    peg.position.set(side * 0.205, g.groundClearance + 0.14, -0.10);
+    group.add(rearset, peg);
+
+    if (!cityMode) {
+      const heelGuard = new THREE.Mesh(
+        createRoundedBoxGeo(0.012, 0.055, 0.068, 0.005, 1, 4),
+        mats.alloy,
+      );
+      heelGuard.position.set(side * 0.155, g.groundClearance + 0.18, -0.13);
+      const pedalLever = makeStrutBetween(
+        new THREE.Vector3(side * 0.165, g.groundClearance + 0.14, -0.10),
+        new THREE.Vector3(side * 0.185, g.groundClearance + 0.125, 0.01),
+        0.008,
+        0.007,
+        mats.alloy,
+        6,
+      );
+      group.add(heelGuard, pedalLever);
+    }
+
+    // Passenger Pillion Footpeg Brackets anchored to subframe on street motorcycles
+    if ((isFairedSport || isNaked || isCruiser) && v.id !== 71) {
+      const pPegY = g.groundClearance + (isCruiser ? 0.30 : 0.44);
+      const pPegZ = rZ + 0.24;
+      const pStay = makeStrutBetween(
+        new THREE.Vector3(sx * 0.92, subRearY - 0.08, pPegZ + 0.05),
+        new THREE.Vector3(side * 0.185, pPegY, pPegZ),
+        0.013,
+        0.011,
+        mats.alloy,
+        6,
+      );
+      const pPeg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.012, 0.012, 0.068, 8).rotateZ(Math.PI / 2),
+        mats.trim,
+      );
+      pPeg.position.set(side * 0.215, pPegY, pPegZ);
+      group.add(pStay, pPeg);
+    }
   });
+
+  // Rear Tire Hugger Fender + Contoured Chain Guard mounted cleanly to swingarm
+  if ((isFairedSport || isNaked) && !cityMode) {
+    const huggerR = g.wheelRadius * 1.09;
+    const hugger = new THREE.Mesh(
+      new THREE.TorusGeometry(huggerR, rearWidth * 0.34, 8, 16, Math.PI * 0.38),
+      mats.trim,
+    );
+    hugger.rotation.y = Math.PI / 2;
+    hugger.rotation.x = 0.08;
+    hugger.position.set(0, g.wheelRadius, rZ);
+    group.add(hugger);
+  }
 
   // Rear Coil-Over Shock Springs (Twin exposed chrome coil-overs on naked/cruiser/scooter; central monoshock on sport/dirt)
   if (isNaked || isCruiser || isScooter) {
     [-1, 1].forEach((side) => {
-      const pBot = new THREE.Vector3(side * 0.13, g.wheelRadius + 0.06, rZ + 0.08);
-      const pTop = new THREE.Vector3(side * 0.12, subRearY - 0.02, rZ + 0.26);
+      const pBot = new THREE.Vector3(side * (rearSwingSpanX * 0.88), g.wheelRadius + 0.06, rZ + 0.08);
+      const pTop = new THREE.Vector3(side * 0.115, subRearY - 0.02, rZ + 0.24);
       const shock = buildCoilShock(pBot, pTop, 0.032, 0.0085, 6.5, mats.chrome);
       tagPart(shock, 'Amortecedor Traseiro Coil-Over', side * 0.22, 0.15, -0.2);
       group.add(shock);
     });
   } else {
-    const monoBot = new THREE.Vector3(0, swingPivotY + 0.04, swingPivotZ - 0.12);
-    const monoTop = new THREE.Vector3(0, g.groundClearance + 0.44, swingPivotZ - 0.02);
+    const monoBot = new THREE.Vector3(0, THREE.MathUtils.lerp(swingPivotY, g.wheelRadius, 0.28), swingPivotZ - 0.12);
+    const monoTop = new THREE.Vector3(0, g.groundClearance + 0.48, swingPivotZ - 0.02);
     const monoshock = buildCoilShock(monoBot, monoTop, 0.042, 0.0105, 5.5, mats.accent);
     tagPart(monoshock, 'Monoamortecedor Central Traseiro', 0, 0.12, -0.15);
     group.add(monoshock);
   }
 
-  // Left-side kickstand + chain run
+  // Left-side kickstand + countershaft front sprocket, chain run & chain guard
   if (!cityMode) {
     const stand = makeStrutBetween(
       new THREE.Vector3(-0.12, g.groundClearance + 0.09, -0.16),
@@ -1142,34 +1686,52 @@ export function buildMotorcycleOrAtv(
       mats.trim,
       8,
     );
-    group.add(stand);
+    const standFoot = new THREE.Mesh(
+      createRoundedBoxGeo(0.052, 0.014, 0.062, 0.004, 1, 4),
+      mats.trim,
+    );
+    standFoot.position.set(-0.24, 0.018, -0.32);
+    group.add(stand, standFoot);
 
     if (!isScooter) {
+      const frontSprocket = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.042, 0.042, 0.014, 12).rotateZ(Math.PI / 2),
+        mats.alloy,
+      );
+      frontSprocket.position.set(sprocketX, swingPivotY, swingPivotZ);
       const chainTop = makeStrutBetween(
-        new THREE.Vector3(-g.wheelWidth * 0.72, swingPivotY + 0.04, swingPivotZ),
-        new THREE.Vector3(-g.wheelWidth * 0.72, g.wheelRadius + g.wheelRadius * 0.34, rZ),
-        0.012,
-        0.012,
+        new THREE.Vector3(sprocketX, swingPivotY + 0.038, swingPivotZ),
+        new THREE.Vector3(sprocketX, g.wheelRadius + g.wheelRadius * 0.36, rZ),
+        0.011,
+        0.011,
         mats.grille,
         6,
       );
       const chainBot = makeStrutBetween(
-        new THREE.Vector3(-g.wheelWidth * 0.72, swingPivotY - 0.04, swingPivotZ),
-        new THREE.Vector3(-g.wheelWidth * 0.72, g.wheelRadius - g.wheelRadius * 0.34, rZ),
-        0.012,
-        0.012,
+        new THREE.Vector3(sprocketX, swingPivotY - 0.038, swingPivotZ),
+        new THREE.Vector3(sprocketX, g.wheelRadius - g.wheelRadius * 0.36, rZ),
+        0.011,
+        0.011,
         mats.grille,
         6,
       );
-      group.add(chainTop, chainBot);
+      const chainGuard = makeStrutBetween(
+        new THREE.Vector3(sprocketX, swingPivotY + 0.068, swingPivotZ - 0.10),
+        new THREE.Vector3(sprocketX, g.wheelRadius + g.wheelRadius * 0.42, rZ + 0.06),
+        0.016,
+        0.014,
+        mats.trim,
+        6,
+      );
+      group.add(frontSprocket, chainTop, chainBot, chainGuard);
     }
   }
 
-  // 4. Sculpted Air-Cooled / Finned Engine Block + Crankcase + Side Covers (or EV Motor Core)
+  // 4. Sculpted Detailed Engine Block, Valve Cover, Clutch/Stator Covers, Sump, Oil Filter & Radiator
   const engineGrp = new THREE.Group();
   const engBaseY = g.groundClearance + 0.18;
   const crankcase = new THREE.Mesh(
-    createRoundedBoxGeo(0.27, 0.20, 0.36, 0.04, 3, 10),
+    createRoundedBoxGeo(0.27, 0.19, 0.36, 0.045, 3, 10),
     mats.alloy,
   );
   crankcase.position.set(0, engBaseY, -0.02);
@@ -1177,77 +1739,248 @@ export function buildMotorcycleOrAtv(
 
   if (isElectricMoto) {
     const battPack = new THREE.Mesh(
-      createRoundedBoxGeo(0.28, 0.32, 0.40, 0.045, 3, 10),
+      createRoundedBoxGeo(0.26, 0.30, 0.38, 0.055, 3, 12),
       mats.trim,
     );
     battPack.position.set(0, engBaseY + 0.12, 0.04);
     const cyanCore = new THREE.Mesh(
-      createRoundedBoxGeo(0.30, 0.10, 0.28, 0.02, 2, 8),
+      createRoundedBoxGeo(0.28, 0.08, 0.26, 0.02, 2, 8),
       mats.accent,
     );
     cyanCore.position.set(0, engBaseY + 0.14, 0.04);
     engineGrp.add(battPack, cyanCore);
+    if (!cityMode) {
+      for (let r = 0; r < 5; r++) {
+        const fin = new THREE.Mesh(
+          createRoundedBoxGeo(0.28, 0.012, 0.32, 0.005, 1, 4),
+          mats.alloy,
+        );
+        fin.position.set(0, engBaseY + 0.01 + r * 0.026, 0.04);
+        engineGrp.add(fin);
+      }
+      [-0.08, 0.08].forEach((cx) => {
+        const hvCable = new THREE.Mesh(
+          new THREE.TubeGeometry(
+            new THREE.CatmullRomCurve3([
+              new THREE.Vector3(cx, engBaseY + 0.24, 0.06),
+              new THREE.Vector3(cx * 1.4, engBaseY + 0.08, -0.06),
+              new THREE.Vector3(cx * 0.9, engBaseY - 0.02, -0.18),
+            ]),
+            12,
+            0.011,
+            8,
+            false,
+          ),
+          mats.accent,
+        );
+        engineGrp.add(hvCable);
+      });
+    }
   } else if (isCruiser) {
-    // Classic V-Twin angled finned cylinders + chrome round air filter + metallic side covers
+    // Classic V-Twin angled finned cylinders + pushrod tubes + chrome round air filter + metallic side covers
     [-1, 1].forEach((vDir) => {
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.082, 0.24, 12), mats.trim);
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.082, 0.24, 14), mats.trim);
       cyl.position.set(0, engBaseY + 0.18, 0.02 + vDir * 0.10);
       cyl.rotation.x = vDir * 0.38;
-      engineGrp.add(cyl);
-      for (let f = 0; f < 5; f++) {
-        const fin = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.014, 12), mats.alloy);
-        fin.position.set(0, engBaseY + 0.11 + f * 0.036, 0.02 + vDir * (0.06 + f * 0.016));
+      const headCap = new THREE.Mesh(
+        createRoundedBoxGeo(0.17, 0.055, 0.17, 0.02, 2, 8),
+        mats.chrome,
+      );
+      headCap.position.set(0, engBaseY + 0.29, 0.02 + vDir * 0.145);
+      headCap.rotation.x = vDir * 0.38;
+      engineGrp.add(cyl, headCap);
+      for (let f = 0; f < 6; f++) {
+        const fin = new THREE.Mesh(new THREE.CylinderGeometry(0.108, 0.108, 0.013, 14), mats.alloy);
+        fin.position.set(0, engBaseY + 0.10 + f * 0.032, 0.02 + vDir * (0.055 + f * 0.014));
         fin.rotation.x = vDir * 0.38;
         engineGrp.add(fin);
       }
+      if (!cityMode) {
+        const pushrod = makeStrutBetween(
+          new THREE.Vector3(0.075, engBaseY + 0.05, 0.02 + vDir * 0.04),
+          new THREE.Vector3(0.075, engBaseY + 0.27, 0.02 + vDir * 0.13),
+          0.010,
+          0.010,
+          mats.chrome,
+          8,
+        );
+        engineGrp.add(pushrod);
+      }
     });
-    const airCleaner = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.08, 16), mats.chrome);
+    const airCleaner = new THREE.Mesh(new THREE.CylinderGeometry(0.088, 0.088, 0.08, 18), mats.chrome);
     airCleaner.rotation.z = Math.PI / 2;
     airCleaner.position.set(0.17, engBaseY + 0.18, 0.02);
-    engineGrp.add(airCleaner);
+    const cleanerCenter = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.09, 14), mats.trim);
+    cleanerCenter.rotation.z = Math.PI / 2;
+    cleanerCenter.position.copy(airCleaner.position);
+    engineGrp.add(airCleaner, cleanerCenter);
   } else if (!isScooter) {
-    // Layered inline / thumper cylinder bank with 5 cooling fins (exact 113606 style!) + clutch/stator covers
-    const cylBlock = new THREE.Mesh(
-      createRoundedBoxGeo(0.24, 0.22, 0.24, 0.025, 2, 8),
+    // High-detail Inline-4 / Thumper engine block: oil sump, cylinder bank, finned jackets, valve cover & side covers
+    const oilSump = new THREE.Mesh(
+      createRoundedBoxGeo(0.22, 0.065, 0.28, 0.02, 2, 8),
       mats.trim,
     );
-    cylBlock.position.set(0, engBaseY + 0.18, 0.08);
-    cylBlock.rotation.x = 0.24;
+    oilSump.position.set(0, engBaseY - 0.105, -0.01);
+    engineGrp.add(oilSump);
+
+    const cylBlock = new THREE.Mesh(
+      createRoundedBoxGeo(0.25, 0.21, 0.22, 0.025, 2, 8),
+      mats.trim,
+    );
+    cylBlock.position.set(0, engBaseY + 0.17, 0.08);
+    cylBlock.rotation.x = 0.26;
     engineGrp.add(cylBlock);
 
+    // Sculpted Cam / Valve Cover with raised ribs & 4 ignition coil caps
+    const valveCover = new THREE.Mesh(
+      createRoundedBoxGeo(0.265, 0.055, 0.23, 0.022, 2, 8),
+      isFairedSport ? mats.accent : mats.alloy,
+    );
+    valveCover.position.set(0, engBaseY + 0.285, 0.11);
+    valveCover.rotation.x = 0.26;
+    engineGrp.add(valveCover);
+
     if (!cityMode) {
-      for (let f = 0; f < 5; f++) {
-        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.014, 0.26), mats.grille);
-        fin.position.set(0, engBaseY + 0.11 + f * 0.036, 0.06 + f * 0.008);
-        fin.rotation.x = 0.24;
+      for (let f = 0; f < 3; f++) {
+        const fin = new THREE.Mesh(
+          new THREE.BoxGeometry(0.275, 0.013, 0.24),
+          mats.grille,
+        );
+        fin.position.set(0, engBaseY + 0.11 + f * 0.048, 0.06 + f * 0.012);
+        fin.rotation.x = 0.26;
         engineGrp.add(fin);
       }
+
+      // 4 Individual Cylinder Head Ignition Coil Caps + Front Exhaust Port Collars
+      [-0.084, -0.028, 0.028, 0.084].forEach((cx) => {
+        const coil = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.017, 0.026, 6),
+          mats.trim,
+        );
+        coil.position.set(cx, engBaseY + 0.315, 0.115);
+        coil.rotation.x = 0.26;
+        const portCollar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.024, 0.024, 0.032, 6).rotateX(Math.PI / 2),
+          mats.alloy,
+        );
+        portCollar.position.set(cx, engBaseY + 0.18, 0.20);
+        engineGrp.add(coil, portCollar);
+      });
+
+      // Spin-on oil filter canister & starter motor cylinder
+      const oilFilter = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.034, 0.034, 0.075, 12).rotateX(Math.PI / 2),
+        mats.trim,
+      );
+      oilFilter.position.set(0.04, engBaseY - 0.04, 0.17);
+      const starterMotor = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.036, 0.036, 0.14, 12).rotateZ(Math.PI / 2),
+        mats.alloy,
+      );
+      starterMotor.position.set(0, engBaseY + 0.08, -0.14);
+      engineGrp.add(oilFilter, starterMotor);
     }
 
-    // Metallic sculpted clutch & stator side covers
+    // Machined Right Clutch Cover (window/bolt ring + water pump) & Left Stator/Sprocket Cover
     [-1, 1].forEach((side) => {
-      const cover = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.095, 0.105, 0.06, 16),
+      const coverBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.095, 0.108, 0.056, 18).rotateZ(Math.PI / 2),
         isNaked || isDirt ? mats.chrome : mats.alloy,
       );
-      cover.rotation.z = Math.PI / 2;
-      cover.position.set(side * 0.13, engBaseY - 0.01, -0.02);
-      engineGrp.add(cover);
+      coverBase.position.set(side * 0.132, engBaseY - 0.008, -0.02);
+      engineGrp.add(coverBase);
+
+      if (!cityMode) {
+        const ringBezel = new THREE.Mesh(
+          new THREE.TorusGeometry(0.074, 0.011, 8, 18).rotateY(Math.PI / 2),
+          mats.trim,
+        );
+        ringBezel.position.set(side * 0.160, engBaseY - 0.008, -0.02);
+        const centerWindow = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.054, 0.054, 0.018, 16).rotateZ(Math.PI / 2),
+          side > 0 ? mats.grille : mats.accent,
+        );
+        centerWindow.position.set(side * 0.156, engBaseY - 0.008, -0.02);
+        engineGrp.add(ringBezel, centerWindow);
+
+        for (let b = 0; b < 4; b++) {
+          const ang = (b / 4) * Math.PI * 2;
+          const bolt = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.0065, 0.0065, 0.014, 6).rotateZ(Math.PI / 2),
+            mats.chrome,
+          );
+          bolt.position.set(
+            side * 0.162,
+            engBaseY - 0.008 + Math.cos(ang) * 0.074,
+            -0.02 + Math.sin(ang) * 0.074,
+          );
+          engineGrp.add(bolt);
+        }
+      }
     });
 
-    // Radiator in front of engine for sportbikes / naked streetfighters
-    if (isFairedSport || v.id === 72) {
-      const rad = new THREE.Mesh(
-        createRoundedBoxGeo(0.28, 0.20, 0.045, 0.015, 2, 8),
-        mats.grille,
+    if (!cityMode) {
+      // Water pump housing & braided coolant hose on right side
+      const waterPump = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.040, 0.044, 0.045, 12).rotateZ(Math.PI / 2),
+        mats.alloy,
       );
-      rad.position.set(0, engBaseY + 0.16, 0.30);
-      rad.rotation.x = 0.28;
-      engineGrp.add(rad);
+      waterPump.position.set(0.145, engBaseY - 0.055, 0.10);
+      const coolantHose = new THREE.Mesh(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0.145, engBaseY - 0.055, 0.12),
+            new THREE.Vector3(0.155, engBaseY + 0.04, 0.22),
+            new THREE.Vector3(0.125, engBaseY + 0.12, 0.29),
+          ]),
+          10,
+          0.013,
+          8,
+          false,
+        ),
+        mats.trim,
+      );
+      engineGrp.add(waterPump, coolantHose);
+    }
+
+    // Curved Aluminum Radiator + Side End-Tanks + Filler Cap for Sportbikes & Nakeds
+    if (isFairedSport || v.id === 72) {
+      const radCore = new THREE.Mesh(
+        createSculptedPanelGeo(0.28, 0.19, 0.042, 8, 4, 2, 0.012, (pos, idx, hx) => {
+          const nx = Math.abs(pos.getX(idx)) / Math.max(0.05, hx);
+          pos.setZ(idx, pos.getZ(idx) - Math.pow(nx, 1.8) * 0.028);
+        }),
+        mats.grilleMesh,
+      );
+      radCore.position.set(0, engBaseY + 0.16, 0.305);
+      radCore.rotation.x = 0.28;
+      engineGrp.add(radCore);
+
+      if (!cityMode) {
+        [-1, 1].forEach((side) => {
+          const endTank = new THREE.Mesh(
+            createRoundedBoxGeo(0.028, 0.195, 0.048, 0.008, 2, 6),
+            mats.alloy,
+          );
+          endTank.position.set(side * 0.145, engBaseY + 0.16, 0.282);
+          endTank.rotation.x = 0.28;
+          endTank.rotation.y = side * -0.18;
+          engineGrp.add(endTank);
+        });
+        const radCap = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.016, 10), mats.chrome);
+        radCap.position.set(0.135, engBaseY + 0.25, 0.31);
+        engineGrp.add(radCap);
+      }
     }
   }
 
-  tagPart(engineGrp, isElectricMoto ? 'Motor Elétrico & Bateria' : 'Motor Aletado e Cárter', 0, -0.15, 0);
+  tagPart(
+    engineGrp,
+    isElectricMoto ? 'Motor Elétrico & Bateria' : 'Motor 4 Cilindros, Cárter & Radiador',
+    0,
+    -0.15,
+    0,
+  );
   group.add(engineGrp);
 
   // 5. Archetype-Specific Bodywork, Faceted Fuel Tank, Cowlings & Seats
@@ -1273,7 +2006,7 @@ export function buildMotorcycleOrAtv(
     tagPart(shield, 'Escudo Frontal da Scooter', 0, 0.25, 0.3);
     group.add(shield);
 
-    // Front classic tie/horn grille on legshield
+    // Front classic tie/horn grille on legshield + Maxi-Scooter nose headlight nacelle
     const tie = new THREE.Mesh(
       createRoundedBoxGeo(0.08, 0.34, 0.05, 0.015, 2, 6),
       isMaxiScooter ? mats.grille : mats.chrome,
@@ -1281,6 +2014,16 @@ export function buildMotorcycleOrAtv(
     tie.position.set(0, g.groundClearance + 0.42, fZ * 0.61);
     tie.rotation.x = -0.35;
     group.add(tie);
+
+    if (isMaxiScooter) {
+      const maxiNoseCowl = new THREE.Mesh(
+        createRoundedBoxGeo(0.46, 0.24, 0.24, 0.06, 3, 10),
+        mats.body,
+      );
+      maxiNoseCowl.position.set(0, g.groundClearance + 0.62, headZ + 0.04);
+      maxiNoseCowl.rotation.x = 0.25;
+      group.add(maxiNoseCowl);
+    }
 
     // Flat/tunneled floorboard + rubber mat
     const floor = new THREE.Mesh(
@@ -1316,145 +2059,366 @@ export function buildMotorcycleOrAtv(
       });
     }
   } else {
-    // Faceted Sculpted Fuel Tank (ExtrudeGeometry silhouette with crisp chamfered facets like 113606 & 113632!)
-    const tankShape = new THREE.Shape();
-    if (isCruiser) {
-      tankShape.moveTo(-0.26, -0.05);
-      tankShape.quadraticCurveTo(-0.08, 0.14, 0.26, 0.13);
-      tankShape.quadraticCurveTo(0.34, 0.04, 0.24, -0.06);
-      tankShape.closePath();
-    } else if (isDirt) {
-      tankShape.moveTo(-0.24, -0.04);
-      tankShape.lineTo(0.02, 0.11);
-      tankShape.lineTo(0.28, 0.12);
-      tankShape.lineTo(0.32, -0.04);
-      tankShape.closePath();
-    } else {
-      // Angular faceted naked / sport tank (113606 & 113632)
-      tankShape.moveTo(-0.28, -0.06);
-      tankShape.lineTo(-0.12, 0.13);
-      tankShape.lineTo(0.16, 0.16);
-      tankShape.lineTo(0.32, 0.06);
-      tankShape.lineTo(0.26, -0.08);
-      tankShape.closePath();
-    }
-    const tankGeo = createExtrudedProfile(
-      tankShape,
-      isDirt ? 0.24 : isCruiser ? 0.34 : 0.36,
-      0.045,
-      0.045,
-      cityMode ? 2 : 3,
-      10,
-    );
+    // Sculpted 3D Lofted Organic Fuel Tank (round muscular airbox crown + pinched rider knee waist!)
+    const tankBaseY = g.groundClearance + (isCruiser ? 0.56 : isDirt ? 0.62 : 0.57);
+    const tankStations: MotoLoftStation[] = isCruiser
+      ? [
+          { z: -0.26, cy: 0.01, rx: 0.085, ryTop: 0.055, ryBot: 0.042, topTaper: 0.16 },
+          { z: -0.06, cy: 0.05, rx: 0.148, ryTop: 0.102, ryBot: 0.068, topTaper: 0.22 },
+          { z: 0.14, cy: 0.075, rx: 0.176, ryTop: 0.125, ryBot: 0.080, topTaper: 0.24 },
+          { z: 0.28, cy: 0.055, rx: 0.135, ryTop: 0.095, ryBot: 0.065, topTaper: 0.20 },
+          { z: 0.36, cy: 0.02, rx: 0.055, ryTop: 0.042, ryBot: 0.036, topTaper: 0.16 },
+        ]
+      : isDirt
+        ? [
+            { z: -0.24, cy: 0.01, rx: 0.068, ryTop: 0.048, ryBot: 0.036, topTaper: 0.20 },
+            { z: 0.0, cy: 0.055, rx: 0.115, ryTop: 0.082, ryBot: 0.058, topTaper: 0.25 },
+            { z: 0.22, cy: 0.07, rx: 0.132, ryTop: 0.092, ryBot: 0.068, topTaper: 0.26 },
+            { z: 0.34, cy: 0.035, rx: 0.072, ryTop: 0.050, ryBot: 0.044, topTaper: 0.22 },
+          ]
+        : [
+            { z: -0.26, cy: 0.01, rx: 0.088, ryTop: 0.054, ryBot: 0.042, topTaper: 0.14 },
+            { z: -0.10, cy: 0.064, rx: 0.134, ryTop: 0.095, ryBot: 0.068, topTaper: 0.25 },
+            { z: 0.08, cy: 0.090, rx: 0.172, ryTop: 0.118, ryBot: 0.084, topTaper: 0.28 },
+            { z: 0.22, cy: 0.068, rx: 0.156, ryTop: 0.092, ryBot: 0.076, topTaper: 0.26 },
+            { z: 0.34, cy: 0.018, rx: 0.096, ryTop: 0.052, ryBot: 0.046, topTaper: 0.22 },
+          ];
+    const tankGeo = createLoftedMotoShell(tankStations, cityMode ? 12 : 18, cityMode ? 8 : 14);
     const tank = new THREE.Mesh(tankGeo, mats.body);
-    tank.position.set(0, g.groundClearance + (isCruiser ? 0.56 : 0.62), 0.18);
+    tank.position.set(0, tankBaseY, 0.18);
     tagPart(tank, 'Tanque de Combustível Esculpido', 0, 0.4, 0);
     group.add(tank);
 
-    // Fuel filler cap + tank racing stripe / console
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.025, 12), mats.chrome);
-    cap.position.set(0, tank.position.y + 0.17, 0.22);
+    // Flush machined billet fuel cap + curved tank pad / stripe + sportbike knee grip pads
+    const capYOffset = isCruiser ? 0.125 : isDirt ? 0.095 : 0.118;
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.039, 0.016, 12), mats.chrome);
+    cap.position.set(0, tankBaseY + capYOffset, 0.27);
+    cap.rotation.x = 0.08;
     group.add(cap);
 
     const tankStripe = new THREE.Mesh(
-      createRoundedBoxGeo(0.07, 0.025, 0.42, 0.01, 2, 6),
+      createSculptedPanelGeo(0.062, 0.014, 0.34, 4, 2, 6, 0.006, (pos, idx, _hx, _hy, hz) => {
+        const nz = pos.getZ(idx) / Math.max(0.05, hz);
+        pos.setY(idx, pos.getY(idx) - Math.pow(nz, 2) * 0.036);
+      }),
       isCruiser ? mats.chrome : mats.liveryStripe,
     );
-    tankStripe.position.set(0, tank.position.y + 0.15, 0.18);
+    tankStripe.position.set(0, tankBaseY + capYOffset - 0.006, 0.21);
     group.add(tankStripe);
 
-    // Naked Streetfighter radiator shrouds + side tank panels (113606 / VHC-72)
-    if (isNaked) {
+    if (isFairedSport && !cityMode) {
+      [-1, 1].forEach((side) => {
+        const kneePad = new THREE.Mesh(
+          createRoundedBoxGeo(0.014, 0.068, 0.18, 0.007, 1, 6),
+          mats.trim,
+        );
+        kneePad.position.set(side * 0.138, tankBaseY + 0.042, 0.11);
+        kneePad.rotation.y = side * 0.24;
+        kneePad.rotation.z = side * -0.18;
+        group.add(kneePad);
+      });
+    }
+
+    // Naked Streetfighter radiator shrouds + side tank air scoops (only Streetfighter VHC-72, not classic Café Racer)
+    if (isNaked && v.id === 72) {
       [-1, 1].forEach((side) => {
         const shroud = new THREE.Mesh(
-          createRoundedBoxGeo(0.045, 0.20, 0.26, 0.015, 2, 8),
-          v.id === 72 ? mats.body : mats.secondary,
+          createSculptedPanelGeo(0.045, 0.19, 0.26, 3, 4, 6, 0.016, (pos, idx, _hx, _hy, hz) => {
+            const nz = pos.getZ(idx) / Math.max(0.05, hz);
+            pos.setX(idx, pos.getX(idx) - side * Math.pow(nz, 2) * 0.018);
+          }),
+          mats.body,
         );
         shroud.position.set(side * 0.16, g.groundClearance + 0.48, 0.32);
-        shroud.rotation.y = side * 0.18;
+        shroud.rotation.y = side * 0.22;
         group.add(shroud);
       });
     }
 
-    // Faired Superbike Angular Nose Cowling, Side Fairings, Belly Pan & Upswept Tail Cowl (113632 & 113620!)
+    // Faired Superbike Aerodynamic Shark-Nose Wedge, Swept Side Fairings + MotoGP Winglets & Fairing Mirrors!
     if (isFairedSport) {
-      const noseShape = new THREE.Shape();
-      noseShape.moveTo(-0.20, -0.14);
-      noseShape.lineTo(0.28, -0.06);
-      noseShape.lineTo(0.36, 0.06);
-      noseShape.lineTo(0.10, 0.26);
-      noseShape.lineTo(-0.22, 0.18);
-      noseShape.closePath();
-      const noseGeo = createExtrudedProfile(noseShape, 0.42, 0.035, 0.035, 2, 8);
+      const noseBaseY = g.groundClearance + 0.56;
+      const noseStations: MotoLoftStation[] = [
+        { z: headZ - 0.14, cy: noseBaseY + 0.02, rx: 0.150, ryTop: 0.078, ryBot: 0.068, topTaper: 0.28, bottomArch: 0.025 },
+        { z: headZ + 0.02, cy: noseBaseY + 0.04, rx: 0.158, ryTop: 0.076, ryBot: 0.058, topTaper: 0.34, bottomArch: 0.035 },
+        { z: headZ + 0.12, cy: noseBaseY + 0.015, rx: 0.138, ryTop: 0.058, ryBot: 0.044, topTaper: 0.36, bottomArch: 0.030 },
+        { z: fZ * 0.86, cy: noseBaseY - 0.008, rx: 0.092, ryTop: 0.038, ryBot: 0.028, topTaper: 0.32, bottomArch: 0.018 },
+        { z: fZ * 0.93, cy: noseBaseY - 0.022, rx: 0.042, ryTop: 0.018, ryBot: 0.014, topTaper: 0.22 },
+        { z: fZ * 0.96, cy: noseBaseY - 0.026, rx: 0.012, ryTop: 0.007, ryBot: 0.007, topTaper: 0.15 },
+      ];
+      const noseGeo = createLoftedMotoShell(noseStations, cityMode ? 12 : 18, cityMode ? 8 : 14);
       const nose = new THREE.Mesh(noseGeo, mats.body);
-      nose.position.set(0, g.groundClearance + 0.62, fZ * 0.62);
-      tagPart(nose, 'Carenagem Frontal Esportiva', 0, 0.3, 0.35);
+      tagPart(nose, 'Carenagem Frontal Aerodinâmica', 0, 0.3, 0.35);
       group.add(nose);
 
-      // Dark angular nose intake bridge (signature 113632 detail!)
-      const noseBridge = new THREE.Mesh(
-        createRoundedBoxGeo(0.16, 0.22, 0.28, 0.02, 2, 6),
-        mats.trim,
+      // Flush recessed Ram-Air intake mouth + center splitter vane tucked cleanly at nose prow above fender
+      const ramAirHousing = new THREE.Mesh(
+        createRoundedBoxGeo(0.068, 0.024, 0.036, 0.009, 1, 6),
+        mats.grille,
       );
-      noseBridge.position.set(0, g.groundClearance + 0.72, fZ * 0.72);
-      noseBridge.rotation.x = -0.35;
-      group.add(noseBridge);
+      ramAirHousing.position.set(0, noseBaseY - 0.020, fZ * 0.905);
+      ramAirHousing.rotation.x = 0.20;
+      const ramAirSplitter = new THREE.Mesh(
+        createRoundedBoxGeo(0.009, 0.020, 0.038, 0.003, 1, 4),
+        mats.accent,
+      );
+      ramAirSplitter.position.copy(ramAirHousing.position);
+      ramAirSplitter.rotation.x = 0.20;
+      group.add(ramAirHousing, ramAirSplitter);
 
-      // Multi-faceted layered side fairings with engine vents
+      // Contoured shark-fin side fairings seated behind front tire steering arc & tucking cleanly into belly pan
+      const sideFairingGrp = new THREE.Group();
       [-1, 1].forEach((side) => {
-        const sideFairing = new THREE.Mesh(
-          createRoundedBoxGeo(0.055, 0.38, 0.62, 0.025, 2, 8),
-          mats.body,
+        const cowlGeo = createSculptedPanelGeo(
+          0.034,
+          0.38,
+          0.34,
+          3,
+          8,
+          8,
+          0.014,
+          (pos, idx, _hx, hy, hz) => {
+            const px = pos.getX(idx);
+            const py = pos.getY(idx);
+            const pz = pos.getZ(idx);
+            const ny = THREE.MathUtils.clamp(py / Math.max(0.05, hy), -1, 1);
+            const nz = THREE.MathUtils.clamp(pz / Math.max(0.05, hz), -1, 1);
+            // Smooth aerodynamic barrel curvature + inward tuck at top (into frame/nose) and bottom (into belly)
+            const bow = side * (Math.cos(ny * Math.PI * 0.5) * Math.cos(nz * Math.PI * 0.5) * 0.022);
+            const yTuck = ny > 0 ? Math.pow(ny, 2) * 0.018 : Math.pow(ny, 2) * 0.032;
+            const topBotTuck = -side * (yTuck + Math.pow(nz, 2) * 0.016);
+            // Sweep front leading edge cleanly back behind fork/tire arc, and scallop rear bottom to expose engine covers
+            const frontSweep = nz > 0.2 && ny < 0.4 ? -(nz - 0.2) * (0.4 - ny) * 0.055 : 0;
+            const rearCut = nz < -0.15 && ny < 0.35 ? (-nz - 0.15) * (0.35 - ny) * 0.11 : 0;
+            pos.setXYZ(idx, px + bow + topBotTuck, py + rearCut, pz + frontSweep);
+          },
         );
-        sideFairing.position.set(side * 0.20, g.groundClearance + 0.40, 0.24);
-        sideFairing.rotation.y = side * 0.10;
-        sideFairing.rotation.x = 0.18;
-        group.add(sideFairing);
+        const sideCowl = new THREE.Mesh(cowlGeo, mats.body);
+        sideCowl.position.set(side * 0.138, g.groundClearance + 0.36, 0.21);
+        sideCowl.rotation.y = side * -0.08;
+        sideFairingGrp.add(sideCowl);
 
-        const vent = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.11, 0.18), mats.grille);
-        vent.position.set(side * 0.205, g.groundClearance + 0.38, 0.12);
-        vent.rotation.x = 0.18;
-        group.add(vent);
+        // Twin-spar sculpted aluminum perimeter frame beam bridging fairing to swingarm
+        const spar = makeStrutBetween(
+          new THREE.Vector3(side * 0.132, headY - 0.04, headZ - 0.06),
+          new THREE.Vector3(side * 0.122, g.groundClearance + 0.42, -0.22),
+          0.022,
+          0.024,
+          mats.alloy,
+          8,
+        );
+        sideFairingGrp.add(spar);
+
+        // 3 Curved Shark-Gill Heat Extractor Vents recessed cleanly along fairing flank
+        if (!cityMode) {
+          for (let gv = 0; gv < 3; gv++) {
+            const gill = new THREE.Mesh(
+              createRoundedBoxGeo(0.016, 0.046 - gv * 0.006, 0.016, 0.004, 1, 4),
+              mats.grille,
+            );
+            gill.position.set(
+              side * 0.156,
+              g.groundClearance + 0.39 - gv * 0.036,
+              0.20 - gv * 0.038,
+            );
+            gill.rotation.y = side * -0.06;
+            gill.rotation.x = 0.42;
+            sideFairingGrp.add(gill);
+          }
+        }
+
+        // MotoGP Bi-Plane Aerodynamic Downforce Winglets swept smoothly off nose/upper-cowl flank
+        const wingletGeo = createSculptedPanelGeo(
+          0.072,
+          0.012,
+          0.090,
+          5,
+          2,
+          4,
+          0.005,
+          (pos, idx, hx) => {
+            const nx = THREE.MathUtils.clamp((pos.getX(idx) * side) / Math.max(0.02, hx), -1, 1);
+            const sweep = -Math.pow(Math.max(0, nx), 1.4) * 0.026;
+            const anhedral = -Math.pow(Math.max(0, nx), 1.5) * 0.013;
+            pos.setXYZ(idx, pos.getX(idx), pos.getY(idx) + anhedral, pos.getZ(idx) + sweep);
+          },
+        );
+        const winglet = new THREE.Mesh(wingletGeo, mats.trim);
+        winglet.position.set(side * 0.168, g.groundClearance + 0.53, headZ + 0.05);
+        winglet.rotation.x = 0.18;
+        const wingletEndplate = new THREE.Mesh(
+          createRoundedBoxGeo(0.010, 0.032, 0.068, 0.003, 1, 4),
+          mats.accent,
+        );
+        wingletEndplate.position.set(side * 0.205, g.groundClearance + 0.518, headZ + 0.014);
+        wingletEndplate.rotation.x = 0.14;
+        sideFairingGrp.add(winglet, wingletEndplate);
       });
+      tagPart(sideFairingGrp, 'Carenagens Laterais & Winglets MotoGP', 0.25, 0.05, 0.15);
+      group.add(sideFairingGrp);
 
-      // Lower aerodynamic belly pan
-      const belly = new THREE.Mesh(
-        createRoundedBoxGeo(0.30, 0.18, 0.62, 0.045, 3, 10),
-        mats.secondary,
+      // Sculpted aerodynamic boat-tail Belly Pan hugging under crankcase & exhaust collector
+      const bellyGeo = createLoftedMotoShell(
+        [
+          { z: -0.24, cy: g.groundClearance + 0.10, rx: 0.080, ryTop: 0.046, ryBot: 0.026, topTaper: 0.15 },
+          { z: 0.02, cy: g.groundClearance + 0.115, rx: 0.142, ryTop: 0.082, ryBot: 0.038, topTaper: 0.12 },
+          { z: 0.28, cy: g.groundClearance + 0.135, rx: 0.134, ryTop: 0.076, ryBot: 0.036, topTaper: 0.18 },
+          { z: 0.39, cy: g.groundClearance + 0.172, rx: 0.072, ryTop: 0.044, ryBot: 0.024, topTaper: 0.25 },
+        ],
+        cityMode ? 10 : 14,
+        cityMode ? 6 : 10,
       );
-      belly.position.set(0, g.groundClearance + 0.16, 0.04);
+      const belly = new THREE.Mesh(bellyGeo, mats.secondary);
+      tagPart(belly, 'Quilha Aerodinâmica Inferior (Belly Pan)', 0, -0.18, 0.1);
       group.add(belly);
 
-      // Tinted angular sport windscreen (113632)
-      const windscreen = new THREE.Mesh(
-        createRoundedBoxGeo(0.30, 0.24, 0.025, 0.015, 2, 8),
-        mats.glass,
+      // Curved Double-Bubble Tinted Aero Windscreen continuing the shark-nose brow slope cleanly
+      const wsGeo = createSculptedPanelGeo(
+        0.24,
+        0.24,
+        0.016,
+        8,
+        6,
+        2,
+        0.007,
+        (pos, idx, hx, hy) => {
+          const px = pos.getX(idx);
+          const py = pos.getY(idx);
+          const nx = THREE.MathUtils.clamp(px / Math.max(0.05, hx), -1, 1);
+          const ny = THREE.MathUtils.clamp(py / Math.max(0.05, hy), -1, 1);
+          const wrapZ = -Math.pow(nx, 2) * 0.064;
+          const doubleBubble = Math.cos(nx * Math.PI * 0.5) * Math.cos(ny * Math.PI * 0.5) * 0.028;
+          const topTaper = ny > 0 ? 1 - ny * 0.24 : 1;
+          pos.setXYZ(idx, px * topTaper, py, pos.getZ(idx) + wrapZ + doubleBubble);
+        },
       );
-      windscreen.position.set(0, g.groundClearance + 0.90, fZ * 0.56);
-      windscreen.rotation.x = -0.68;
+      const windscreen = new THREE.Mesh(wsGeo, mats.glass);
+      windscreen.position.set(0, g.groundClearance + 0.71, headZ - 0.02);
+      windscreen.rotation.x = -0.88;
       windscreen.userData.noShadow = true;
       windscreen.renderOrder = 2;
-      tagPart(windscreen, 'Bolha Acrílica Transparente', 0, 0.45, 0.35);
+      tagPart(windscreen, 'Bolha Aerodinâmica Dupla Curvatura', 0, 0.45, 0.35);
       group.add(windscreen);
+
+      // Dedicated Frame-Mounted Aerodynamic Fairing Rearview Mirrors + Integrated LED Turn Signals!
+      const fairingMirrorsGrp = new THREE.Group();
+      [-1, 1].forEach((side) => {
+        const mountPt = new THREE.Vector3(side * 0.122, g.groundClearance + 0.642, headZ + 0.03);
+        const stalkElbow = new THREE.Vector3(side * 0.195, g.groundClearance + 0.732, headZ + 0.01);
+        const podPivot = new THREE.Vector3(side * 0.255, g.groundClearance + 0.772, headZ - 0.025);
+
+        const baseFoot = new THREE.Mesh(
+          createRoundedBoxGeo(0.032, 0.020, 0.052, 0.007, 1, 6),
+          mats.trim,
+        );
+        baseFoot.position.copy(mountPt);
+        baseFoot.rotation.y = side * 0.28;
+        baseFoot.rotation.z = side * -0.35;
+        fairingMirrorsGrp.add(baseFoot);
+
+        const armCurve = new THREE.CatmullRomCurve3([mountPt, stalkElbow, podPivot]);
+        const armMesh = new THREE.Mesh(
+          new THREE.TubeGeometry(armCurve, cityMode ? 6 : 10, 0.009, 6, false),
+          mats.trim,
+        );
+        fairingMirrorsGrp.add(armMesh);
+
+        const mirrorPod = new THREE.Group();
+        mirrorPod.position.set(podPivot.x + side * 0.034, podPivot.y + 0.008, podPivot.z);
+        mirrorPod.rotation.y = side * -0.20;
+        mirrorPod.rotation.z = side * 0.10;
+
+        const podGeo = createSculptedPanelGeo(
+          0.124,
+          0.058,
+          0.038,
+          6,
+          4,
+          3,
+          0.016,
+          (pos, idx, hx, hy) => {
+            const px = pos.getX(idx);
+            const py = pos.getY(idx);
+            const pz = pos.getZ(idx);
+            const nx = THREE.MathUtils.clamp((px * side) / Math.max(0.02, hx), -1, 1);
+            const ny = THREE.MathUtils.clamp(py / Math.max(0.01, hy), -1, 1);
+            const taper = nx > 0 ? 1 - Math.pow(nx, 1.45) * 0.40 : 1 - Math.pow(-nx, 1.8) * 0.15;
+            const aeroNose = pz > 0 ? (1 - Math.abs(ny) * 0.5) * (1 - Math.abs(nx) * 0.35) * 0.018 : 0;
+            pos.setXYZ(idx, px, py * taper, pz + aeroNose);
+          },
+        );
+        const podShell = new THREE.Mesh(podGeo, mats.body);
+        const bezel = new THREE.Mesh(
+          createRoundedBoxGeo(0.104, 0.044, 0.010, 0.006, 1, 6),
+          mats.trim,
+        );
+        bezel.position.z = -0.015;
+        const mirrorGlass = new THREE.Mesh(
+          createRoundedBoxGeo(0.092, 0.036, 0.008, 0.006, 1, 6),
+          mats.mirrorGlass,
+        );
+        mirrorGlass.position.z = -0.018;
+        const ledBlink = new THREE.Mesh(
+          createRoundedBoxGeo(0.082, 0.010, 0.010, 0.003, 1, 4),
+          side < 0 ? mats.signalLeft : mats.signalRight,
+        );
+        ledBlink.position.set(side * 0.008, -0.003, 0.022);
+        mirrorPod.add(podShell, bezel, mirrorGlass, ledBlink);
+        fairingMirrorsGrp.add(mirrorPod);
+      });
+      tagPart(fairingMirrorsGrp, 'Retrovisores Aerodinâmicos com Pisca LED', 0.2, 0.35, 0.25);
+      group.add(fairingMirrorsGrp);
     }
 
-    // Sharply upswept sculpted Tail Cowl + Rear Plate Holder ("Tail-Tidy" on sport/naked)
+    // Sharply upswept sculpted Tail Cowl + Sealed Undertail Pan + Side Frame Infill Panels
     const tailY = isDirt ? g.groundClearance + 0.72 : isCruiser ? g.groundClearance + 0.50 : g.groundClearance + 0.66;
-    const tailCowl = new THREE.Mesh(
-      createRoundedBoxGeo(isDirt ? 0.22 : 0.26, 0.11, 0.46, 0.03, 2, 8),
-      mats.body,
-    );
-    tailCowl.position.set(0, tailY, rZ + 0.02);
-    tailCowl.rotation.x = isCruiser ? -0.06 : 0.22;
-    group.add(tailCowl);
+    if (isFairedSport || isNaked) {
+      const tailStations: MotoLoftStation[] = [
+        { z: rZ - 0.16, cy: tailY + 0.075, rx: 0.042, ryTop: 0.025, ryBot: 0.022, topTaper: 0.25 },
+        { z: rZ - 0.04, cy: tailY + 0.045, rx: 0.090, ryTop: 0.048, ryBot: 0.036, topTaper: 0.24 },
+        { z: rZ + 0.16, cy: tailY - 0.01, rx: 0.138, ryTop: 0.068, ryBot: 0.050, topTaper: 0.22 },
+        { z: rZ + 0.34, cy: tailY - 0.055, rx: 0.125, ryTop: 0.058, ryBot: 0.044, topTaper: 0.18 },
+      ];
+      const tailGeo = createLoftedMotoShell(tailStations, cityMode ? 10 : 16, cityMode ? 6 : 12);
+      const tailCowl = new THREE.Mesh(tailGeo, mats.body);
+      tagPart(tailCowl, 'Rabeta Aerodinâmica Esculpida', 0, 0.25, -0.35);
+      group.add(tailCowl);
 
-    if (!isCruiser) {
+      // Undertail pan & side frame infill panels sealing under rider seat and tail
+      const underTail = new THREE.Mesh(
+        createRoundedBoxGeo(0.18, 0.032, 0.48, 0.012, 2, 6),
+        mats.trim,
+      );
+      underTail.position.set(0, tailY - 0.042, rZ + 0.11);
+      underTail.rotation.x = 0.26;
+      group.add(underTail);
+
+      [-1, 1].forEach((side) => {
+        const frameInfill = new THREE.Mesh(
+          createRoundedBoxGeo(0.022, 0.115, 0.26, 0.008, 1, 6),
+          mats.trim,
+        );
+        frameInfill.position.set(side * 0.110, g.groundClearance + 0.52, -0.14);
+        frameInfill.rotation.x = -0.16;
+        group.add(frameInfill);
+      });
+    } else {
+      const tailCowl = new THREE.Mesh(
+        createRoundedBoxGeo(isDirt ? 0.22 : 0.26, 0.11, 0.46, 0.03, 2, 8),
+        mats.body,
+      );
+      tailCowl.position.set(0, tailY, rZ + 0.02);
+      tailCowl.rotation.x = isCruiser ? -0.06 : 0.22;
+      group.add(tailCowl);
+    }
+
+    if (!isCruiser && !isFairedSport && !isNaked) {
       const tailTidy = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.03), mats.trim);
       tailTidy.position.set(0, tailY - 0.11, rZ - 0.19);
       tailTidy.rotation.x = 0.55;
       group.add(tailTidy);
-    } else {
-      // Deep valanced rear cruiser fender
+    } else if (isCruiser) {
+      // Deep valanced rear cruiser fender + bolted fender struts
       const rFender = new THREE.Mesh(
         new THREE.TorusGeometry(g.wheelRadius * 1.09, 0.055, 8, 18, Math.PI * 0.65),
         mats.body,
@@ -1463,30 +2427,95 @@ export function buildMotorcycleOrAtv(
       rFender.rotation.x = 0.28;
       rFender.position.set(0, g.wheelRadius, rZ);
       group.add(rFender);
+      [-1, 1].forEach((side) => {
+        group.add(
+          makeStrutBetween(
+            new THREE.Vector3(side * 0.11, subRearY + 0.02, rZ + 0.18),
+            new THREE.Vector3(side * (rearWidth * 0.44), g.wheelRadius + g.wheelRadius * 0.94, rZ - 0.10),
+            0.012,
+            0.010,
+            mats.chrome,
+            6,
+          ),
+        );
+      });
     }
   }
 
-  // Touring Windscreen + Saddlebags + Engine Crash Guard ("Mata-Cachorro")
-  if (g.attachments.includes('moto_windscreen')) {
-    const ws = new THREE.Mesh(
-      createRoundedBoxGeo(0.38, 0.38, 0.025, 0.02, 2, 8),
-      mats.glass,
-    );
-    ws.position.set(0, g.groundClearance + 0.94, fZ * 0.52);
-    ws.rotation.x = -0.35;
-    ws.userData.noShadow = true;
-    ws.renderOrder = 2;
-    tagPart(ws, 'Para-brisa Alto Touring', 0, 0.5, 0.35);
-    group.add(ws);
+  // Touring Windscreen anchored directly to Front Fork / Maxi-Scooter cowl (skip on faired sportbikes that already have double-bubble aero windscreen)
+  if (g.attachments.includes('moto_windscreen') && !isFairedSport) {
+    if (isMaxiScooter) {
+      const ws = new THREE.Mesh(
+        createRoundedBoxGeo(0.38, 0.36, 0.022, 0.018, 2, 8),
+        mats.glass,
+      );
+      ws.position.set(0, g.groundClearance + 0.90, headZ + 0.03);
+      ws.rotation.x = -0.38;
+      ws.userData.noShadow = true;
+      ws.renderOrder = 2;
+      tagPart(ws, 'Para-brisa Alto Touring', 0, 0.5, 0.35);
+      group.add(ws);
+      [-1, 1].forEach((side) => {
+        group.add(
+          makeStrutBetween(
+            new THREE.Vector3(side * 0.12, g.groundClearance + 0.72, headZ + 0.06),
+            new THREE.Vector3(side * 0.12, g.groundClearance + 0.86, headZ + 0.01),
+            0.010,
+            0.010,
+            mats.trim,
+            6,
+          ),
+        );
+      });
+    } else {
+      const ws = new THREE.Mesh(
+        createRoundedBoxGeo(0.38, 0.36, 0.022, 0.018, 2, 8),
+        mats.glass,
+      );
+      ws.position.set(0, 0.25, 0.08);
+      ws.rotation.x = -0.35;
+      ws.userData.noShadow = true;
+      ws.renderOrder = 2;
+      tagPart(ws, 'Para-brisa Alto Touring', 0, 0.5, 0.35);
+      frontForkPivot.add(ws);
+      [-1, 1].forEach((side) => {
+        frontForkPivot.add(
+          makeStrutBetween(
+            new THREE.Vector3(side * forkSpanX, 0.02, 0.01),
+            new THREE.Vector3(side * 0.12, 0.20, 0.09),
+            0.009,
+            0.009,
+            isCruiser ? mats.chrome : mats.trim,
+            6,
+          ),
+        );
+      });
+    }
   }
 
   if (v.id === 42) {
-    // Tubular front crash bars ("mata-cachorro") on Moto-Entrega
+    // Tubular front crash bars ("mata-cachorro") anchored directly to main cradle frame
     [-1, 1].forEach((side) => {
       const bar = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.018, 8, 14, Math.PI), mats.chrome);
       bar.rotation.y = side * (Math.PI / 2);
       bar.position.set(side * 0.15, g.groundClearance + 0.26, 0.26);
-      group.add(bar);
+      const topArm = makeStrutBetween(
+        new THREE.Vector3(side * 0.06, g.groundClearance + 0.40, 0.26),
+        new THREE.Vector3(side * 0.15, g.groundClearance + 0.40, 0.26),
+        0.014,
+        0.014,
+        mats.chrome,
+        6,
+      );
+      const botArm = makeStrutBetween(
+        new THREE.Vector3(side * 0.09, g.groundClearance + 0.12, 0.24),
+        new THREE.Vector3(side * 0.15, g.groundClearance + 0.12, 0.26),
+        0.014,
+        0.014,
+        mats.chrome,
+        6,
+      );
+      group.add(bar, topArm, botArm);
     });
   }
 
@@ -1499,6 +2528,26 @@ export function buildMotorcycleOrAtv(
       bag.position.set(side * 0.26, g.groundClearance + 0.42, rZ + 0.06);
       tagPart(bag, 'Alforges Laterais Touring', side * 0.3, 0.2, -0.2);
       group.add(bag);
+
+      // Tubular steel pannier rack bridging subframe to each saddlebag
+      group.add(
+        makeStrutBetween(
+          new THREE.Vector3(side * 0.10, subRearY - 0.04, rZ + 0.22),
+          new THREE.Vector3(side * 0.18, g.groundClearance + 0.46, rZ + 0.20),
+          0.012,
+          0.012,
+          mats.trim,
+          6,
+        ),
+        makeStrutBetween(
+          new THREE.Vector3(side * 0.10, subRearY - 0.06, rZ - 0.02),
+          new THREE.Vector3(side * 0.18, g.groundClearance + 0.44, rZ - 0.08),
+          0.012,
+          0.012,
+          mats.trim,
+          6,
+        ),
+      );
 
       if (!cityMode) {
         const lidPivot = new THREE.Group();
@@ -1529,17 +2578,11 @@ export function buildMotorcycleOrAtv(
     seatPivot.add(riderPad, pillionPad);
   } else {
     const seat = new THREE.Mesh(
-      createRoundedBoxGeo(isCruiser ? 0.34 : 0.28, 0.12, isDirt ? 0.72 : 0.62, 0.05, cityMode ? 2 : 4, 12),
+      createRoundedBoxGeo(isCruiser ? 0.34 : 0.28, 0.12, isDirt ? 0.72 : v.id === 71 ? 0.46 : 0.62, 0.05, cityMode ? 2 : 4, 12),
       mats.interior,
     );
-    seat.position.set(0, 0, -0.30);
+    seat.position.set(0, 0, v.id === 71 ? -0.23 : -0.30);
     seatPivot.add(seat);
-    if (v.id === 71) {
-      // Classic Café Racer rear seat hump
-      const hump = new THREE.Mesh(createRoundedBoxGeo(0.26, 0.14, 0.26, 0.06, 3, 10), mats.body);
-      hump.position.set(0, 0.06, -0.54);
-      seatPivot.add(hump);
-    }
   }
   tagPart(seatPivot, 'Banco Ergonômico', 0, 0.35, -0.1);
   group.add(seatPivot);
@@ -1549,14 +2592,14 @@ export function buildMotorcycleOrAtv(
 
   // 7. Connected Handlebars + Billet Risers/Clip-Ons + Rubber Grips + Levers + Gauges + Perch Mirrors
   const barY = isFairedSport
-    ? headY + 0.04
+    ? headY + 0.015
     : isCruiser
       ? headY + 0.14
       : isDirt
         ? headY + 0.11
         : headY + 0.10;
-  const barZ = isFairedSport ? headZ - 0.04 : headZ - 0.055;
-  const barW = width * (isFairedSport ? 0.78 : isCruiser ? 0.92 : 0.88);
+  const barZ = isFairedSport ? headZ - 0.045 : headZ - 0.055;
+  const barW = width * (isFairedSport ? 0.76 : isCruiser ? 0.92 : 0.88);
   const hbStyle: HandlebarOpts['style'] = isFairedSport
     ? 'sport_clipon'
     : isCruiser
@@ -1579,17 +2622,27 @@ export function buildMotorcycleOrAtv(
       forkSpanX,
       style: hbStyle,
       sweepBack: isCruiser ? 0.11 : isFairedSport ? 0.08 : 0.06,
-      barRise: isCruiser ? 0.045 : isDirt ? 0.03 : 0.02,
+      barRise: isCruiser ? 0.045 : isDirt ? 0.03 : isFairedSport ? 0.005 : 0.02,
       hasCrossbar: isDirt,
       hasHandguards: isDirt,
-      hasMirrors: true,
+      hasMirrors: !isFairedSport,
     },
     cityMode,
   );
 
   if (!cityMode) {
-    // Twin round gauges (113606 Naked / Cruiser) or TFT digital dash (Sport / Dirt / Maxi)
+    // Twin round gauges (Naked / Cruiser) or tucked cockpit TFT digital dash (Sport / Dirt / Maxi)
     if (isNaked || isCruiser) {
+      frontForkPivot.add(
+        makeStrutBetween(
+          new THREE.Vector3(0, 0.025, 0.005),
+          new THREE.Vector3(0, 0.085, 0.025),
+          0.016,
+          0.014,
+          mats.trim,
+          6,
+        ),
+      );
       [-0.055, 0.055].forEach((gx) => {
         const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.038, 0.06, 12), mats.trim);
         pod.rotation.x = Math.PI / 3;
@@ -1597,13 +2650,27 @@ export function buildMotorcycleOrAtv(
         const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.064, 12), mats.sirenBlue);
         dial.rotation.x = Math.PI / 3;
         dial.position.copy(pod.position);
-        frontForkPivot.add(pod, dial);
+        const podArm = makeStrutBetween(
+          new THREE.Vector3(0, 0.075, 0.025),
+          pod.position,
+          0.010,
+          0.010,
+          mats.trim,
+          6,
+        );
+        frontForkPivot.add(pod, dial, podArm);
       });
     } else {
-      const tft = new THREE.Mesh(createRoundedBoxGeo(0.14, 0.075, 0.024, 0.01, 2, 6), mats.sirenBlue);
-      tft.position.set(0, 0.09, 0.02);
-      tft.rotation.x = -0.48;
-      frontForkPivot.add(tft);
+      const dashY = isFairedSport ? 0.032 : 0.035;
+      const dashZ = isFairedSport ? -0.018 : 0.015;
+      const tftBezel = new THREE.Mesh(createRoundedBoxGeo(0.110, 0.052, 0.015, 0.007, 1, 6), mats.trim);
+      tftBezel.position.set(0, dashY, dashZ);
+      tftBezel.rotation.x = -0.58;
+      const tftFace = new THREE.Mesh(new THREE.PlaneGeometry(0.092, 0.036), mats.sirenBlue);
+      tftFace.position.set(0, dashY + 0.004, dashZ - 0.0085);
+      tftFace.rotation.y = Math.PI;
+      tftFace.rotation.x = 0.58;
+      frontForkPivot.add(tftBezel, tftFace);
     }
   }
 
@@ -1612,9 +2679,10 @@ export function buildMotorcycleOrAtv(
     [-1, 1].forEach((side) => {
       const hlUnit = createBeveledHeadlightAssembly(
         {
-          width: 0.132,
-          height: 0.082,
-          depth: 0.058,
+          width: isFairedSport ? 0.106 : 0.124,
+          height: isFairedSport ? 0.042 : 0.056,
+          depth: isFairedSport ? 0.056 : 0.072,
+          sweepZ: isFairedSport ? 0.024 : 0.028,
           style: 'twin_projector',
           side: side as -1 | 1,
           frameMat: mats.grille,
@@ -1622,8 +2690,15 @@ export function buildMotorcycleOrAtv(
         mats,
         cityMode,
       );
-      hlUnit.position.set(side * 0.105, g.groundClearance + 0.65, fZ * 0.805);
-      hlUnit.rotation.y = side * -0.22;
+      if (isFairedSport) {
+        hlUnit.position.set(side * 0.075, g.groundClearance + 0.562, headZ + 0.152);
+        hlUnit.rotation.y = side * 0.42;
+        hlUnit.rotation.x = 0.24;
+      } else {
+        hlUnit.position.set(side * 0.105, g.groundClearance + 0.62, headZ + 0.135);
+        hlUnit.rotation.y = side * 0.20;
+        hlUnit.rotation.x = 0.20;
+      }
       tagPart(
         hlUnit,
         side < 0 ? 'Farol Dianteiro Projetor Esquerdo' : 'Farol Dianteiro Projetor Direito',
@@ -1631,14 +2706,22 @@ export function buildMotorcycleOrAtv(
         0.15,
         0.35,
       );
-      const blinkF = new THREE.Mesh(
-        createRoundedBoxGeo(0.052, 0.03, 0.035, 0.01, 2, 6),
-        side < 0 ? mats.signalLeft : mats.signalRight,
-      );
-      blinkF.position.set(side * 0.22, g.groundClearance + 0.64, fZ * 0.72);
       const beam = createHeadlightBeamMesh(3.8, 0.72, 0.08);
-      beam.position.set(side * 0.105, g.groundClearance + 0.65, fZ * 0.84);
-      group.add(hlUnit, blinkF, beam);
+      beam.position.set(
+        side * (isFairedSport ? 0.082 : 0.105),
+        g.groundClearance + (isFairedSport ? 0.560 : 0.60),
+        isFairedSport ? headZ + 0.185 : headZ + 0.18,
+      );
+      group.add(hlUnit, beam);
+      if (!isFairedSport) {
+        // Maxi-scooter cowl-integrated blinkers
+        const blinkF = new THREE.Mesh(
+          createRoundedBoxGeo(0.052, 0.03, 0.035, 0.01, 2, 6),
+          side < 0 ? mats.signalLeft : mats.signalRight,
+        );
+        blinkF.position.set(side * 0.21, g.groundClearance + 0.63, headZ + 0.08);
+        group.add(blinkF);
+      }
       animated.headlightBeams.push(beam);
     });
   } else {
@@ -1656,42 +2739,77 @@ export function buildMotorcycleOrAtv(
     frontForkPivot.add(hlUnit, beam);
     animated.headlightBeams.push(beam);
 
+    // Fork-mounted headlight ears + blinker stalks so headlight & signals never float off the fork tubes
     [-1, 1].forEach((side) => {
+      const hlEar = makeStrutBetween(
+        new THREE.Vector3(side * forkSpanX, -0.02, 0.005),
+        new THREE.Vector3(side * 0.095, -0.02, 0.105),
+        0.011,
+        0.010,
+        isCruiser || isNaked ? mats.chrome : mats.trim,
+        6,
+      );
+      const blinkStalk = makeStrutBetween(
+        new THREE.Vector3(side * forkSpanX, -0.02, 0.04),
+        new THREE.Vector3(side * 0.145, -0.02, 0.08),
+        0.008,
+        0.008,
+        mats.trim,
+        6,
+      );
       const blinkF = new THREE.Mesh(
         createRoundedBoxGeo(0.05, 0.032, 0.036, 0.01, 2, 6),
         side < 0 ? mats.signalLeft : mats.signalRight,
       );
-      blinkF.position.set(side * 0.14, -0.02, 0.08);
-      frontForkPivot.add(blinkF);
+      blinkF.position.set(side * 0.155, -0.02, 0.08);
+      frontForkPivot.add(hlEar, blinkStalk, blinkF);
     });
   }
 
   const tl = new THREE.Mesh(
-    createRoundedBoxGeo(0.14, 0.055, 0.055, 0.018, 2, 8),
+    createRoundedBoxGeo(isFairedSport || isNaked ? 0.115 : 0.14, 0.048, 0.055, 0.018, 2, 8),
     mats.taillight,
   );
   tl.position.set(
     0,
-    g.groundClearance + (isScooter ? 0.42 : isCruiser ? 0.48 : 0.62),
-    isScooter ? rZ - 0.16 : rZ - 0.14,
+    isFairedSport || isNaked
+      ? g.groundClearance + 0.728
+      : g.groundClearance + (isScooter ? 0.42 : isCruiser ? 0.48 : 0.62),
+    isFairedSport || isNaked ? rZ - 0.155 : isScooter ? rZ - 0.16 : rZ - 0.14,
   );
+  if (isFairedSport || isNaked) {
+    tl.rotation.x = -0.18;
+  }
   tagPart(tl, 'Lanterna Traseira LED', 0, 0.2, -0.4);
   group.add(tl);
+
+  const blinkY = isFairedSport || isNaked ? tl.position.y - 0.052 : tl.position.y;
+  const blinkZ = isFairedSport || isNaked ? tl.position.z - 0.015 : tl.position.z;
+  const blinkX = isFairedSport || isNaked ? 0.108 : 0.13;
+  const blinkCrossBar = makeStrutBetween(
+    new THREE.Vector3(-blinkX, blinkY, blinkZ),
+    new THREE.Vector3(blinkX, blinkY, blinkZ),
+    0.008,
+    0.008,
+    mats.trim,
+    6,
+  );
+  group.add(blinkCrossBar);
 
   [-1, 1].forEach((side) => {
     const blinkR = new THREE.Mesh(
       createRoundedBoxGeo(0.05, 0.032, 0.038, 0.01, 2, 6),
       side < 0 ? mats.signalLeft : mats.signalRight,
     );
-    blinkR.position.set(side * 0.13, tl.position.y, tl.position.z);
+    blinkR.position.set(side * blinkX, blinkY, blinkZ);
     group.add(blinkR);
   });
 
   // Rear motorcycle/scooter Mercosul license plate mounted on angled tail-tidy fender bracket clearing rear tire
-  const motoPlateY = Math.max(g.groundClearance + 0.24, tl.position.y - 0.13);
-  const motoPlateZ = Math.min(tl.position.z - 0.09, rZ - g.wheelRadius - 0.035);
+  const motoPlateY = Math.max(g.groundClearance + 0.24, tl.position.y - 0.16);
+  const motoPlateZ = Math.min(tl.position.z - 0.08, rZ - g.wheelRadius - 0.035);
   const tailTidyArm = makeStrutBetween(
-    new THREE.Vector3(0, tl.position.y - 0.015, tl.position.z + 0.01),
+    new THREE.Vector3(0, tl.position.y - 0.015, tl.position.z + 0.02),
     new THREE.Vector3(0, motoPlateY + 0.035, motoPlateZ + 0.016),
     0.014,
     0.014,
@@ -1708,12 +2826,42 @@ export function buildMotorcycleOrAtv(
   tagPart(motoPlate, 'Placa Traseira Moto', 0, 0.08, -0.42);
   group.add(tailTidyArm, motoPlate);
 
-  // 9. Sculpted Exhaust Headers + Upswept / Megaphone / Shotgun Muffler (none on Electric EV!)
+  // 9. Sculpted 4-into-1 / Dual Exhaust Headers + Collector + Carbon/Titanium Muffler (none on Electric EV!)
   if (!isElectricMoto) {
+    const isFourCylHeaders = (isFairedSport || isNaked) && !cityMode;
+    if (isFourCylHeaders) {
+      const headerGrp = new THREE.Group();
+      [-0.084, -0.028, 0.028, 0.084].forEach((hx) => {
+        const hCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(hx, engBaseY + 0.18, 0.21),
+          new THREE.Vector3(hx * 1.05, engBaseY + 0.045, 0.285),
+          new THREE.Vector3(hx * 0.85, g.groundClearance + 0.065, 0.21),
+          new THREE.Vector3(hx * 0.40, g.groundClearance + 0.075, 0.02),
+        ]);
+        const hPipe = new THREE.Mesh(
+          new THREE.TubeGeometry(hCurve, 14, 0.016, 8, false),
+          mats.alloy,
+        );
+        headerGrp.add(hPipe);
+      });
+      const collector = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.034, 0.042, 0.14, 12).rotateX(Math.PI / 2),
+        mats.alloy,
+      );
+      collector.position.set(0, g.groundClearance + 0.075, -0.05);
+      headerGrp.add(collector);
+      tagPart(headerGrp, 'Coletores de Escape 4-em-1', 0, -0.1, 0.1);
+      group.add(headerGrp);
+    }
+
     const buildMotoExhaust = (sideSign: number) => {
       const exCurve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(sideSign * 0.08, engBaseY + 0.12, 0.24),
-        new THREE.Vector3(sideSign * 0.15, g.groundClearance + 0.10, 0.08),
+        new THREE.Vector3(
+          isFourCylHeaders ? sideSign * 0.03 : sideSign * 0.08,
+          isFourCylHeaders ? g.groundClearance + 0.075 : engBaseY + 0.12,
+          isFourCylHeaders ? -0.10 : 0.24,
+        ),
+        new THREE.Vector3(sideSign * 0.14, g.groundClearance + 0.095, 0.02),
         new THREE.Vector3(sideSign * 0.18, g.groundClearance + 0.13, -0.26),
         new THREE.Vector3(
           sideSign * 0.20,
@@ -1723,18 +2871,18 @@ export function buildMotorcycleOrAtv(
       ]);
       const exGrp = new THREE.Group();
       const pipe = new THREE.Mesh(
-        new THREE.TubeGeometry(exCurve, 18, 0.028, 10, false),
+        new THREE.TubeGeometry(exCurve, 18, 0.026, 10, false),
         isNaked || isCruiser ? mats.chrome : mats.alloy,
       );
-      const mufLen = isCruiser ? 0.52 : 0.38;
-      const mufAngle = isDirt ? 0.32 : isCruiser ? 0.03 : 0.28;
+      const mufLen = isCruiser ? 0.52 : 0.36;
+      const mufAngle = isDirt ? 0.32 : isCruiser ? 0.03 : 0.32;
       const mufY = isDirt
         ? g.groundClearance + 0.48
         : isCruiser
           ? g.groundClearance + 0.16
-          : g.groundClearance + 0.26;
+          : g.groundClearance + 0.27;
       const muffler = new THREE.Mesh(
-        new THREE.CylinderGeometry(isCruiser ? 0.044 : 0.058, 0.042, mufLen, 8),
+        new THREE.CylinderGeometry(isCruiser ? 0.044 : 0.056, 0.042, mufLen, isFairedSport ? 6 : 10),
         isCruiser ? mats.chrome : isNaked ? mats.alloy : mats.trim,
       );
       muffler.rotation.x = Math.PI / 2 - mufAngle;
@@ -1743,6 +2891,46 @@ export function buildMotorcycleOrAtv(
       bore.rotation.x = muffler.rotation.x;
       bore.position.set(sideSign * 0.20, mufY + Math.sin(mufAngle) * (mufLen * 0.5), rZ + 0.04 - mufLen * 0.48);
       exGrp.add(pipe, muffler, bore);
+
+      // Muffler clamp collar + structural hanger stay bolted up to rear subframe / passenger peg mount
+      const clampBand = new THREE.Mesh(
+        new THREE.CylinderGeometry(isCruiser ? 0.048 : 0.059, isCruiser ? 0.048 : 0.059, 0.028, 10),
+        mats.alloy,
+      );
+      clampBand.rotation.x = muffler.rotation.x;
+      clampBand.position.set(sideSign * 0.20, mufY + Math.sin(mufAngle) * 0.04, rZ + 0.04);
+      const hangerAnchorX = isCruiser ? 0.15 : isDirt || v.id === 71 ? 0.105 : 0.185;
+      const hangerAnchorY = isCruiser
+        ? g.groundClearance + 0.32
+        : isDirt
+          ? subRearY - 0.04
+          : v.id === 71
+            ? subRearY - 0.12
+            : g.groundClearance + 0.44;
+      const hangerAnchorZ = isDirt || v.id === 71 ? rZ + 0.16 : rZ + 0.22;
+      const hangerStay = makeStrutBetween(
+        new THREE.Vector3(sideSign * 0.195, mufY + 0.03, rZ + 0.04),
+        new THREE.Vector3(sideSign * hangerAnchorX, hangerAnchorY, hangerAnchorZ),
+        0.011,
+        0.010,
+        isCruiser ? mats.chrome : mats.alloy,
+        6,
+      );
+      exGrp.add(clampBand, hangerStay);
+
+      if (!cityMode && isFairedSport) {
+        const endCap = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.058, 0.054, 0.045, 6),
+          mats.alloy,
+        );
+        endCap.rotation.x = muffler.rotation.x;
+        endCap.position.set(
+          sideSign * 0.20,
+          mufY + Math.sin(mufAngle) * (mufLen * 0.48),
+          rZ + 0.04 - mufLen * 0.46,
+        );
+        exGrp.add(endCap);
+      }
       tagPart(exGrp, 'Escapamento Esportivo', sideSign * 0.35, 0, -0.2);
       group.add(exGrp);
     };
@@ -1751,6 +2939,34 @@ export function buildMotorcycleOrAtv(
   }
 
   if (g.attachments.includes('moto_box')) {
+    // Tubular steel rear carrier rack anchored cleanly from subframe under the delivery box
+    [-1, 1].forEach((side) => {
+      group.add(
+        makeStrutBetween(
+          new THREE.Vector3(side * 0.10, g.groundClearance + 0.66, rZ + 0.20),
+          new THREE.Vector3(side * 0.16, g.groundClearance + 0.56, rZ - 0.14),
+          0.014,
+          0.014,
+          mats.trim,
+          6,
+        ),
+        makeStrutBetween(
+          new THREE.Vector3(side * 0.12, g.groundClearance + 0.44, rZ + 0.18),
+          new THREE.Vector3(side * 0.16, g.groundClearance + 0.56, rZ - 0.10),
+          0.012,
+          0.012,
+          mats.trim,
+          6,
+        ),
+      );
+    });
+    const rackBase = new THREE.Mesh(
+      createRoundedBoxGeo(0.38, 0.026, 0.40, 0.01, 1, 4),
+      mats.trim,
+    );
+    rackBase.position.set(0, g.groundClearance + 0.56, rZ - 0.04);
+    group.add(rackBase);
+
     const box = new THREE.Mesh(
       createRoundedBoxGeo(0.48, 0.36, 0.48, 0.05, 3, 10),
       mats.accent,
@@ -1774,23 +2990,50 @@ export function buildMotorcycleOrAtv(
   }
 
   if (g.attachments.includes('lightbar_police')) {
+    // Welded rear police radio/beacon rack bridging saddlebags & subframe
+    const policeBridge = new THREE.Mesh(
+      createRoundedBoxGeo(0.40, 0.032, 0.24, 0.01, 2, 6),
+      mats.trim,
+    );
+    policeBridge.position.set(0, g.groundClearance + 0.56, rZ - 0.06);
+    group.add(policeBridge);
+
     [-1, 1].forEach((side) => {
-      const sirenPole = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.34, 10), mats.chrome);
-      sirenPole.position.set(side * 0.18, g.groundClearance + 0.78, rZ - 0.12);
+      group.add(
+        makeStrutBetween(
+          new THREE.Vector3(side * 0.11, g.groundClearance + 0.44, rZ + 0.08),
+          new THREE.Vector3(side * 0.17, g.groundClearance + 0.56, rZ - 0.08),
+          0.013,
+          0.013,
+          mats.chrome,
+          6,
+        ),
+      );
+      const sirenPole = new THREE.Mesh(new THREE.CylinderGeometry(0.020, 0.022, 0.38, 10), mats.chrome);
+      sirenPole.position.set(side * 0.17, g.groundClearance + 0.74, rZ - 0.08);
       const beacon = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.055, 0.055, 0.09, 14),
+        new THREE.CylinderGeometry(0.052, 0.052, 0.085, 14),
         side < 0 ? mats.sirenBlue : mats.sirenRed,
       );
-      beacon.position.set(side * 0.18, g.groundClearance + 0.96, rZ - 0.12);
+      beacon.position.set(side * 0.17, g.groundClearance + 0.95, rZ - 0.08);
       tagPart(beacon, 'Giroflex Traseiro Polícia', side * 0.2, 0.5, -0.2);
       group.add(sirenPole, beacon);
 
+      // Front fork-mounted strobe pods anchored cleanly to lower fork sliders
+      const strobeArm = makeStrutBetween(
+        new THREE.Vector3(side * forkSpanX, -0.14, 0.045),
+        new THREE.Vector3(side * (forkSpanX + 0.048), -0.14, 0.08),
+        0.010,
+        0.010,
+        mats.trim,
+        6,
+      );
       const frontStrobe = new THREE.Mesh(
-        createRoundedBoxGeo(0.06, 0.036, 0.04, 0.01, 2, 6),
+        createRoundedBoxGeo(0.056, 0.036, 0.04, 0.01, 2, 6),
         side < 0 ? mats.sirenRed : mats.sirenBlue,
       );
-      frontStrobe.position.set(side * 0.14, g.groundClearance + 0.54, fZ * 0.84);
-      group.add(frontStrobe);
+      frontStrobe.position.set(side * (forkSpanX + 0.055), -0.14, 0.09);
+      frontForkPivot.add(strobeArm, frontStrobe);
     });
   }
 

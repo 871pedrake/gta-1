@@ -12,7 +12,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Cupê esportivo clássico dos anos 80 com interior bege aparente',
     conceptSummary:
       'Cupê esportivo geométrico dos anos 80 inspirado em clássicos retro: pintura azul cobalto, faróis duplos embutidos com setas âmbar, retrovisores externos, vidros transparentes revelando bancos esportivos caramelo, rodas turbofan de 6 raios e aerofólio ducktail.',
-    dimensions: { length: 4.46, width: 1.84, height: 1.32, wheelbase: 2.58 },
+    dimensions: { length: 4.46, width: 1.84, height: 1.31, wheelbase: 2.58 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 226,
@@ -37,7 +37,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'retro_turbofan',
       wheelRadius: 0.33,
       wheelWidth: 0.24,
-      groundClearance: 0.14,
+      groundClearance: 0.13,
       hoodSlope: 0.22,
       cabinLengthRatio: 0.44,
       cabinHeightRatio: 0.40,
@@ -63,7 +63,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Conversível de passeio na orla com cockpit totalmente exposto',
     conceptSummary:
       'Versão conversível sem teto do clássico cupê dos anos 80: carroceria magenta vibrante, parabrisa envidraçado inclinado, interior caramelo completo visível com console e volante, retrovisores laterais, rodas turbofan e lanternas quádruplas.',
-    dimensions: { length: 4.46, width: 1.84, height: 1.24, wheelbase: 2.58 },
+    dimensions: { length: 4.46, width: 1.84, height: 1.23, wheelbase: 2.58 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 222,
@@ -88,7 +88,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'retro_turbofan',
       wheelRadius: 0.33,
       wheelWidth: 0.24,
-      groundClearance: 0.14,
+      groundClearance: 0.13,
       hoodSlope: 0.22,
       cabinLengthRatio: 0.44,
       cabinHeightRatio: 0.36,
@@ -140,7 +140,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'aero_blade',
       wheelRadius: 0.35,
       wheelWidth: 0.29,
-      groundClearance: 0.11,
+      groundClearance: 0.105,
       hoodSlope: 0.55,
       cabinLengthRatio: 0.44,
       cabinHeightRatio: 0.42,
@@ -192,7 +192,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'deep_dish_6',
       wheelRadius: 0.34,
       wheelWidth: 0.27,
-      groundClearance: 0.12,
+      groundClearance: 0.115,
       hoodSlope: 0.32,
       cabinLengthRatio: 0.45,
       cabinHeightRatio: 0.41,
@@ -217,7 +217,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Hatchback de rali preparado para asfalto e terra batida',
     conceptSummary:
       'Hatchback largo com pintura azul rally e faixas douradas laterais, entrada de ar no capô e teto, rodas BBS douradas, aerofólio duplo e gaiola interna visível pelos vidros.',
-    dimensions: { length: 4.32, width: 1.84, height: 1.44, wheelbase: 2.60 },
+    dimensions: { length: 4.32, width: 1.84, height: 1.50, wheelbase: 2.60 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 248,
@@ -243,7 +243,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'bbs_mesh',
       wheelRadius: 0.33,
       wheelWidth: 0.24,
-      groundClearance: 0.18,
+      groundClearance: 0.24,
       hoodSlope: 0.34,
       cabinLengthRatio: 0.54,
       cabinHeightRatio: 0.44,
@@ -268,7 +268,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Muscle car clássico com escapamentos laterais cromados',
     conceptSummary:
       'Muscle car brutal com supercharger V8 cromado saindo do capô, faixas brancas racing, escapamentos laterais cromados (side pipes) ao longo da soleira e pneus faixa branca.',
-    dimensions: { length: 4.86, width: 1.94, height: 1.36, wheelbase: 2.82 },
+    dimensions: { length: 4.86, width: 1.94, height: 1.34, wheelbase: 2.82 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 256,
@@ -294,7 +294,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'classic_whitewall',
       wheelRadius: 0.35,
       wheelWidth: 0.26,
-      groundClearance: 0.16,
+      groundClearance: 0.14,
       hoodSlope: 0.15,
       cabinLengthRatio: 0.43,
       cabinHeightRatio: 0.40,
@@ -319,7 +319,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Conversível exótico V10 com cabine aberta e interior bicolor',
     conceptSummary:
       'Conversível esportivo de motor aspirado com carroceria bicolor amarelo-ouro e preto, santantônio duplo atrás dos bancos caramelo, rodas 5 raios esportivas e escape quádruplo.',
-    dimensions: { length: 4.54, width: 1.92, height: 1.22, wheelbase: 2.66 },
+    dimensions: { length: 4.54, width: 1.92, height: 1.21, wheelbase: 2.66 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 318,
@@ -344,7 +344,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'sport_5spoke',
       wheelRadius: 0.35,
       wheelWidth: 0.28,
-      groundClearance: 0.12,
+      groundClearance: 0.11,
       hoodSlope: 0.42,
       cabinLengthRatio: 0.44,
       cabinHeightRatio: 0.36,
@@ -369,7 +369,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Fastback clássico de turismo com faixas duplas e persianas traseiras',
     conceptSummary:
       'Cupê fastback verde inglês com faixas brancas de pista, scoop funcional no capô, persianas no vidro traseiro, rodas 6 raios côncavas e faróis duplos.',
-    dimensions: { length: 4.68, width: 1.86, height: 1.34, wheelbase: 2.74 },
+    dimensions: { length: 4.68, width: 1.86, height: 1.33, wheelbase: 2.74 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 262,
@@ -395,7 +395,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'deep_dish_6',
       wheelRadius: 0.34,
       wheelWidth: 0.25,
-      groundClearance: 0.15,
+      groundClearance: 0.135,
       hoodSlope: 0.20,
       cabinLengthRatio: 0.45,
       cabinHeightRatio: 0.40,
@@ -419,7 +419,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Limusine executiva bicolor para autoridades e empresários',
     conceptSummary:
       'Sedã de grande porte com pintura bicolor champanhe e bordô, grade cromada vertical, retrovisores cromados, teto panorâmico e rodas raiadas multi-raios.',
-    dimensions: { length: 5.28, width: 1.92, height: 1.50, wheelbase: 3.16 },
+    dimensions: { length: 5.28, width: 1.92, height: 1.53, wheelbase: 3.16 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 250,
@@ -444,7 +444,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'bbs_mesh',
       wheelRadius: 0.36,
       wheelWidth: 0.24,
-      groundClearance: 0.15,
+      groundClearance: 0.18,
       hoodSlope: 0.18,
       cabinLengthRatio: 0.49,
       cabinHeightRatio: 0.44,
@@ -468,7 +468,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Clássico americano com rodas raiadas wire-spoke e faixa lateral',
     conceptSummary:
       'Sedã clássico dos anos 60 com para-choques cromados largos, pintura azul-turquesa com teto branco, rodas raiadas em arame cromado e pneus faixa branca.',
-    dimensions: { length: 5.18, width: 1.95, height: 1.42, wheelbase: 3.04 },
+    dimensions: { length: 5.18, width: 1.95, height: 1.45, wheelbase: 3.04 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 185,
@@ -493,7 +493,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'wire_spoke',
       wheelRadius: 0.34,
       wheelWidth: 0.21,
-      groundClearance: 0.14,
+      groundClearance: 0.17,
       hoodSlope: 0.10,
       cabinLengthRatio: 0.44,
       cabinHeightRatio: 0.41,
@@ -517,7 +517,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Buggy de competição fora-de-estrada com gaiola aberta',
     conceptSummary:
       'Trophy buggy tubular com suspensão elevada, pneus beadlock gigantes, barra de LED no teto, estepe traseiro inclinado e escape duplo de alto fluxo.',
-    dimensions: { length: 4.10, width: 2.12, height: 1.66, wheelbase: 2.86 },
+    dimensions: { length: 4.10, width: 2.12, height: 1.74, wheelbase: 2.86 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 196,
@@ -543,7 +543,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'offroad_beadlock',
       wheelRadius: 0.45,
       wheelWidth: 0.32,
-      groundClearance: 0.36,
+      groundClearance: 0.44,
       hoodSlope: 0.35,
       cabinLengthRatio: 0.46,
       cabinHeightRatio: 0.44,
@@ -567,7 +567,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'SUV de expedição pesada para trilhas e morros íngremes',
     conceptSummary:
       'Utilitário 4x4 elevado com snorkel lateral, quebra-mato dianteiro, rack de teto expedicionário, pneus off-road e pintura areia desértica.',
-    dimensions: { length: 4.84, width: 2.02, height: 1.98, wheelbase: 2.92 },
+    dimensions: { length: 4.84, width: 2.02, height: 2.06, wheelbase: 2.92 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 178,
@@ -593,7 +593,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'offroad_beadlock',
       wheelRadius: 0.43,
       wheelWidth: 0.29,
-      groundClearance: 0.31,
+      groundClearance: 0.39,
       hoodSlope: 0.16,
       cabinLengthRatio: 0.56,
       cabinHeightRatio: 0.46,
@@ -617,7 +617,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Picape esportiva rebaixada com escapamento lateral e scoop',
     conceptSummary:
       'Picape cabine simples rebaixada de rua com faixas racing brancas, tomada de ar no capô, rodas deep-dish 6 raios e escapamentos laterais.',
-    dimensions: { length: 4.92, width: 1.96, height: 1.62, wheelbase: 3.00 },
+    dimensions: { length: 4.92, width: 1.96, height: 1.72, wheelbase: 3.00 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 244,
@@ -643,7 +643,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'deep_dish_6',
       wheelRadius: 0.37,
       wheelWidth: 0.28,
-      groundClearance: 0.16,
+      groundClearance: 0.26,
       hoodSlope: 0.18,
       cabinLengthRatio: 0.36,
       cabinHeightRatio: 0.43,
@@ -716,7 +716,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Viatura cupê de interceptação em rodovias e perseguições',
     conceptSummary:
       'Cupê policial bicolor preto e branco com barra giroflex LED baixa, quebra-mato frontal, faróis duplos, escape quádruplo e interior tático visível.',
-    dimensions: { length: 4.74, width: 1.90, height: 1.40, wheelbase: 2.76 },
+    dimensions: { length: 4.74, width: 1.90, height: 1.43, wheelbase: 2.76 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 288,
@@ -741,7 +741,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'sport_5spoke',
       wheelRadius: 0.34,
       wheelWidth: 0.25,
-      groundClearance: 0.15,
+      groundClearance: 0.18,
       hoodSlope: 0.24,
       cabinLengthRatio: 0.45,
       cabinHeightRatio: 0.42,
@@ -765,7 +765,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Supercupê elétrico futurista de zero emissão e aceleração extrema',
     conceptSummary:
       'Cupê elétrico futurista em prata líquido com teto todo em vidro panorâmico, rodas aerodinâmicas fechadas, lanterna contínua e ausência de escapamentos.',
-    dimensions: { length: 4.72, width: 1.96, height: 1.26, wheelbase: 2.86 },
+    dimensions: { length: 4.72, width: 1.96, height: 1.25, wheelbase: 2.86 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 325,
@@ -790,7 +790,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'aero_blade',
       wheelRadius: 0.36,
       wheelWidth: 0.27,
-      groundClearance: 0.13,
+      groundClearance: 0.115,
       hoodSlope: 0.50,
       cabinLengthRatio: 0.52,
       cabinHeightRatio: 0.43,
@@ -814,7 +814,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Conversível clássico elegante para passeios de pôr do sol',
     conceptSummary:
       'Conversível de luxo vintage em azul marinho com interior bege claro, faixa lateral cromada, para-choques espelhados, rodas raiadas e pneus faixa branca.',
-    dimensions: { length: 5.04, width: 1.92, height: 1.32, wheelbase: 2.94 },
+    dimensions: { length: 5.04, width: 1.92, height: 1.35, wheelbase: 2.94 },
     unitySpec: {
       controlType: 'CarroControle',
       maxSpeedKmh: 198,
@@ -840,7 +840,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'classic_whitewall',
       wheelRadius: 0.34,
       wheelWidth: 0.22,
-      groundClearance: 0.15,
+      groundClearance: 0.18,
       hoodSlope: 0.10,
       cabinLengthRatio: 0.46,
       cabinHeightRatio: 0.36,
@@ -939,7 +939,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'sport_5spoke',
       wheelRadius: 0.35,
       wheelWidth: 0.28,
-      groundClearance: 0.10,
+      groundClearance: 0.095,
       hoodSlope: 0.48,
       cabinLengthRatio: 0.46,
       cabinHeightRatio: 0.42,
@@ -1463,7 +1463,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
     roleInCity: 'Quadriciclo de praia e patrulha na areia com pneus balão',
     conceptSummary:
       'ATV esportivo-utilitário para areia da praia e trilhas, com pneus balão de cravos, racks tubulares dianteiro e traseiro, gaiola leve e escapamento duplo.',
-    dimensions: { length: 2.18, width: 1.24, height: 1.24, wheelbase: 1.32 },
+    dimensions: { length: 2.18, width: 1.24, height: 1.28, wheelbase: 1.32 },
     unitySpec: {
       controlType: 'MotoControle',
       maxSpeedKmh: 118,
@@ -1489,7 +1489,7 @@ export const EXTRA_50_VEHICLES: VehicleConcept[] = [
       wheelStyle: 'atv_balloon',
       wheelRadius: 0.32,
       wheelWidth: 0.24,
-      groundClearance: 0.26,
+      groundClearance: 0.30,
       hoodSlope: 0.28,
       cabinLengthRatio: 0.45,
       cabinHeightRatio: 0.42,

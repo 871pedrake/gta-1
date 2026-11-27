@@ -7,9 +7,11 @@ import {
   createRoundedBoxGeo,
   createSculptedPanelGeo,
   enableShadows,
+  evalAeroSideOffset,
   makeBeamBetween,
   makeStrutBetween,
   registerOpenable,
+  SideSculptOptions,
   tagPart,
 } from './types';
 
@@ -24,8 +26,10 @@ export function createCraftedWheel(
   isRightSide: boolean,
   isDualRear = false,
   cityMode = false,
+  omitCarBrake = false,
 ): THREE.Group {
   const wheel = new THREE.Group();
+  wheel.userData.xrayRole = 'wheel';
   const sign = isRightSide ? 1 : -1;
   const r = Math.max(0.14, radius);
   const isBikeWheel = style === 'bike_spoke' || style === 'bike_aero';
@@ -234,7 +238,9 @@ export function createCraftedWheel(
   lip.position.x = sign * (w * 0.43);
   wheel.add(lip);
 
-  const spokeX = sign * (w * 0.34);
+  const isMotoWheel =
+    style === 'moto_sport' || style === 'moto_spoke' || style === 'scooter_small';
+  const spokeX = isMotoWheel ? 0 : sign * (w * 0.34);
 
   if (style === 'aero_blade') {
     const discGeo = new THREE.CylinderGeometry(rimR * 0.92, rimR * 0.92, 0.03, latheSegs);
@@ -303,12 +309,12 @@ export function createCraftedWheel(
         wheel.add(bolt);
       }
     }
-  } else if (style === 'city_alloy' || style === 'sport_5spoke') {
+  } else if (style === 'city_alloy' || style === 'sport_5spoke' || style === 'moto_sport') {
     // 5 pairs of sculpted twin-spokes (10 Y-paired spokes) opening wide windows to showcase the brake disc
-    const rIn = rimR * 0.21;
+    const rIn = rimR * (style === 'moto_sport' ? 0.25 : 0.21);
     const rOut = rimR * 0.93;
-    const spokeThick = cityMode ? 0.018 : 0.021;
-    const spokeDepth = 0.026;
+    const spokeThick = style === 'moto_sport' ? (cityMode ? 0.013 : 0.015) : cityMode ? 0.018 : 0.021;
+    const spokeDepth = style === 'moto_sport' ? 0.024 : 0.026;
     const xHint = new THREE.Vector3(sign, 0, 0);
     for (let i = 0; i < 5; i++) {
       const baseAng = (i / 5) * Math.PI * 2;
@@ -316,12 +322,12 @@ export function createCraftedWheel(
         const angIn = baseAng + twin * 0.16;
         const angOut = baseAng + twin * 0.22;
         const pIn = new THREE.Vector3(
-          spokeX + sign * 0.014,
+          spokeX + (isMotoWheel ? 0 : sign * 0.014),
           Math.cos(angIn) * rIn,
           Math.sin(angIn) * rIn,
         );
         const pOut = new THREE.Vector3(
-          spokeX - sign * 0.004,
+          spokeX - (isMotoWheel ? 0 : sign * 0.004),
           Math.cos(angOut) * rOut,
           Math.sin(angOut) * rOut,
         );
@@ -330,17 +336,35 @@ export function createCraftedWheel(
         );
       });
     }
+  } else if (style === 'moto_spoke') {
+    // Dual-flange crossed wire spokes anchored into a wide symmetrical motorcycle hub
+    const motoSpokes = cityMode ? 12 : 20;
+    const flangeX = w * 0.22;
+    const hubR = rimR * 0.22;
+    for (let i = 0; i < motoSpokes; i++) {
+      const rimAng = (i / motoSpokes) * Math.PI * 2;
+      const flangeSign = i % 2 === 0 ? 1 : -1;
+      const hubAng = rimAng + (i % 4 < 2 ? 0.34 : -0.34);
+      const pHub = new THREE.Vector3(
+        flangeSign * flangeX,
+        Math.cos(hubAng) * hubR,
+        Math.sin(hubAng) * hubR,
+      );
+      const pRim = new THREE.Vector3(
+        flangeSign * (w * 0.06),
+        Math.cos(rimAng) * rimInnerR,
+        Math.sin(rimAng) * rimInnerR,
+      );
+      wheel.add(makeStrutBetween(pHub, pRim, 0.0045, 0.0045, mats.chrome, 5));
+    }
   } else {
     const spokeCount =
       style === 'bbs_mesh'
         ? 10
-        : style === 'moto_spoke'
-          ? 12
-          : style === 'heavy_truck' || style === 'aircraft_gear'
-            ? 6
-            : 5;
-    const spokeThick =
-      style === 'moto_spoke' ? 0.012 : style === 'heavy_truck' ? 0.055 : 0.032;
+        : style === 'heavy_truck' || style === 'aircraft_gear'
+          ? 6
+          : 5;
+    const spokeThick = style === 'heavy_truck' ? 0.055 : 0.032;
     const spokeGeo = new THREE.BoxGeometry(0.035, rimR * 0.9, spokeThick);
     for (let i = 0; i < spokeCount; i++) {
       const a = (i / spokeCount) * Math.PI * 2;
@@ -351,16 +375,28 @@ export function createCraftedWheel(
     }
   }
 
-  // Center hub cap + lug bolts
-  const hubGeo = new THREE.CylinderGeometry(rimR * 0.24, rimR * 0.28, 0.056, 16);
+  // Center hub cap / full-width motorcycle hub barrel + lug bolts
+  const hubLen = isMotoWheel ? w * 0.72 : 0.056;
+  const hubGeo = new THREE.CylinderGeometry(rimR * 0.24, rimR * (isMotoWheel ? 0.24 : 0.28), hubLen, 16);
   hubGeo.rotateZ(Math.PI / 2);
   const hubMat =
-    style === 'deep_dish_6' || style === 'sport_5spoke' ? mats.accent : mats.chrome;
+    style === 'deep_dish_6' || style === 'sport_5spoke' ? mats.accent : isMotoWheel ? mats.alloy : mats.chrome;
   const hub = new THREE.Mesh(hubGeo, hubMat);
-  hub.position.x = spokeX + sign * 0.018;
+  hub.position.x = isMotoWheel ? 0 : spokeX + sign * 0.018;
   wheel.add(hub);
 
-  if (!cityMode && style !== 'aero_blade' && style !== 'scooter_small' && style !== 'moto_spoke') {
+  if (isMotoWheel) {
+    [-1, 1].forEach((side) => {
+      const flange = new THREE.Mesh(
+        new THREE.CylinderGeometry(rimR * 0.28, rimR * 0.28, 0.018, 16).rotateZ(Math.PI / 2),
+        mats.trim,
+      );
+      flange.position.x = side * (w * 0.26);
+      wheel.add(flange);
+    });
+  }
+
+  if (!cityMode && style !== 'aero_blade' && !isMotoWheel) {
     const lugGeo = new THREE.CylinderGeometry(0.011, 0.011, 0.025, 6);
     lugGeo.rotateZ(Math.PI / 2);
     for (let i = 0; i < 5; i++) {
@@ -376,7 +412,7 @@ export function createCraftedWheel(
   }
 
   // Ventilated brake disc rotor + anodized inner hub hat + painted caliper clearly visible behind twin spokes
-  if (style !== 'monster_tractor' && style !== 'scooter_small') {
+  if (!omitCarBrake && !isMotoWheel && style !== 'monster_tractor') {
     const discX = spokeX - sign * Math.max(0.042, w * 0.24);
     const discGeo = new THREE.CylinderGeometry(rimR * 0.77, rimR * 0.77, 0.020, cityMode ? 14 : 26);
     discGeo.rotateZ(Math.PI / 2);
@@ -425,7 +461,14 @@ export function buildWheelWellLiners(
   const archR = wheelRadius * archRadiusScale;
   const wellCenterY = archCenterY ?? wheelRadius * 0.96;
   const barrelThick = 0.024;
-  const barrelWidth = wheelWidth * 1.24;
+  const outerX = width * 0.482;
+  const innerX = Math.max(
+    width * 0.18,
+    Math.min(width * 0.32, width * 0.46 - wheelRadius * 0.38 - wheelWidth * 0.56),
+  );
+  const barrelWidth = Math.max(wheelWidth * 1.28, outerX - innerX);
+  const barrelCenterX = (outerX + innerX) * 0.5;
+  const wallX = innerX + 0.011;
 
   // Closed-manifold ExtrudeGeometry wheelhouse arch barrel (open outside, sealed top/front/rear)
   const archShape = new THREE.Shape();
@@ -445,9 +488,19 @@ export function buildWheelWellLiners(
   barrelGeo.rotateY(-Math.PI / 2);
   barrelGeo.computeVertexNormals();
 
-  // Inner wheelhouse backing wall sealing the cavity behind the tire
+  // Inner wheelhouse backing wall sealing front/rear edges while leaving a domed central bay
+  // for wishbones, coilovers, tie-rods, and CV half-shafts (zero clipping, clear X-Ray view)
+  const outerWallR = archR + barrelThick * 0.9;
+  const botWallY = outerWallR * Math.sin(a0);
+  const cutHalfZ = Math.min(archR * 0.62, wheelRadius * 0.70);
+  const cutTopY = archR * 0.62;
   const wallShape = new THREE.Shape();
-  wallShape.absarc(0, 0, archR + barrelThick * 0.9, a0, a1, false);
+  wallShape.absarc(0, 0, outerWallR, a0, a1, false);
+  wallShape.lineTo(-cutHalfZ, botWallY);
+  wallShape.lineTo(-cutHalfZ, cutTopY * 0.52);
+  wallShape.quadraticCurveTo(-cutHalfZ * 0.72, cutTopY, 0, cutTopY);
+  wallShape.quadraticCurveTo(cutHalfZ * 0.72, cutTopY, cutHalfZ, cutTopY * 0.52);
+  wallShape.lineTo(cutHalfZ, botWallY);
   wallShape.closePath();
   const wallGeo = new THREE.ExtrudeGeometry(wallShape, {
     depth: 0.022,
@@ -462,10 +515,11 @@ export function buildWheelWellLiners(
   [frontWheelZ, rearWheelZ].forEach((wz, idx) => {
     [-1, 1].forEach((side) => {
       const wellGrp = new THREE.Group();
+      wellGrp.userData.xrayRole = 'liner';
       const well = new THREE.Mesh(barrelGeo, mats.grille);
-      well.position.set(side * (width * 0.415), wellCenterY, wz);
+      well.position.set(side * barrelCenterX, wellCenterY, wz);
       const wall = new THREE.Mesh(wallGeo, mats.grille);
-      wall.position.set(side * (width * 0.415 - barrelWidth * 0.48), wellCenterY, wz);
+      wall.position.set(side * wallX, wellCenterY, wz);
       wellGrp.add(well, wall);
       tagPart(
         wellGrp,
@@ -502,6 +556,7 @@ export function buildVisibleInterior(
   animated?: BuiltVehicle['animatedParts'],
 ): THREE.Group {
   const interior = new THREE.Group();
+  interior.userData.xrayRole = 'interior';
   const innerW = Math.max(0.85, width * 0.8);
   const innerL = Math.max(1.0, cabLen * 0.88);
   const totalH = cabH + tubDepth;
@@ -1236,6 +1291,15 @@ export function buildVisibleInterior(
   return interior;
 }
 
+export interface DoorAeroCurve {
+  yMin: number;
+  yMax: number;
+  zMin: number;
+  zMax: number;
+  sculptOpts: SideSculptOptions;
+  cleanFlank?: boolean;
+}
+
 export interface DoorSpec {
   side: -1 | 1;
   hingeX: number;
@@ -1251,6 +1315,7 @@ export interface DoorSpec {
   isScissor: boolean;
   isRearDoor: boolean;
   label: string;
+  aeroCurve?: DoorAeroCurve;
 }
 
 export function createSideDoorGroup(
@@ -1263,6 +1328,23 @@ export function createSideDoorGroup(
   pivot.position.set(spec.hingeX, spec.hingeY, spec.hingeZ);
 
   const skinThick = 0.068;
+  const ac = spec.aeroCurve;
+  const evalDoorSkinDelta = (localY: number, localZ: number) => {
+    if (!ac) {
+      const hy = Math.max(0.05, spec.doorHeight * 0.5);
+      const tY = THREE.MathUtils.clamp((localY + hy) / (hy * 2), 0, 1);
+      const belly = Math.sin(tY * Math.PI) * 0.022;
+      const lowerTuck = -Math.pow(1 - tY, 2.2) * 0.018;
+      const upperLean = -Math.pow(Math.max(0, (tY - 0.52) / 0.48), 1.35) * 0.022;
+      const crease = 0.008 * Math.exp(-Math.pow((tY - 0.80) / 0.10, 2));
+      return belly + lowerTuck + upperLean + crease;
+    }
+    const yWorld = spec.hingeY - spec.doorHeight * 0.5 + localY;
+    const zWorld = spec.hingeZ - spec.doorLen * 0.5 + localZ;
+    const tY = THREE.MathUtils.clamp((yWorld - ac.yMin) / Math.max(0.05, ac.yMax - ac.yMin), 0, 1);
+    return evalAeroSideOffset(tY, zWorld, ac.zMin, ac.zMax, ac.sculptOpts);
+  };
+
   // Door extends along -Z from front hinge (hingeZ), sculpted with convex barrel curvature,
   // upper shoulder character crease, lower rocker tumble-under, and tumblehome lean
   const skinGeo = createSculptedPanelGeo(
@@ -1271,20 +1353,18 @@ export function createSideDoorGroup(
     spec.doorLen,
     cityMode ? 2 : 4,
     cityMode ? 4 : 10,
-    cityMode ? 4 : 10,
+    cityMode ? 4 : 12,
     0.022,
     (pos, idx, hx, hy) => {
       const x = pos.getX(idx);
       const y = pos.getY(idx);
+      const z = pos.getZ(idx);
       const tY = THREE.MathUtils.clamp((y + hy) / Math.max(0.05, hy * 2), 0, 1);
       if (x * spec.side > -hx * 0.25) {
-        const belly = Math.sin(tY * Math.PI) * 0.022;
-        const lowerTuck = -Math.pow(1 - tY, 2.2) * 0.018;
-        const upperLean = -Math.pow(Math.max(0, (tY - 0.52) / 0.48), 1.35) * 0.022;
-        const crease = 0.008 * Math.exp(-Math.pow((tY - 0.80) / 0.10, 2));
-        pos.setX(idx, x + spec.side * (belly + lowerTuck + upperLean + crease));
+        pos.setX(idx, x + spec.side * evalDoorSkinDelta(y, z));
       } else if (tY > 0.52) {
-        pos.setX(idx, x - spec.side * Math.pow((tY - 0.52) / 0.48, 1.35) * 0.014);
+        const tumble = ac?.sculptOpts.tumblehomeInset ?? 0.022;
+        pos.setX(idx, x - spec.side * Math.pow((tY - 0.52) / 0.48, 1.35) * (tumble * 0.65));
       }
     },
   );
@@ -1293,37 +1373,44 @@ export function createSideDoorGroup(
   pivot.add(skin);
 
   // Upper satin-black beltline weatherstrip scraper trim seated on tumblehome shoulder
+  const beltTrimOffset = ac ? evalDoorSkinDelta(spec.doorHeight * 0.48, 0) : 0;
   const beltTrim = new THREE.Mesh(
     new THREE.BoxGeometry(skinThick * 0.44, 0.020, spec.doorLen * 0.97),
     mats.windowTrim,
   );
-  beltTrim.position.set(-spec.side * 0.012, -0.005, -spec.doorLen * 0.5);
+  beltTrim.position.set(-spec.side * 0.012 + spec.side * beltTrimOffset * 0.65, -0.005, -spec.doorLen * 0.5);
   pivot.add(beltTrim);
 
-  // Subtle lower satin-black door protection molding following convex curve
-  const molding = new THREE.Mesh(
-    createRoundedBoxGeo(0.014, 0.022, spec.doorLen * 0.90, 0.005, 2, 6),
-    mats.windowTrim,
-  );
-  molding.position.set(spec.side * (skinThick * 0.50), -spec.doorHeight * 0.56, -spec.doorLen * 0.5);
-  pivot.add(molding);
+  // Subtle lower satin-black door protection molding following convex curve (omitted on clean hypercar/aero flanks)
+  if (!ac?.cleanFlank) {
+    const moldDx = evalDoorSkinDelta(-spec.doorHeight * 0.06, 0);
+    const molding = new THREE.Mesh(
+      createRoundedBoxGeo(0.014, 0.022, spec.doorLen * 0.90, 0.005, 2, 6),
+      mats.windowTrim,
+    );
+    molding.position.set(spec.side * (skinThick * 0.50 + moldDx * 0.65), -spec.doorHeight * 0.56, -spec.doorLen * 0.5);
+    pivot.add(molding);
+  }
 
   // 2-part sculpted exterior door handle (matte finger pocket + contoured pull bar + lock cap)
+  const hLocalY = spec.doorHeight * 0.28;
+  const hLocalZ = -spec.doorLen * 0.28;
+  const hSurfaceDx = ac ? evalDoorSkinDelta(hLocalY, hLocalZ) : 0;
   const handlePocket = new THREE.Mesh(
     createRoundedBoxGeo(0.012, 0.036, 0.135, 0.004, 1, 6),
     mats.panelGap,
   );
-  handlePocket.position.set(spec.side * (skinThick * 0.43), -spec.doorHeight * 0.22, -spec.doorLen * 0.78);
+  handlePocket.position.set(spec.side * (skinThick * 0.43 + hSurfaceDx), -spec.doorHeight * 0.22, -spec.doorLen * 0.78);
   const handle = new THREE.Mesh(
     createRoundedBoxGeo(0.026, 0.022, 0.145, 0.008, 2, 6),
     mats.chrome,
   );
-  handle.position.set(spec.side * (skinThick * 0.49), -spec.doorHeight * 0.22, -spec.doorLen * 0.78);
+  handle.position.set(spec.side * (skinThick * 0.49 + hSurfaceDx), -spec.doorHeight * 0.22, -spec.doorLen * 0.78);
   const handleBase = new THREE.Mesh(
     createRoundedBoxGeo(0.018, 0.024, 0.036, 0.005, 1, 6),
     mats.windowTrim,
   );
-  handleBase.position.set(spec.side * (skinThick * 0.47), -spec.doorHeight * 0.22, -spec.doorLen * 0.78 - 0.056);
+  handleBase.position.set(spec.side * (skinThick * 0.47 + hSurfaceDx), -spec.doorHeight * 0.22, -spec.doorLen * 0.78 - 0.056);
   pivot.add(handlePocket, handle, handleBase);
 
   // Finished interior door card (quilted upper insert, metallic inlay strip, armrest, chrome latch & speaker ring)
@@ -1432,8 +1519,9 @@ export function createSideDoorGroup(
 
   // Wing mirror mounted onto front corner of front doors
   if (spec.hasMirror) {
+    const mirDx = ac ? evalDoorSkinDelta(spec.doorHeight * 0.46, spec.doorLen * 0.5 - 0.13) : 0;
     const mirror = createAerodynamicMirror(spec.side, mats, cityMode);
-    mirror.position.set(spec.side * (skinThick * 0.45), 0.025, -0.13);
+    mirror.position.set(spec.side * (skinThick * 0.45 + mirDx), 0.025, -0.13);
     pivot.add(mirror);
   }
 
@@ -1483,6 +1571,7 @@ export function createTrapezoidGlassGeo(
 
 export interface SculptedCabinOptions {
   roundedRoof?: boolean;
+  aeroTier?: 'hyper' | 'sport' | 'luxury' | 'standard' | 'offroad';
 }
 
 export function buildSculptedCabin(
@@ -1506,9 +1595,19 @@ export function buildSculptedCabin(
   const cabin = new THREE.Group();
   const hl = cabinLen / 2;
   const isRoundedRoof = Boolean(cabinOpts?.roundedRoof);
-  const effectiveTaper = Math.max(taper, isRoundedRoof ? 0.32 : 0.28);
+  const aeroTier = cabinOpts?.aeroTier ?? 'standard';
+  const isHyper = aeroTier === 'hyper';
+  const isSport = aeroTier === 'sport';
+  const isLuxury = aeroTier === 'luxury';
+  const isAeroCabin = isHyper || isSport || isLuxury;
+  const useCurvedRoof = isRoundedRoof || isAeroCabin;
+
+  const effectiveTaper = Math.max(
+    taper,
+    isHyper ? 0.44 : isSport ? 0.36 : isLuxury ? 0.32 : isRoundedRoof ? 0.32 : 0.28,
+  );
   const baseW = width * 0.89;
-  const topW = width * (1 - effectiveTaper * 0.42);
+  const topW = width * (1 - effectiveTaper * (isHyper ? 0.48 : isSport ? 0.45 : 0.42));
 
   const fBotZ = hl;
   const rBotZ = -hl;
@@ -1534,32 +1633,48 @@ export function buildSculptedCabin(
   cabin.add(interior);
 
   // 2. Double-Curved Beveled Roof Shell (ExtrudeGeometry longitudinal camber + lateral convex dome)
-  const longCamber = isRoundedRoof ? 0.068 : 0.036;
-  const latCamber = isRoundedRoof ? 0.056 : 0.032;
-  const roofBevel = isRoundedRoof ? 0.048 : 0.034;
+  const longCamber = isHyper
+    ? 0.066
+    : isSport
+      ? 0.058
+      : isLuxury
+        ? 0.052
+        : isRoundedRoof
+          ? 0.068
+          : 0.036;
+  const latCamber = isHyper
+    ? 0.054
+    : isSport
+      ? 0.048
+      : isLuxury
+        ? 0.042
+        : isRoundedRoof
+          ? 0.056
+          : 0.032;
+  const roofBevel = useCurvedRoof ? 0.048 : 0.034;
 
   const roofCurve = new THREE.Shape();
-  const rh = roofLen * 0.5 + (isRoundedRoof ? 0.055 : 0.04);
+  const rh = roofLen * 0.5 + (useCurvedRoof ? 0.055 : 0.04);
   roofCurve.moveTo(-rh, -0.010);
   roofCurve.bezierCurveTo(-rh * 0.55, longCamber, rh * 0.55, longCamber, rh, -0.010);
   roofCurve.lineTo(rh - 0.025, -0.042);
   roofCurve.quadraticCurveTo(0, longCamber * 0.12 - 0.008, -rh + 0.025, -0.042);
   roofCurve.closePath();
 
-  const roofSpanW = Math.max(0.2, topW - (isRoundedRoof ? 0.095 : 0.07));
+  const roofSpanW = Math.max(0.2, topW - (useCurvedRoof ? 0.095 : 0.07));
   const roofGeo = new THREE.ExtrudeGeometry(roofCurve, {
     depth: roofSpanW,
-    steps: cityMode ? (isRoundedRoof ? 5 : 2) : isRoundedRoof ? 14 : 8,
+    steps: cityMode ? (useCurvedRoof ? 5 : 2) : useCurvedRoof ? 14 : 8,
     bevelEnabled: true,
     bevelSize: roofBevel,
     bevelThickness: roofBevel,
-    bevelSegments: cityMode ? (isRoundedRoof ? 3 : 2) : isRoundedRoof ? 6 : 5,
-    curveSegments: cityMode ? (isRoundedRoof ? 12 : 8) : isRoundedRoof ? 26 : 20,
+    bevelSegments: cityMode ? (useCurvedRoof ? 3 : 2) : useCurvedRoof ? 6 : 5,
+    curveSegments: cityMode ? (useCurvedRoof ? 12 : 8) : useCurvedRoof ? 26 : 20,
   });
   roofGeo.translate(0, 0, -roofSpanW / 2);
   roofGeo.rotateY(-Math.PI / 2);
 
-  // Sculpt lateral convex roof dome + subtle front/rear shoulder roll-off across X & Z
+  // Sculpt lateral convex roof dome + subtle front/rear teardrop shoulder roll-off across X & Z
   const roofPos = roofGeo.attributes.position as THREE.BufferAttribute;
   const halfRoofW = Math.max(0.15, topW * 0.5);
   for (let i = 0; i < roofPos.count; i++) {
@@ -1569,9 +1684,9 @@ export function buildSculptedCabin(
     const nx = THREE.MathUtils.clamp(Math.abs(rx) / halfRoofW, 0, 1);
     const nz = THREE.MathUtils.clamp(Math.abs(rz) / Math.max(0.2, rh), 0, 1);
     const latDome = latCamber * Math.cos(nx * Math.PI * 0.5) * (1 - Math.pow(nz, 2.4) * 0.35);
-    if (isRoundedRoof) {
-      // Gentle planform crown taper toward windshield & tailgate headers
-      rx *= 1 - Math.pow(nz, 2.2) * 0.045;
+    if (useCurvedRoof) {
+      const endSweep = isHyper ? 0.072 : isSport ? 0.056 : 0.045;
+      rx *= 1 - Math.pow(nz, 2.1) * endSweep;
     }
     roofPos.setXYZ(i, rx, ry + latDome, rz);
   }
@@ -1579,7 +1694,7 @@ export function buildSculptedCabin(
   roofGeo.computeVertexNormals();
 
   const roofMesh = new THREE.Mesh(roofGeo, mats.body);
-  roofMesh.position.set(0, cabinHeight - (isRoundedRoof ? 0.022 : 0.012), roofCenterZ);
+  roofMesh.position.set(0, cabinHeight - (useCurvedRoof ? 0.022 : 0.012), roofCenterZ);
   cabin.add(roofMesh);
 
   if (panoramic) {
@@ -1590,13 +1705,13 @@ export function buildSculptedCabin(
       }),
       mats.grille,
     );
-    panBezel.position.set(0, cabinHeight + (isRoundedRoof ? 0.024 : 0.008), roofCenterZ);
+    panBezel.position.set(0, cabinHeight + (useCurvedRoof ? 0.024 : 0.008), roofCenterZ);
     const panGeo = createSculptedPanelGeo(topW * 0.72, 0.034, roofLen * 0.68, 8, 2, 8, 0.014, (p, idx, hx) => {
       const nx = THREE.MathUtils.clamp(Math.abs(p.getX(idx)) / Math.max(0.1, hx), 0, 1);
       p.setY(idx, p.getY(idx) + (latCamber * 0.8) * Math.cos(nx * Math.PI * 0.5));
     });
     const pan = new THREE.Mesh(panGeo, mats.glass);
-    pan.position.set(0, cabinHeight + (isRoundedRoof ? 0.027 : 0.011), roofCenterZ);
+    pan.position.set(0, cabinHeight + (useCurvedRoof ? 0.027 : 0.011), roofCenterZ);
     pan.userData.noShadow = true;
     pan.renderOrder = 2;
     cabin.add(panBezel, pan);
@@ -1612,7 +1727,7 @@ export function buildSculptedCabin(
 
   [-1, 1].forEach((side) => {
     const botX = side * (baseW * 0.482);
-    const topX = side * (topW * (isRoundedRoof ? 0.455 : 0.468));
+    const topX = side * (topW * (useCurvedRoof ? 0.455 : 0.468));
     const pillarOut = new THREE.Vector3(side * 0.55, 0.25, 0.45);
     const rearOut = new THREE.Vector3(side * 0.55, 0.25, -0.45);
     const sideOut = new THREE.Vector3(side, 0.15, 0);
@@ -1622,21 +1737,21 @@ export function buildSculptedCabin(
       makeBeamBetween(
         new THREE.Vector3(botX, -0.015, fBotZ - 0.015),
         new THREE.Vector3(topX, cabinHeight - 0.016, fTopZ + 0.012),
-        0.056,
-        0.052,
+        isAeroCabin ? 0.048 : 0.056,
+        isAeroCabin ? 0.046 : 0.052,
         mats.body,
         pillarOut,
         0.016,
       ),
     );
 
-    // Flush C-pillar
+    // Flush C-pillar (swept fastback profile on aero cars)
     cabin.add(
       makeBeamBetween(
         new THREE.Vector3(botX, -0.015, rBotZ + 0.015),
         new THREE.Vector3(topX, cabinHeight - 0.016, rTopZ - 0.012),
-        isRoundedRoof ? 0.088 : 0.072,
-        0.058,
+        isRoundedRoof ? 0.088 : isAeroCabin ? 0.078 : 0.072,
+        isAeroCabin ? 0.052 : 0.058,
         mats.body,
         rearOut,
         0.018,
@@ -1660,7 +1775,7 @@ export function buildSculptedCabin(
     }
 
     // Side roof cantrail bridging A-pillar to C-pillar flush with curved roof edge
-    if (isRoundedRoof) {
+    if (useCurvedRoof) {
       const cantShape = new THREE.Shape();
       const cF = fTopZ + 0.018;
       const cR = rTopZ - 0.018;
@@ -1730,7 +1845,8 @@ export function buildSculptedCabin(
   });
 
   // 4. Tapered Trapezoidal Front Windshield + Flush Black Perimeter Gasket + Wipers + Rear Window
-  const wsGeo = createTrapezoidGlassGeo(baseW * 0.92, topW * 0.90, wsLen * 0.98, 0.018);
+  const glassBow = isHyper ? 0.046 : isAeroCabin ? 0.036 : 0.026;
+  const wsGeo = createTrapezoidGlassGeo(baseW * 0.92, topW * 0.90, wsLen * 0.98, 0.018, glassBow);
   const ws = new THREE.Mesh(wsGeo, mats.glass);
   ws.position.set(0, cabinHeight * 0.495, (fBotZ + fTopZ) * 0.5 - 0.008);
   ws.rotation.x = -wsAngle;
@@ -1834,7 +1950,7 @@ export function buildSculptedCabin(
   tagPart(wiperGroup, 'Limpadores de Para-brisa', 0, 0.08, 0.18);
   cabin.add(wiperGroup);
 
-  const rwGeo = createTrapezoidGlassGeo(baseW * 0.91, topW * 0.89, rwLen * 0.96, 0.018);
+  const rwGeo = createTrapezoidGlassGeo(baseW * 0.91, topW * 0.89, rwLen * 0.96, 0.018, glassBow);
   const rw = new THREE.Mesh(rwGeo, mats.glass);
   rw.position.set(0, cabinHeight * 0.495, (rBotZ + rTopZ) * 0.5 + 0.008);
   rw.rotation.x = rwAngle;
@@ -1892,6 +2008,7 @@ export function buildHeavyCabinInterior(opts: HeavyCabinInteriorOptions): THREE.
   } = opts;
 
   const grp = new THREE.Group();
+  grp.userData.xrayRole = 'interior';
   const w = Math.max(1.2, cabWidth);
   const d = Math.max(0.95, cabDepth);
   const h = Math.max(1.05, cabHeight);

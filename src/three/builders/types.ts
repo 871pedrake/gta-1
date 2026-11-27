@@ -1,7 +1,25 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MechPartId } from '../../data/mechanicalSpecs';
 import { PaintLivery, WheelStyle } from '../../types/vehicle';
 import { VehicleMaterialSet } from '../materials';
+
+export type XrayRole = 'exterior' | 'mechanical' | 'interior' | 'wheel' | 'liner';
+
+export interface SteeringTieRodAnim {
+  rod: THREE.Object3D;
+  innerAnchor: THREE.Vector3;
+  pivotCenter: THREE.Vector3;
+  outerLocal: THREE.Vector3;
+  baseLen: number;
+}
+
+export interface SteeringLinkageAnim {
+  rackBar?: THREE.Object3D;
+  rackBasePos?: THREE.Vector3;
+  rackTravelScale: number;
+  rods: SteeringTieRodAnim[];
+}
 
 export interface OpenablePart {
   pivot: THREE.Object3D;
@@ -26,6 +44,7 @@ export interface BuiltVehicle {
     pedals: THREE.Object3D[];
     steeringPivots: THREE.Object3D[];
     steeringWheels: THREE.Object3D[];
+    steeringLinkages: SteeringLinkageAnim[];
     headlightBeams: THREE.Object3D[];
     mixerDrum: THREE.Object3D | null;
     sweeperBrushes: THREE.Object3D[];
@@ -63,6 +82,20 @@ export function tagPart(
   obj.userData.partLabel = label;
   obj.userData.basePos = obj.position.clone();
   obj.userData.explodeOffset = new THREE.Vector3(explodeX, explodeY, explodeZ);
+  return obj;
+}
+
+export function tagMechPart(
+  obj: THREE.Object3D,
+  mechPartId: MechPartId,
+  label: string,
+  explodeX = 0,
+  explodeY = 0,
+  explodeZ = 0,
+): THREE.Object3D {
+  tagPart(obj, label, explodeX, explodeY, explodeZ);
+  obj.userData.mechPartId = mechPartId;
+  obj.userData.xrayRole = 'mechanical';
   return obj;
 }
 
@@ -186,6 +219,30 @@ export function createSculptedPanelGeo(
     }
   }
 
+  // Assign projected UV coordinates matching the dominant face plane so textures & mesh merging work cleanly
+  const uvs = new Float32Array(pos.count * 2);
+  const invW = 1 / Math.max(0.01, hx * 2);
+  const invH = 1 / Math.max(0.01, hy * 2);
+  const invD = 1 / Math.max(0.01, hz * 2);
+  const flatZ = hz <= hx && hz <= hy;
+  const flatX = hx < hz && hx <= hy;
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i);
+    const py = pos.getY(i);
+    const pz = pos.getZ(i);
+    if (flatZ) {
+      uvs[i * 2] = (px + hx) * invW;
+      uvs[i * 2 + 1] = (py + hy) * invH;
+    } else if (flatX) {
+      uvs[i * 2] = (pz + hz) * invD;
+      uvs[i * 2 + 1] = (py + hy) * invH;
+    } else {
+      uvs[i * 2] = (px + hx) * invW;
+      uvs[i * 2 + 1] = (pz + hz) * invD;
+    }
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
   pos.needsUpdate = true;
   geo.computeVertexNormals();
   return geo;
@@ -204,6 +261,76 @@ export interface SideSculptOptions {
   creaseBoost?: number;
   noseTailTaper?: number;
   crownDomeY?: number;
+  waistPinch?: number;
+  rearHaunchFlare?: number;
+  frontHaunchFlare?: number;
+  nosePlanTaper?: number;
+  tailPlanTaper?: number;
+}
+
+export function evalAeroSideOffset(
+  tY: number,
+  z: number,
+  zMin: number,
+  zMax: number,
+  opts: Pick<
+    SideSculptOptions,
+    | 'bellyBulge'
+    | 'tumblehomeInset'
+    | 'rockerTuck'
+    | 'creaseBoost'
+    | 'noseTailTaper'
+    | 'waistPinch'
+    | 'rearHaunchFlare'
+    | 'frontHaunchFlare'
+    | 'nosePlanTaper'
+    | 'tailPlanTaper'
+  >,
+): number {
+  const zMid = (zMin + zMax) * 0.5;
+  const zHalf = Math.max(0.1, (zMax - zMin) * 0.5);
+  const tZ = THREE.MathUtils.clamp((z - zMid) / zHalf, -1, 1);
+
+  const bulge = opts.bellyBulge ?? 0.024;
+  const tumble = opts.tumblehomeInset ?? 0.026;
+  const rockerTuck = opts.rockerTuck ?? 0.022;
+  const crease = opts.creaseBoost ?? 0.010;
+  const endTaper = opts.noseTailTaper ?? 0.065;
+  const waistPinch = opts.waistPinch ?? 0;
+  const rearHaunch = opts.rearHaunchFlare ?? 0;
+  const frontHaunch = opts.frontHaunchFlare ?? 0;
+  const noseTaper = opts.nosePlanTaper ?? 0;
+  const tailTaper = opts.tailPlanTaper ?? 0;
+
+  const belly = Math.sin(tY * Math.PI) * bulge;
+  const lowerTuck = -Math.pow(1 - tY, 2.2) * rockerTuck;
+  const upperLean = -Math.pow(Math.max(0, (tY - 0.48) / 0.52), 1.35) * tumble;
+  const shoulderCrease = crease * Math.exp(-Math.pow((tY - 0.78) / 0.11, 2));
+
+  const overT = Math.max(0, (Math.abs(tZ) - 0.62) / 0.38);
+  const cornerSweep = -Math.pow(Math.abs(tZ), 2.4) * endTaper;
+  const noseExtra = tZ > 0.62 ? -Math.pow(overT, 1.55) * noseTaper : 0;
+  const tailExtra = tZ < -0.62 ? -Math.pow(overT, 1.55) * tailTaper : 0;
+
+  const midBand = 0.25 + 0.75 * Math.sin(tY * Math.PI);
+  const waist = -waistPinch * midBand * Math.exp(-Math.pow((tZ - 0.04) / 0.34, 2));
+  const shoulderLift =
+    Math.pow(Math.max(0, tY), 0.75) * (1 - 0.35 * Math.pow(Math.max(0, (tY - 0.85) / 0.15), 2));
+  const rFlare = rearHaunch * shoulderLift * Math.exp(-Math.pow((tZ + 0.54) / 0.24, 2));
+  const fFlare = frontHaunch * shoulderLift * Math.exp(-Math.pow((tZ - 0.58) / 0.22, 2));
+
+  return (
+    belly +
+    lowerTuck +
+    upperLean +
+    shoulderCrease +
+    cornerSweep +
+    noseExtra +
+    tailExtra +
+    waist +
+    rFlare +
+    fFlare
+  );
 }
 
 export function sculptSideVolumeVertices(
@@ -212,13 +339,6 @@ export function sculptSideVolumeVertices(
 ): THREE.BufferGeometry {
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const ySpan = Math.max(0.05, opts.yMax - opts.yMin);
-  const zMid = (opts.zMin + opts.zMax) * 0.5;
-  const zHalf = Math.max(0.1, (opts.zMax - opts.zMin) * 0.5);
-  const bulge = opts.bellyBulge ?? 0.024;
-  const tumble = opts.tumblehomeInset ?? 0.026;
-  const rockerTuck = opts.rockerTuck ?? 0.022;
-  const crease = opts.creaseBoost ?? 0.010;
-  const endTaper = opts.noseTailTaper ?? 0.065;
   const crown = opts.crownDomeY ?? 0;
 
   for (let i = 0; i < pos.count; i++) {
@@ -227,7 +347,6 @@ export function sculptSideVolumeVertices(
     const z = pos.getZ(i);
 
     const tY = THREE.MathUtils.clamp((y - opts.yMin) / ySpan, 0, 1);
-    const tZ = THREE.MathUtils.clamp((z - zMid) / zHalf, -1, 1);
 
     // Determine whether this vertex sits on the outer sculpted skin
     const dirSign = opts.sideSign
@@ -239,13 +358,7 @@ export function sculptSideVolumeVertices(
         : 0;
 
     if (dirSign !== 0) {
-      // Smooth convex door/fender barrel belly + lower rocker tuck + upper beltline character crease + tumblehome lean
-      const belly = Math.sin(tY * Math.PI) * bulge;
-      const lowerTuck = -Math.pow(1 - tY, 2.2) * rockerTuck;
-      const upperLean = -Math.pow(Math.max(0, (tY - 0.52) / 0.48), 1.35) * tumble;
-      const shoulderCrease = crease * Math.exp(-Math.pow((tY - 0.80) / 0.10, 2));
-      const cornerSweep = -Math.pow(Math.abs(tZ), 2.4) * endTaper;
-      x += dirSign * (belly + lowerTuck + upperLean + shoulderCrease + cornerSweep);
+      x += dirSign * evalAeroSideOffset(tY, z, opts.zMin, opts.zMax, opts);
     }
 
     if (crown > 0 && tY > 0.72 && opts.halfWidthAtMid) {
@@ -485,6 +598,7 @@ export function createEngineBayAssembly(
   isElectric = false,
 ): THREE.Group {
   const engine = new THREE.Group();
+  engine.userData.xrayRole = 'mechanical';
   const tub = new THREE.Mesh(new THREE.BoxGeometry(bayW * 0.94, 0.05, bayL * 0.92), mats.grille);
   tub.position.y = -0.14;
   engine.add(tub);

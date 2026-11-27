@@ -23,6 +23,7 @@ import {
   createSideDoorGroup,
   createTrapezoidGlassGeo,
 } from './wheelsAndInterior';
+import { addDetailedMechanicalChassis } from './mechanicalChassis';
 
 // =========================================================================
 // SHARED HEAVY VEHICLE HELPERS (MIRRORS, DRIVETRAIN, FENDERS, FASCIAS)
@@ -104,36 +105,15 @@ function addChassisDrivetrain(
   cityMode: boolean,
 ) {
   if (cityMode) return;
-  const span = Math.max(0.8, frontAxleZ - rearAxleZ);
   const midZ = (frontAxleZ + rearAxleZ) * 0.5;
 
-  // Center driveshaft + universal joints
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, span * 0.86, 10), mats.alloy);
-  shaft.rotation.x = Math.PI / 2;
-  shaft.position.set(0, frameY - 0.12, midZ);
-  group.add(shaft);
-
-  // Rear differential pumpkin + axle tube
-  const diff = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), mats.trim);
-  diff.position.set(0, frameY - 0.14, rearAxleZ);
-  const axleTube = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.072, 0.072, width * 0.84, 12),
-    mats.trim,
-  );
-  axleTube.rotation.z = Math.PI / 2;
-  axleTube.position.set(0, frameY - 0.14, rearAxleZ);
-  group.add(diff, axleTube);
-
-  // Twin pneumatic air brake tanks + battery box
+  // Twin pneumatic air brake tanks (mechanical suspension/drivetrain built by addDetailedMechanicalChassis)
   [-1, 1].forEach((side) => {
     const airTank = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.56, 12), mats.trim);
     airTank.rotation.x = Math.PI / 2;
     airTank.position.set(side * (width * 0.24), frameY - 0.12, midZ + 0.18);
+    tagPart(airTank, 'Reservatório Pneumático de Freio', side * 0.25, -0.15, 0);
     group.add(airTank);
-
-    const leafPack = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.10, 0.96), mats.trim);
-    leafPack.position.set(side * (width * 0.28), frameY - 0.08, rearAxleZ);
-    group.add(leafPack);
   });
 }
 
@@ -447,7 +427,11 @@ function buildTransitBusModule(
   const beltY = groundClearance + totalBodyH * 0.42;
   const roofY = height - 0.14;
   const windowH = Math.max(0.55, roofY - beltY);
-  const archR = wheelRadius * 1.15;
+  const archR = wheelRadius * 1.18;
+  const archCenterY = Math.max(
+    groundClearance + 0.04,
+    wheelRadius + Math.max(0, groundClearance - 0.22) * 0.25,
+  );
 
   const floorTopY = groundClearance + 0.25;
 
@@ -460,7 +444,7 @@ function buildTransitBusModule(
     const wStart = Math.max(cursor + 0.04, wz - archR);
     const wEnd = Math.min(hl - 0.12, wz + archR);
     lowerShape.lineTo(wStart, groundClearance);
-    lowerShape.absarc(wz, groundClearance + archR * 0.14, archR, Math.PI, 0, true);
+    lowerShape.absarc(wz, archCenterY, archR, Math.PI, 0, true);
     lowerShape.lineTo(wEnd, groundClearance);
     cursor = wEnd;
   }
@@ -517,7 +501,7 @@ function buildTransitBusModule(
   const skirtBotY = groundClearance + 0.05;
   const skirtTopY = beltY + 0.015;
   const archCutR = archR * 1.02;
-  const archDy = THREE.MathUtils.clamp(wheelRadius - skirtBotY, 0, archCutR * 0.92);
+  const archDy = THREE.MathUtils.clamp(archCenterY - skirtBotY, 0, archCutR * 0.92);
   const archHalfSpan = Math.sqrt(Math.max(0.01, archCutR * archCutR - archDy * archDy));
   const archAngStart = Math.PI + Math.asin(archDy / archCutR);
   const archAngEnd = -Math.asin(archDy / archCutR);
@@ -531,7 +515,7 @@ function buildTransitBusModule(
       const a1 = wz + archHalfSpan;
       if (a0 < zStart && a1 > zStart + 0.02) {
         const dz0 = THREE.MathUtils.clamp(zStart - wz, -archCutR * 0.96, archCutR * 0.96);
-        const startY = Math.max(skirtBotY, wheelRadius + Math.sqrt(Math.max(0.01, archCutR * archCutR - dz0 * dz0)));
+        const startY = Math.max(skirtBotY, archCenterY + Math.sqrt(Math.max(0.01, archCutR * archCutR - dz0 * dz0)));
         s.moveTo(zStart, startY);
         startedOnLeftArch = true;
         break;
@@ -555,15 +539,15 @@ function buildTransitBusModule(
       const clampZ1 = Math.min(zEnd, a1);
       const y0 = startOnSegment
         ? skirtBotY
-        : wheelRadius + Math.sqrt(Math.max(0.01, archCutR * archCutR - Math.pow(clampZ0 - wz, 2)));
+        : archCenterY + Math.sqrt(Math.max(0.01, archCutR * archCutR - Math.pow(clampZ0 - wz, 2)));
       const y1 =
         a1 <= zEnd
           ? skirtBotY
-          : wheelRadius + Math.sqrt(Math.max(0.01, archCutR * archCutR - Math.pow(clampZ1 - wz, 2)));
+          : archCenterY + Math.sqrt(Math.max(0.01, archCutR * archCutR - Math.pow(clampZ1 - wz, 2)));
 
-      const aStart = startOnSegment ? archAngStart : Math.atan2(y0 - wheelRadius, clampZ0 - wz);
-      const aEnd = a1 <= zEnd ? archAngEnd : Math.atan2(y1 - wheelRadius, clampZ1 - wz);
-      s.absarc(wz, wheelRadius, archCutR, aStart, aEnd, true);
+      const aStart = startOnSegment ? archAngStart : Math.atan2(y0 - archCenterY, clampZ0 - wz);
+      const aEnd = a1 <= zEnd ? archAngEnd : Math.atan2(y1 - archCenterY, clampZ1 - wz);
+      s.absarc(wz, archCenterY, archCutR, aStart, aEnd, true);
 
       if (a1 <= zEnd) {
         s.lineTo(a1, skirtBotY);
@@ -612,7 +596,7 @@ function buildTransitBusModule(
   sortedWheels.forEach((wz) => {
     [-1, 1].forEach((side) => {
       const liner = new THREE.Mesh(archLinerGeo, mats.grille);
-      liner.position.set(side * (width * 0.402), wheelRadius, wz);
+      liner.position.set(side * (width * 0.402), archCenterY, wz);
       mod.add(liner);
     });
   });
@@ -642,7 +626,7 @@ function buildTransitBusModule(
         mats.trim,
       );
       archFlare.rotation.y = Math.PI / 2;
-      archFlare.position.set(side * (width * 0.496), wheelRadius, wz);
+      archFlare.position.set(side * (width * 0.496), archCenterY, wz);
       mod.add(archFlare);
     });
   });
@@ -1839,6 +1823,7 @@ function buildSchoolBusVehicle(
     group.add(fArch);
   });
 
+  const schoolSteerPivots: { left?: THREE.Group; right?: THREE.Group } = {};
   [
     { z: frontWheelZ, dual: false },
     { z: rearWheelZ, dual: true },
@@ -1852,6 +1837,8 @@ function buildSchoolBusVehicle(
         tagPart(steerPivot, `Roda Eixo ${idx + 1}`, side * 0.45, -0.1, 0);
         group.add(steerPivot);
         animated.steeringPivots.push(steerPivot);
+        if (side < 0) schoolSteerPivots.left = steerPivot;
+        else schoolSteerPivots.right = steerPivot;
       } else {
         w.position.set(side * (width * 0.46), g.wheelRadius, ax.z);
         tagPart(w, `Roda Eixo ${idx + 1}`, side * 0.45, -0.1, 0);
@@ -1861,6 +1848,22 @@ function buildSchoolBusVehicle(
     });
   });
 
+  addDetailedMechanicalChassis({
+    group,
+    v,
+    mats,
+    animated,
+    frontWheelZ,
+    rearWheelZ,
+    wheelX: width * 0.46,
+    wheelY: g.wheelRadius,
+    wheelRadius: g.wheelRadius,
+    wheelWidth: g.wheelWidth,
+    maxTopY: Math.max(g.groundClearance + 0.24 + g.wheelRadius * 0.72, g.wheelRadius * 1.92),
+    frontSteerPivots: schoolSteerPivots,
+    layout: 'heavy',
+    cityMode,
+  });
   addChassisDrivetrain(group, width, g.groundClearance + 0.18, frontWheelZ, rearWheelZ, mats, cityMode);
   addHeavyBumperAndLights(group, width, g.groundClearance, hoodFrontZ, -halfL + 0.04, mats, false, true, false, undefined, animated, cityMode, true);
   addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'single');
@@ -1973,6 +1976,7 @@ export function buildBusOrArticulatedBus(
     tagPart(bellowsGroup, 'Sanfona Articulada e Mesa Giratória', 0, 0.35, 0);
     group.add(bellowsGroup);
 
+    const brtSteerPivots: { left?: THREE.Group; right?: THREE.Group } = {};
     axleZs.forEach((az, idx) => {
       [-1, 1].forEach((side) => {
         const w = createCraftedWheel(g.wheelRadius, g.wheelWidth, wheelStyle, mats, side > 0, idx > 0, cityMode);
@@ -1983,6 +1987,8 @@ export function buildBusOrArticulatedBus(
           tagPart(steerPivot, `Eixo ${idx + 1} BRT`, side * 0.45, -0.1, 0);
           group.add(steerPivot);
           animated.steeringPivots.push(steerPivot);
+          if (side < 0) brtSteerPivots.left = steerPivot;
+          else brtSteerPivots.right = steerPivot;
         } else {
           w.position.set(side * (width * 0.46), g.wheelRadius, az);
           tagPart(w, `Eixo ${idx + 1} BRT`, side * 0.45, -0.1, 0);
@@ -1992,6 +1998,23 @@ export function buildBusOrArticulatedBus(
       });
     });
 
+    addDetailedMechanicalChassis({
+      group,
+      v,
+      mats,
+      animated,
+      frontWheelZ: axleZs[0],
+      rearWheelZ: axleZs[1],
+      extraRearAxleZs: [axleZs[2]],
+      wheelX: width * 0.46,
+      wheelY: g.wheelRadius,
+      wheelRadius: g.wheelRadius,
+      wheelWidth: g.wheelWidth,
+      maxTopY: Math.max(g.groundClearance + 0.24 + g.wheelRadius * 0.72, g.wheelRadius * 1.92),
+      frontSteerPivots: brtSteerPivots,
+      layout: 'heavy',
+      cityMode,
+    });
     addChassisDrivetrain(group, width, g.groundClearance + 0.18, axleZs[0], axleZs[2], mats, cityMode);
     addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.04, -halfL + 0.04, mats, false, false, false, undefined, animated, cityMode, true);
     addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'dual');
@@ -2023,6 +2046,7 @@ export function buildBusOrArticulatedBus(
   );
   group.add(busMod);
 
+  const busSteerPivots: { left?: THREE.Group; right?: THREE.Group } = {};
   [
     { z: frontWheelZ, dual: false },
     { z: rearWheelZ, dual: true },
@@ -2036,6 +2060,8 @@ export function buildBusOrArticulatedBus(
         tagPart(steerPivot, `Eixo ${idx + 1}`, side * 0.45, -0.1, 0);
         group.add(steerPivot);
         animated.steeringPivots.push(steerPivot);
+        if (side < 0) busSteerPivots.left = steerPivot;
+        else busSteerPivots.right = steerPivot;
       } else {
         w.position.set(side * (width * 0.46), g.wheelRadius, ax.z);
         tagPart(w, `Eixo ${idx + 1}`, side * 0.45, -0.1, 0);
@@ -2045,6 +2071,22 @@ export function buildBusOrArticulatedBus(
     });
   });
 
+  addDetailedMechanicalChassis({
+    group,
+    v,
+    mats,
+    animated,
+    frontWheelZ,
+    rearWheelZ,
+    wheelX: width * 0.46,
+    wheelY: g.wheelRadius,
+    wheelRadius: g.wheelRadius,
+    wheelWidth: g.wheelWidth,
+    maxTopY: Math.max(g.groundClearance + 0.24 + g.wheelRadius * 0.72, g.wheelRadius * 1.92),
+    frontSteerPivots: busSteerPivots,
+    layout: 'heavy',
+    cityMode,
+  });
   addChassisDrivetrain(group, width, g.groundClearance + 0.18, frontWheelZ, rearWheelZ, mats, cityMode);
   addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.04, -halfL + 0.04, mats, false, false, false, undefined, animated, cityMode, true);
   addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'single');
@@ -2832,6 +2874,7 @@ export function buildHeavyTruckVehicle(
     : [rearZ - rearLen * 0.08, rearZ - rearLen * 0.34];
   const axles = [{ z: frontAxleZ, dual: false }, ...rearAxleZs.map((z) => ({ z, dual: true }))];
 
+  const truckSteerPivots: { left?: THREE.Group; right?: THREE.Group } = {};
   axles.forEach((ax, idx) => {
     [-1, 1].forEach((side) => {
       const w = createCraftedWheel(g.wheelRadius, g.wheelWidth, wheelStyle, mats, side > 0, ax.dual, cityMode);
@@ -2842,6 +2885,8 @@ export function buildHeavyTruckVehicle(
         tagPart(steerPivot, `Conjunto Roda Eixo ${idx + 1}`, side * 0.45, -0.1, 0);
         group.add(steerPivot);
         animated.steeringPivots.push(steerPivot);
+        if (side < 0) truckSteerPivots.left = steerPivot;
+        else truckSteerPivots.right = steerPivot;
       } else {
         w.position.set(side * (width * 0.46), g.wheelRadius, ax.z);
         tagPart(w, `Conjunto Roda Eixo ${idx + 1}`, side * 0.45, -0.1, 0);
@@ -2851,6 +2896,23 @@ export function buildHeavyTruckVehicle(
     });
   });
 
+  addDetailedMechanicalChassis({
+    group,
+    v,
+    mats,
+    animated,
+    frontWheelZ: frontAxleZ,
+    rearWheelZ: rearAxleZs[0],
+    extraRearAxleZs: rearAxleZs.slice(1),
+    wheelX: width * 0.46,
+    wheelY: g.wheelRadius,
+    wheelRadius: g.wheelRadius,
+    wheelWidth: g.wheelWidth,
+    maxTopY: Math.max(frameY + 0.26, g.wheelRadius * 1.92),
+    frontSteerPivots: truckSteerPivots,
+    layout: 'heavy',
+    cityMode,
+  });
   addChassisDrivetrain(group, width, frameY, frontAxleZ, rearAxleZs[0], mats, cityMode);
   addDualRearFendersAndMudflaps(group, width, g.wheelRadius, rearAxleZs, mats, cityMode);
   // Front face of cab sits at cabZ + noseLocalEnd + noseFrontBevel = halfL - 0.08 - 0.015 = halfL - 0.095 -> place fascia clearly proud!
@@ -2903,7 +2965,12 @@ export function buildVanOrArmoredVehicle(
   const isFoodTruck = g.attachments.includes('food_awning');
   const useChrome = v.palette.trim === 'chrome';
 
-  const archR = g.wheelRadius * 1.15;
+  const archScale = isArmored ? 1.22 : 1.18;
+  const archR = g.wheelRadius * archScale;
+  const archCenterY = Math.max(
+    g.groundClearance + 0.05,
+    g.wheelRadius + Math.max(0, g.groundClearance - 0.16) * 0.38,
+  );
   const hoodH = (height - g.groundClearance) * (isSweeper ? 0.30 : isArmored ? 0.52 : 0.40);
   const beltY = g.groundClearance + hoodH;
   const hoodZ = halfL - (isSweeper ? 0.26 : isArmored ? 0.95 : 0.52);
@@ -2926,7 +2993,7 @@ export function buildVanOrArmoredVehicle(
   const fEnd = Math.min(noseFrontPt - 0.10, frontWheelZ + archR);
   if (fEnd > fStart + 0.1) {
     cabLowerShape.lineTo(fStart, g.groundClearance);
-    cabLowerShape.absarc(frontWheelZ, g.groundClearance + archR * 0.15, archR, Math.PI, 0, true);
+    cabLowerShape.absarc(frontWheelZ, archCenterY, archR, Math.PI, 0, true);
     cabLowerShape.lineTo(fEnd, g.groundClearance);
   }
   cabLowerShape.lineTo(noseFrontPt - 0.03, g.groundClearance + 0.06);
@@ -2974,7 +3041,7 @@ export function buildVanOrArmoredVehicle(
   fFenderShape.moveTo(hoodZ - 0.04, g.groundClearance + 0.10);
   fFenderShape.lineTo(fFenderStart, g.groundClearance);
   if (fEnd > fFenderStart + 0.1) {
-    fFenderShape.absarc(frontWheelZ, g.groundClearance + archR * 0.15, archR, Math.PI, 0, true);
+    fFenderShape.absarc(frontWheelZ, archCenterY, archR, Math.PI, 0, true);
     fFenderShape.lineTo(fEnd, g.groundClearance);
   }
   fFenderShape.lineTo(noseFrontPt - 0.03, g.groundClearance + 0.06);
@@ -3002,7 +3069,7 @@ export function buildVanOrArmoredVehicle(
         mats.trim,
       );
       flare.rotation.y = Math.PI / 2;
-      flare.position.set(side * (width * 0.494), g.groundClearance + archR * 0.15, wz);
+      flare.position.set(side * (width * 0.494), archCenterY, wz);
       group.add(flare);
     });
 
@@ -3599,6 +3666,7 @@ export function buildVanOrArmoredVehicle(
     });
   }
 
+  const vanSteerPivots: { left?: THREE.Group; right?: THREE.Group } = {};
   [frontWheelZ, rearWheelZ].forEach((wz, idx) => {
     [-1, 1].forEach((side) => {
       const w = createCraftedWheel(g.wheelRadius, g.wheelWidth, wheelStyle, mats, side > 0, false, cityMode);
@@ -3609,6 +3677,8 @@ export function buildVanOrArmoredVehicle(
         tagPart(steerPivot, 'Roda Dianteira', side * 0.45, -0.05, 0);
         group.add(steerPivot);
         animated.steeringPivots.push(steerPivot);
+        if (side < 0) vanSteerPivots.left = steerPivot;
+        else vanSteerPivots.right = steerPivot;
       } else {
         w.position.set(side * (width * 0.46), g.wheelRadius, wz);
         tagPart(w, 'Roda Traseira', side * 0.45, -0.05, 0);
@@ -3627,8 +3697,35 @@ export function buildVanOrArmoredVehicle(
     group.add(skirt);
   });
 
+  addDetailedMechanicalChassis({
+    group,
+    v,
+    mats,
+    animated,
+    frontWheelZ,
+    rearWheelZ,
+    wheelX: width * 0.46,
+    wheelY: g.wheelRadius,
+    wheelRadius: g.wheelRadius,
+    wheelWidth: g.wheelWidth,
+    maxTopY: Math.max(g.groundClearance + g.wheelRadius * 0.95, g.wheelRadius * 1.95),
+    frontSteerPivots: vanSteerPivots,
+    layout: 'heavy',
+    cityMode,
+  });
   addChassisDrivetrain(group, width, g.groundClearance + 0.12, frontWheelZ, rearWheelZ, mats, cityMode);
-  buildWheelWellLiners(group, g.wheelRadius, g.wheelWidth, width, frontWheelZ, rearWheelZ, mats, cityMode);
+  buildWheelWellLiners(
+    group,
+    g.wheelRadius,
+    g.wheelWidth,
+    width,
+    frontWheelZ,
+    rearWheelZ,
+    mats,
+    cityMode,
+    archCenterY,
+    archScale,
+  );
   // Front face of cab sits cleanly at halfL - 0.015; frontZ = halfL - 0.01 places grille & headlights 100% PROUD and visible!
   addHeavyBumperAndLights(group, width, g.groundClearance, halfL - 0.01, -halfL + 0.04, mats, useChrome, false, isArmored, g.groundClearance + hoodH * 0.44, animated, cityMode, true);
   addBusAndTruckExhaust(group, width, -halfL, g.groundClearance, mats, 'single');

@@ -11,8 +11,10 @@ import {
   Layers,
   Lightbulb,
   RotateCw,
+  Scan,
   Search,
   SlidersHorizontal,
+  Wrench,
   X,
 } from 'lucide-react';
 import {
@@ -25,6 +27,13 @@ import {
 import { VehicleStudioController } from '../three/studioScene';
 import { VEHICLE_CATEGORIES } from '../data/vehicles50';
 import { VEHICLE_TIER_CLASSES } from '../data/vehicleClassifications';
+import {
+  getSuspensionProfileLabel,
+  getVehicleMechanicalSpecs,
+  isMechanicalSupportedVehicle,
+  MechComponentSpec,
+  MechPartId,
+} from '../data/mechanicalSpecs';
 
 interface StudioViewportProps {
   vehicles: VehicleConcept[];
@@ -114,6 +123,8 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
   const [animateSystems, setAnimateSystems] = useState(true);
   const [lightsOn, setLightsOn] = useState(true);
   const [wireframe, setWireframe] = useState(false);
+  const [xrayMode, setXrayMode] = useState(false);
+  const [selectedMechPart, setSelectedMechPart] = useState<MechPartId | null>(null);
   const [paintHex, setPaintHex] = useState(selectedVehicle.palette.primary);
   const [paintFinish, setPaintFinish] = useState<PaintFinish>(selectedVehicle.palette.finish);
   const [paintLivery, setPaintLivery] = useState<PaintLivery>(selectedVehicle.palette.livery ?? 'solid');
@@ -131,6 +142,12 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
 
     const studio = new VehicleStudioController(el, {
       onHoverPart: (label) => setHoveredPart((prev) => (prev === label ? prev : label)),
+      onSelectMechPart: (partId) => {
+        setSelectedMechPart((prev) => (partId === null ? null : prev === partId ? null : partId));
+        if (partId) {
+          setSpecsOpen(true);
+        }
+      },
       onPartsCount: (count) => setPartsCount((prev) => (prev === count ? prev : count)),
       onOpenablesCount: (count) => setOpenablesCount((prev) => (prev === count ? prev : count)),
       onAutoRotateChange: (enabled) => setAutoRotate(enabled),
@@ -158,10 +175,19 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
     setActivePreset('hero');
     setExplode(0);
     setDoorsOpen(false);
+    setSelectedMechPart(null);
     studioRef.current?.setExplode(0);
     studioRef.current?.setDoorsOpen(false);
     studioRef.current?.setVehicle(selectedVehicle, false);
   }, [selectedVehicle]);
+
+  useEffect(() => {
+    studioRef.current?.setXrayMode(xrayMode);
+  }, [xrayMode]);
+
+  useEffect(() => {
+    studioRef.current?.setHighlightedMechPart(selectedMechPart);
+  }, [selectedMechPart]);
 
   const handleStep = (dir: -1 | 1) => {
     const { vehicles: list, selectedVehicle: current, onSelectVehicle: select } = latestPropsRef.current;
@@ -242,6 +268,20 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
     studioRef.current?.setWireframe(next);
   };
 
+  const handleToggleXray = () => {
+    setXrayMode((prev) => !prev);
+  };
+
+  const handleSelectMechFromSheet = (partId: MechPartId) => {
+    setSelectedMechPart((prev) => {
+      const next = prev === partId ? null : partId;
+      if (next && !xrayMode) {
+        setXrayMode(true);
+      }
+      return next;
+    });
+  };
+
   const handlePaintChange = (hex: string, finish: PaintFinish) => {
     setPaintHex(hex);
     setPaintFinish(finish);
@@ -257,6 +297,16 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
     setWheelStyle(nextWheel);
     studioRef.current?.updateCustomization({ wheelStyle: nextWheel });
   };
+
+  const mechSupported = isMechanicalSupportedVehicle(selectedVehicle);
+  const mechSpecs: MechComponentSpec[] = mechSupported
+    ? getVehicleMechanicalSpecs(selectedVehicle)
+    : [];
+  const activeMechSpec = selectedMechPart
+    ? mechSpecs.find((s) => s.id === selectedMechPart) ?? null
+    : null;
+  const suspensionSpecs = mechSpecs.filter((s) => s.group === 'suspension_steering');
+  const drivetrainSpecs = mechSpecs.filter((s) => s.group === 'transmission_drivetrain');
 
   const filteredPicker = vehicles.filter((v) => {
     const matchCat =
@@ -312,6 +362,23 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
         {hoveredPart && (
           <div className="mt-2 inline-block px-2.5 py-1 bg-zinc-900/95 border border-zinc-700 rounded text-xs text-amber-300">
             Peça: {hoveredPart}
+          </div>
+        )}
+        {activeMechSpec && (
+          <div className="pointer-events-auto mt-2 flex items-center gap-2.5 max-w-md px-3 py-1.5 bg-zinc-950/95 border border-amber-500/60 rounded-lg text-xs">
+            <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <div className="min-w-0">
+              <div className="font-semibold text-amber-300 truncate">{activeMechSpec.name}</div>
+              <div className="text-[11px] text-zinc-400 truncate">{activeMechSpec.shortSpec}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedMechPart(null)}
+              className="p-1 text-zinc-400 hover:text-zinc-100 rounded hover:bg-zinc-800 cursor-pointer shrink-0"
+              aria-label="Limpar seleção mecânica"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
       </div>
@@ -406,8 +473,129 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
                   <dt className="text-zinc-500">Assentos / NPCs</dt>
                   <dd className="font-mono-tech text-zinc-200 mt-0.5">{selectedVehicle.unitySpec.seats} lugares</dd>
                 </div>
+                <div>
+                  <dt className="text-zinc-500">Vão Livre do Solo</dt>
+                  <dd className="font-mono-tech text-zinc-200 mt-0.5">
+                    {selectedVehicle.geometry.groundClearance > 0
+                      ? `${Math.round(selectedVehicle.geometry.groundClearance * 100)} cm`
+                      : 'N/A'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-zinc-500">Suspensão</dt>
+                  <dd className="text-zinc-200 mt-0.5">{getSuspensionProfileLabel(selectedVehicle)}</dd>
+                </div>
               </dl>
             </div>
+
+            {mechSupported && (
+              <div className="pt-4 border-t border-zinc-800/80 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
+                    <Wrench className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Suspensão, Direção & Transmissão</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleXray}
+                    className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border cursor-pointer transition-colors ${
+                      xrayMode
+                        ? 'bg-amber-500/20 border-amber-500/60 text-amber-300'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <Scan className="w-3 h-3" />
+                    {xrayMode ? 'Raio-X Ativo' : 'Ativar Raio-X'}
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Selecione um subconjunto abaixo ou clique diretamente na peça em 3D com o Modo Raio-X para destacá-la e inspecionar sua função.
+                </p>
+
+                <div className="space-y-2">
+                  <div className="text-[11px] font-mono-tech uppercase tracking-wider text-amber-400/90">
+                    1. Suspensão e Direção
+                  </div>
+                  <div className="space-y-1.5">
+                    {suspensionSpecs.map((spec) => {
+                      const active = selectedMechPart === spec.id;
+                      return (
+                        <button
+                          key={spec.id}
+                          type="button"
+                          onClick={() => handleSelectMechFromSheet(spec.id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-amber-500/10 border-amber-500/70'
+                              : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs font-semibold ${active ? 'text-amber-300' : 'text-zinc-200'}`}>
+                              {spec.name}
+                            </span>
+                            <span className="text-[10px] font-mono-tech text-zinc-500">
+                              {active ? 'Em destaque' : 'Inspecionar'}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-mono-tech text-zinc-400 mt-0.5">
+                            {spec.shortSpec}
+                          </div>
+                          {active && (
+                            <div className="mt-2 pt-2 border-t border-amber-500/20 space-y-1 text-xs text-zinc-300 leading-relaxed">
+                              <p>{spec.description}</p>
+                              <p className="text-[11px] text-amber-200/90">Função: {spec.role}</p>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <div className="text-[11px] font-mono-tech uppercase tracking-wider text-amber-400/90">
+                    2. Transmissão e Tração
+                  </div>
+                  <div className="space-y-1.5">
+                    {drivetrainSpecs.map((spec) => {
+                      const active = selectedMechPart === spec.id;
+                      return (
+                        <button
+                          key={spec.id}
+                          type="button"
+                          onClick={() => handleSelectMechFromSheet(spec.id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-amber-500/10 border-amber-500/70'
+                              : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-xs font-semibold ${active ? 'text-amber-300' : 'text-zinc-200'}`}>
+                              {spec.name}
+                            </span>
+                            <span className="text-[10px] font-mono-tech text-zinc-500">
+                              {active ? 'Em destaque' : 'Inspecionar'}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-mono-tech text-zinc-400 mt-0.5">
+                            {spec.shortSpec}
+                          </div>
+                          {active && (
+                            <div className="mt-2 pt-2 border-t border-amber-500/20 space-y-1 text-xs text-zinc-300 leading-relaxed">
+                              <p>{spec.description}</p>
+                              <p className="text-[11px] text-amber-200/90">Função: {spec.role}</p>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="pt-4 border-t border-zinc-800/80">
               <div className="text-xs font-medium text-zinc-500 mb-2">Peças Trabalhadas no Modelo</div>
@@ -638,6 +826,19 @@ export const StudioViewport: React.FC<StudioViewportProps> = ({
               >
                 <Eye className="w-3.5 h-3.5" />
                 Sistemas
+              </button>
+              <button
+                type="button"
+                onClick={handleToggleXray}
+                title="Modo Raio-X: transparência da carroceria para inspecionar suspensão, direção e transmissão"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border whitespace-nowrap cursor-pointer ${
+                  xrayMode
+                    ? 'bg-amber-500/20 border-amber-500/60 text-amber-300'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                }`}
+              >
+                <Scan className="w-3.5 h-3.5" />
+                Raio-X
               </button>
               <button
                 type="button"

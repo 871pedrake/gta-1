@@ -8,7 +8,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
+import { MechPartId } from '../data/mechanicalSpecs';
 import { PaintLivery, StudioCameraPreset, VehicleConcept, WheelStyle } from '../types/vehicle';
+import { XrayRole } from './builders/types';
 import { buildCraftedVehicle, BuiltVehicle } from './vehicleBuilder';
 import { getContactShadowTexture, getStudioFloorTexture, isSoftwareGl } from './materials';
 
@@ -18,9 +20,15 @@ const _interiorSteerLocal = new THREE.Vector3();
 const _interiorEyeLocal = new THREE.Vector3();
 const _interiorLookLocal = new THREE.Vector3();
 const _cabinLightLocal = new THREE.Vector3();
+const _upAxis = new THREE.Vector3(0, 1, 0);
+const _rodInnerPos = new THREE.Vector3();
+const _rodOuterWorld = new THREE.Vector3();
+const _rodDir = new THREE.Vector3();
+const _highlightTint = new THREE.Color(0xfbbf24);
 
 export interface StudioCallbacks {
   onHoverPart?: (partLabel: string | null) => void;
+  onSelectMechPart?: (partId: MechPartId | null) => void;
   onPartsCount?: (count: number) => void;
   onOpenablesCount?: (count: number) => void;
   onAutoRotateChange?: (enabled: boolean) => void;
@@ -63,6 +71,11 @@ export class VehicleStudioController {
   private engineSpeedFactor = 1;
   private lightsOn = true;
   private wireframeMode = false;
+  private xrayMode = false;
+  private highlightedMechPart: MechPartId | null = null;
+  private cachedXrayMats = new Map<string, THREE.Material>();
+  private cachedHighlightMats = new Map<THREE.Material, THREE.MeshStandardMaterial>();
+  private pointerDownClient = { x: 0, y: 0 };
 
   private camTransitioning = false;
   private camTargetPos = new THREE.Vector3(5.8, 2.7, 6.4);
@@ -90,9 +103,9 @@ export class VehicleStudioController {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.AgXToneMapping;
     this.renderer.toneMappingExposure = 0.96;
-    this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = !isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.VSMShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const initW = container.clientWidth || 800;
     const initH = container.clientHeight || 600;
     this.renderer.setSize(initW, initH);
@@ -118,13 +131,13 @@ export class VehicleStudioController {
     pmrem.dispose();
 
     // 3-Point Studio Lighting + Cool/Warm Contrast (calibrated for AgX without highlight blowout)
-    const hemi = new THREE.HemisphereLight(0xdbeafe, 0x1c1917, 0.52);
+    const hemi = new THREE.HemisphereLight(0xdbeafe, 0x1c1917, 0.56);
     this.scene.add(hemi);
 
-    const keyLight = new THREE.DirectionalLight(0xfff4e4, 1.32);
+    const keyLight = new THREE.DirectionalLight(0xfff4e4, 1.35);
     keyLight.position.set(8, 12, 9);
     keyLight.castShadow = !isSoftwareGl;
-    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.camera.near = 1;
     keyLight.shadow.camera.far = 36;
     const d = 6;
@@ -132,33 +145,26 @@ export class VehicleStudioController {
     keyLight.shadow.camera.right = d;
     keyLight.shadow.camera.top = d;
     keyLight.shadow.camera.bottom = -d;
-    keyLight.shadow.radius = 4.5;
-    keyLight.shadow.blurSamples = 16;
     keyLight.shadow.intensity = 0.58;
-    keyLight.shadow.bias = -0.0002;
-    keyLight.shadow.normalBias = 0.015;
+    keyLight.shadow.bias = -0.0004;
+    keyLight.shadow.normalBias = 0.02;
     this.scene.add(keyLight);
     this.keyLight = keyLight;
 
-    const fillLight = new THREE.DirectionalLight(0xcbd5e1, 0.34);
+    const fillLight = new THREE.DirectionalLight(0xcbd5e1, 0.42);
     fillLight.position.set(-7, 4, 7);
     this.scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.76);
+    const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.78);
     rimLight.position.set(-9, 6, -10);
     this.scene.add(rimLight);
 
     if (!isSoftwareGl) {
       RectAreaLightUniformsLib.init();
-      const topSoftbox = new THREE.RectAreaLight(0xffffff, 1.28, 9, 4);
+      const topSoftbox = new THREE.RectAreaLight(0xffffff, 1.32, 9, 4);
       topSoftbox.position.set(0, 8.5, 1.5);
       topSoftbox.lookAt(0, 0.8, 0);
       this.scene.add(topSoftbox);
-
-      const sideSoftbox = new THREE.RectAreaLight(0xfff7ed, 0.82, 8, 2.5);
-      sideSoftbox.position.set(-8, 3.2, 2);
-      sideSoftbox.lookAt(0, 1, 0);
-      this.scene.add(sideSoftbox);
     }
 
     // Soft warm dome light inside the vehicle cabin so interior details read through glass & in Interior view
@@ -215,12 +221,14 @@ export class VehicleStudioController {
     window.addEventListener('resize', this.handleResize);
     this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
+    this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
+    this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
 
     if (!isSoftwareGl) {
       const pr = this.renderer.getPixelRatio();
       const hdrTarget = new THREE.WebGLRenderTarget(initW * pr, initH * pr, {
         type: THREE.HalfFloatType,
-        samples: pr > 1.25 ? 2 : 4,
+        samples: pr > 1.15 ? 0 : 2,
       });
       this.composer = new EffectComposer(this.renderer, hdrTarget);
       this.composer.setPixelRatio(pr);
@@ -230,10 +238,10 @@ export class VehicleStudioController {
 
       // HDR Bloom tuned so only emissive LEDs/DRLs/lights glow cleanly with zero bleed onto car paint
       this.bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(Math.max(1, Math.floor((initW * pr) / 2)), Math.max(1, Math.floor((initH * pr) / 2))),
-        0.24,
-        0.38,
-        1.48,
+        new THREE.Vector2(Math.max(1, Math.floor(initW * pr * 0.35)), Math.max(1, Math.floor(initH * pr * 0.35))),
+        0.16,
+        0.34,
+        1.65,
       );
       this.composer.addPass(this.bloomPass);
 
@@ -265,6 +273,7 @@ export class VehicleStudioController {
     return (
       this.autoRotate ||
       this.animateSystems ||
+      this.highlightedMechPart !== null ||
       hasSpinningRotors ||
       hasSpinningPropsOrFlames ||
       this.camTransitioning ||
@@ -277,6 +286,8 @@ export class VehicleStudioController {
     const prevRotationY = preserveCamera && this.currentBuilt ? this.currentBuilt.group.rotation.y : 0;
 
     if (this.currentBuilt) {
+      this.restoreOriginalInspectionMaterials();
+      this.clearInspectionMaterialCaches();
       this.scene.remove(this.currentBuilt.group);
       this.currentBuilt.dispose();
       this.currentBuilt = null;
@@ -329,6 +340,7 @@ export class VehicleStudioController {
 
     // Apply current toggles
     this.applyLightsState();
+    this.applyInspectionMaterials();
     this.applyWireframeState();
     this.applyExplodePositions(this.explodeCurrent);
     this.applyOpenables(this.doorsCurrent);
@@ -423,6 +435,11 @@ export class VehicleStudioController {
     if (finish) this.customPaintFinish = finish;
     if (stripeHex) this.customStripeHex = stripeHex;
     this.applyCustomPaintToBuilt(primaryHex, finish, stripeHex);
+    if (this.xrayMode || this.highlightedMechPart !== null) {
+      this.restoreOriginalInspectionMaterials();
+      this.clearInspectionMaterialCaches();
+      this.applyInspectionMaterials();
+    }
     if (!this.needsContinuousLoop()) this.requestRender();
   }
 
@@ -562,6 +579,159 @@ export class VehicleStudioController {
     if (!this.needsContinuousLoop()) this.requestRender();
   }
 
+  public setXrayMode(enabled: boolean) {
+    if (this.xrayMode === enabled) return;
+    this.xrayMode = enabled;
+    this.applyInspectionMaterials();
+    this.applyWireframeState();
+    if (!this.needsContinuousLoop()) this.requestRender();
+  }
+
+  public setHighlightedMechPart(partId: MechPartId | null) {
+    if (this.highlightedMechPart === partId) return;
+    this.highlightedMechPart = partId;
+    this.applyInspectionMaterials();
+    this.applyWireframeState();
+    if (partId !== null) {
+      this.ensureLoopRunning();
+    } else if (!this.needsContinuousLoop()) {
+      this.requestRender();
+    }
+  }
+
+  private resolveInspectionInfo(obj: THREE.Object3D): {
+    role: XrayRole;
+    mechPartId: MechPartId | null;
+  } {
+    let role: XrayRole | null = null;
+    let mechPartId: MechPartId | null = null;
+    let curr: THREE.Object3D | null = obj;
+    while (curr) {
+      if (!mechPartId && curr.userData.mechPartId) {
+        mechPartId = curr.userData.mechPartId as MechPartId;
+      }
+      if (!role && curr.userData.xrayRole) {
+        role = curr.userData.xrayRole as XrayRole;
+      }
+      curr = curr.parent;
+    }
+    return { role: role ?? 'exterior', mechPartId };
+  }
+
+  private clearInspectionMaterialCaches() {
+    this.cachedXrayMats.forEach((m) => m.dispose());
+    this.cachedXrayMats.clear();
+    this.cachedHighlightMats.forEach((m) => m.dispose());
+    this.cachedHighlightMats.clear();
+  }
+
+  private restoreOriginalInspectionMaterials() {
+    if (!this.currentBuilt) return;
+    this.currentBuilt.group.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh && mesh.userData._origSaved) {
+        mesh.material = mesh.userData._origMat as THREE.Material | THREE.Material[];
+        mesh.castShadow = Boolean(mesh.userData._origCastShadow);
+        mesh.renderOrder = (mesh.userData._origRenderOrder as number) ?? 0;
+      }
+    });
+  }
+
+  private getXrayClone(orig: THREE.Material, opacity: number): THREE.Material {
+    const key = `${orig.uuid}:${opacity}`;
+    let clone = this.cachedXrayMats.get(key);
+    if (!clone) {
+      clone = orig.clone();
+      clone.transparent = true;
+      clone.opacity = opacity;
+      clone.depthWrite = false;
+      this.cachedXrayMats.set(key, clone);
+    }
+    return clone;
+  }
+
+  private getHighlightClone(orig: THREE.Material): THREE.MeshStandardMaterial {
+    let clone = this.cachedHighlightMats.get(orig);
+    if (!clone) {
+      const std = orig.clone() as THREE.MeshStandardMaterial;
+      if ('emissive' in std && std.emissive) {
+        std.emissive.setHex(0xf59e0b);
+        std.emissiveIntensity = 1.5;
+      }
+      if ('color' in std && std.color) {
+        std.color.lerp(_highlightTint, 0.32);
+      }
+      std.transparent = false;
+      std.opacity = 1;
+      std.depthWrite = true;
+      this.cachedHighlightMats.set(orig, std);
+      clone = std;
+    }
+    return clone;
+  }
+
+  private applyInspectionMaterials() {
+    if (!this.currentBuilt) return;
+    if (!this.xrayMode && !this.highlightedMechPart) {
+      this.restoreOriginalInspectionMaterials();
+      return;
+    }
+
+    this.currentBuilt.group.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+
+      if (!mesh.userData._origSaved) {
+        mesh.userData._origSaved = true;
+        mesh.userData._origMat = mesh.material;
+        mesh.userData._origCastShadow = mesh.castShadow;
+        mesh.userData._origRenderOrder = mesh.renderOrder;
+      }
+
+      const origMat = mesh.userData._origMat as THREE.Material | THREE.Material[];
+      const origCastShadow = Boolean(mesh.userData._origCastShadow);
+      const origRenderOrder = (mesh.userData._origRenderOrder as number) ?? 0;
+
+      const { role, mechPartId } = this.resolveInspectionInfo(mesh);
+      const isHighlighted = !!this.highlightedMechPart && mechPartId === this.highlightedMechPart;
+
+      if (isHighlighted) {
+        mesh.material = Array.isArray(origMat)
+          ? origMat.map((m) => this.getHighlightClone(m))
+          : this.getHighlightClone(origMat);
+        mesh.castShadow = origCastShadow;
+        mesh.renderOrder = origRenderOrder;
+        return;
+      }
+
+      if (!this.xrayMode || role === 'mechanical') {
+        mesh.material = origMat;
+        mesh.castShadow = origCastShadow;
+        mesh.renderOrder = origRenderOrder;
+        return;
+      }
+
+      const mapXray = (m: THREE.Material) => {
+        const isGlassLike = m.transparent && m.opacity < 0.7;
+        const opacity =
+          role === 'wheel'
+            ? 0.34
+            : role === 'interior'
+              ? 0.22
+              : role === 'liner'
+                ? 0.05
+                : isGlassLike
+                  ? 0.07
+                  : 0.13;
+        return this.getXrayClone(m, opacity);
+      };
+
+      mesh.material = Array.isArray(origMat) ? origMat.map(mapXray) : mapXray(origMat);
+      mesh.castShadow = false;
+      mesh.renderOrder = role === 'liner' ? 0 : 1;
+    });
+  }
+
   private applyLightsState() {
     if (!this.currentBuilt) return;
     const m = this.currentBuilt.materials;
@@ -638,6 +808,10 @@ export class VehicleStudioController {
     if (this.composer) {
       this.composer.setSize(w, h);
     }
+    if (this.bloomPass) {
+      const pr = this.renderer.getPixelRatio();
+      this.bloomPass.setSize(Math.max(1, Math.floor(w * pr * 0.35)), Math.max(1, Math.floor(h * pr * 0.35)));
+    }
     if (!this.needsContinuousLoop()) this.requestRender();
   };
 
@@ -652,7 +826,7 @@ export class VehicleStudioController {
   private handlePointerMove = (e: PointerEvent) => {
     if (!this.currentBuilt || !this.callbacks.onHoverPart) return;
     const now = performance.now();
-    if (now - this.lastRaycastMs < 60) return;
+    if (now - this.lastRaycastMs < 100) return;
     this.lastRaycastMs = now;
 
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -662,7 +836,12 @@ export class VehicleStudioController {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hits = this.raycaster.intersectObjects(this.currentBuilt.group.children, true);
     if (hits.length > 0) {
-      let curr: THREE.Object3D | null = hits[0].object;
+      let targetObj: THREE.Object3D = hits[0].object;
+      if (this.xrayMode) {
+        const mechHit = hits.find((h) => this.resolveInspectionInfo(h.object).mechPartId !== null);
+        if (mechHit) targetObj = mechHit.object;
+      }
+      let curr: THREE.Object3D | null = targetObj;
       let label: string | null = null;
       while (curr) {
         if (curr.userData.partLabel) {
@@ -679,6 +858,47 @@ export class VehicleStudioController {
 
   private handlePointerLeave = () => {
     this.callbacks.onHoverPart?.(null);
+  };
+
+  private handlePointerDown = (e: PointerEvent) => {
+    if (e.button === 0) {
+      this.pointerDownClient = { x: e.clientX, y: e.clientY };
+    }
+  };
+
+  private handlePointerUp = (e: PointerEvent) => {
+    if (e.button !== 0 || !this.currentBuilt || !this.callbacks.onSelectMechPart) return;
+    const dist = Math.hypot(
+      e.clientX - this.pointerDownClient.x,
+      e.clientY - this.pointerDownClient.y,
+    );
+    if (dist >= 6) return;
+
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObjects(this.currentBuilt.group.children, true);
+    if (hits.length === 0) {
+      this.callbacks.onSelectMechPart(null);
+      return;
+    }
+
+    if (this.xrayMode) {
+      for (const hit of hits) {
+        const info = this.resolveInspectionInfo(hit.object);
+        if (info.mechPartId) {
+          this.callbacks.onSelectMechPart(info.mechPartId);
+          return;
+        }
+      }
+      this.callbacks.onSelectMechPart(null);
+      return;
+    }
+
+    const firstInfo = this.resolveInspectionInfo(hits[0].object);
+    this.callbacks.onSelectMechPart(firstInfo.mechPartId);
   };
 
   private afterDraw(cb: () => void) {
@@ -834,6 +1054,43 @@ export class VehicleStudioController {
         anim.steeringWheels.forEach((sw) => {
           sw.rotation.z = -steerAngle * 3.0;
         });
+        if (anim.steeringLinkages.length > 0) {
+          const sinSteer = Math.sin(steerAngle);
+          const cosSteer = Math.cos(steerAngle);
+          for (const linkage of anim.steeringLinkages) {
+            const rackDeltaX = -sinSteer * linkage.rackTravelScale;
+            if (linkage.rackBar && linkage.rackBasePos) {
+              linkage.rackBar.position.x = linkage.rackBasePos.x + rackDeltaX;
+            }
+            for (const r of linkage.rods) {
+              _rodInnerPos.set(r.innerAnchor.x + rackDeltaX, r.innerAnchor.y, r.innerAnchor.z);
+              const ox = r.outerLocal.x * cosSteer + r.outerLocal.z * sinSteer;
+              const oz = -r.outerLocal.x * sinSteer + r.outerLocal.z * cosSteer;
+              _rodOuterWorld.set(
+                r.pivotCenter.x + ox,
+                r.pivotCenter.y + r.outerLocal.y,
+                r.pivotCenter.z + oz,
+              );
+              r.rod.position.copy(_rodInnerPos);
+              _rodDir.subVectors(_rodOuterWorld, _rodInnerPos);
+              const dist = _rodDir.length();
+              if (dist > 0.001) {
+                _rodDir.divideScalar(dist);
+                r.rod.quaternion.setFromUnitVectors(_upAxis, _rodDir);
+                r.rod.scale.set(1, dist / r.baseLen, 1);
+              }
+            }
+          }
+        }
+      }
+
+      if (this.highlightedMechPart !== null && this.cachedHighlightMats.size > 0) {
+        const glowPulse = 1.25 + 0.4 * Math.sin(this.elapsed * 4.5);
+        this.cachedHighlightMats.forEach((mat) => {
+          if ('emissiveIntensity' in mat) {
+            mat.emissiveIntensity = glowPulse;
+          }
+        });
       }
 
       if (this.animateSystems) {
@@ -885,6 +1142,9 @@ export class VehicleStudioController {
     window.removeEventListener('resize', this.handleResize);
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
+    this.renderer.domElement.removeEventListener('pointerdown', this.handlePointerDown);
+    this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
+    this.clearInspectionMaterialCaches();
     if (this.currentBuilt) {
       this.currentBuilt.dispose();
       this.currentBuilt = null;
@@ -924,7 +1184,7 @@ class OffscreenThumbnailRenderer {
     this.renderer.toneMapping = THREE.AgXToneMapping;
     this.renderer.toneMappingExposure = 0.98;
     this.renderer.shadowMap.enabled = !isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.VSMShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x131318);
@@ -943,11 +1203,9 @@ class OffscreenThumbnailRenderer {
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.camera.near = 1;
     key.shadow.camera.far = 36;
-    key.shadow.radius = 4.5;
-    key.shadow.blurSamples = 14;
     key.shadow.intensity = 0.56;
-    key.shadow.bias = -0.0002;
-    key.shadow.normalBias = 0.015;
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.02;
     this.scene.add(key);
     this.keyLight = key;
 

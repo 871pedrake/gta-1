@@ -48,7 +48,12 @@ function optimizeRigidSubtrees(
     animated.openables.forEach((op) => protectedRoots.add(op.pivot));
     rootGroup.traverse((obj) => {
       if (obj === rootGroup) return;
-      if (obj.userData.partLabel || obj.userData.explodeOffset) {
+      if (
+        obj.userData.partLabel ||
+        obj.userData.explodeOffset ||
+        obj.userData.xrayRole ||
+        obj.userData.mechPartId
+      ) {
         protectedRoots.add(obj);
       }
       if (obj.userData.extraMaterials) {
@@ -188,6 +193,12 @@ function optimizeRigidSubtrees(
       if (bucket.noShadow) {
         mergedMesh.userData.noShadow = true;
       }
+      if (subtreeRoot.userData.xrayRole) {
+        mergedMesh.userData.xrayRole = subtreeRoot.userData.xrayRole;
+      }
+      if (subtreeRoot.userData.mechPartId) {
+        mergedMesh.userData.mechPartId = subtreeRoot.userData.mechPartId;
+      }
       subtreeRoot.add(mergedMesh);
     });
 
@@ -279,6 +290,7 @@ export function buildCraftedVehicle(
     pedals: [],
     steeringPivots: [],
     steeringWheels: [],
+    steeringLinkages: [],
     headlightBeams: [],
     mixerDrum: null,
     sweeperBrushes: [],
