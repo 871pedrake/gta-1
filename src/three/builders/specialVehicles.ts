@@ -14,6 +14,7 @@ import {
   enableShadows,
   makeStrutBetween,
   registerOpenable,
+  tagMechPart,
   tagPart,
 } from './types';
 import {
@@ -490,11 +491,15 @@ export function buildMotorcycleOrAtv(
   const rZ = -wheelbase * 0.5;
 
   if (g.archetype === 'trike') {
+    const trikeRearR = g.wheelRadius * 1.06;
+    const hullRearZ = rZ + trikeRearR + 0.045;
+    const hullFrontZ = length * 0.38;
+    const hullLen = Math.max(0.85, hullFrontZ - hullRearZ);
     const hull = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.36, 0.38, length * 0.72, 0.09, cityMode ? 2 : 5, 14),
+      createRoundedBoxGeo(width * 0.36, 0.38, hullLen, 0.09, cityMode ? 2 : 5, 14),
       mats.body,
     );
-    hull.position.set(0, g.groundClearance + 0.32, 0.02);
+    hull.position.set(0, g.groundClearance + 0.32, (hullFrontZ + hullRearZ) * 0.5);
     tagPart(hull, 'Carenagem Central Sport Trike', 0, 0.25, 0);
     group.add(hull);
 
@@ -583,24 +588,27 @@ export function buildMotorcycleOrAtv(
     }
 
     [-1, 1].forEach((side) => {
+      const knuckleInnerX = side * (width * 0.44 - g.wheelWidth * 0.42 - 0.035);
       const lowerArm = makeStrutBetween(
         new THREE.Vector3(side * width * 0.14, g.wheelRadius - 0.02, fZ),
-        new THREE.Vector3(side * width * 0.44, g.wheelRadius - 0.02, fZ),
+        new THREE.Vector3(knuckleInnerX, g.wheelRadius - 0.02, fZ),
         0.02,
         0.02,
         mats.trim,
         8,
       );
+      tagMechPart(lowerArm, 'wishbones', 'Bandeja Inferior Trike', side * 0.2, -0.05, 0);
       const upperArm = makeStrutBetween(
         new THREE.Vector3(side * width * 0.14, g.wheelRadius + 0.11, fZ - 0.02),
-        new THREE.Vector3(side * width * 0.42, g.wheelRadius + 0.07, fZ),
+        new THREE.Vector3(knuckleInnerX, g.wheelRadius + 0.07, fZ),
         0.016,
         0.016,
         mats.alloy,
         8,
       );
+      tagMechPart(upperArm, 'wishbones', 'Bandeja Superior Trike', side * 0.2, -0.05, 0);
       const fShock = buildCoilShockMesh(
-        new THREE.Vector3(side * width * 0.34, g.wheelRadius, fZ),
+        new THREE.Vector3(side * width * 0.30, g.wheelRadius, fZ),
         new THREE.Vector3(side * width * 0.17, g.groundClearance + 0.38, fZ - 0.06),
         0.03,
         0.008,
@@ -609,6 +617,7 @@ export function buildMotorcycleOrAtv(
         mats.accent,
         cityMode,
       );
+      tagMechPart(fShock, 'shocks_springs', 'Amortecedor Dianteiro Trike', side * 0.2, 0.05, 0);
       group.add(lowerArm, upperArm, fShock);
 
       const steerPivot = new THREE.Group();
@@ -627,13 +636,14 @@ export function buildMotorcycleOrAtv(
       steerPivot.add(fw);
       // Knuckle upright + inner brake disc & caliper anchored to steerPivot
       const knuckle = makeStrutBetween(
-        new THREE.Vector3(-side * 0.04, -0.04, 0),
-        new THREE.Vector3(-side * 0.02, 0.08, 0),
+        new THREE.Vector3(-side * (g.wheelWidth * 0.42 + 0.035), -0.04, 0),
+        new THREE.Vector3(-side * (g.wheelWidth * 0.42 + 0.02), 0.08, 0),
         0.018,
         0.016,
         mats.alloy,
         8,
       );
+      tagMechPart(knuckle, 'knuckle_tie_rods', 'Manga de Eixo Trike', side * 0.3, -0.05, 0);
       const tDisc = new THREE.Mesh(
         new THREE.CylinderGeometry(g.wheelRadius * 0.48, g.wheelRadius * 0.48, 0.014, 18).rotateZ(Math.PI / 2),
         mats.brakeDisc,
@@ -710,25 +720,35 @@ export function buildMotorcycleOrAtv(
     trikeRearAxle.position.set(0, g.wheelRadius * 1.06, rZ);
     group.add(trikeRearAxle);
 
+    const rearTlY = Math.max(g.groundClearance + 0.48, trikeRearR * 2 + 0.06);
+    const rearTlZ = Math.min(-length * 0.43, rZ - trikeRearR - 0.03);
     const rearTl = new THREE.Mesh(
       createRoundedBoxGeo(0.22, 0.055, 0.045, 0.015, 2, 8),
       mats.taillight,
     );
-    rearTl.position.set(0, g.groundClearance + 0.48, -length * 0.43);
+    rearTl.position.set(0, rearTlY, rearTlZ);
     group.add(rearTl);
     [-1, 1].forEach((side) => {
+      const tailArm = makeStrutBetween(
+        new THREE.Vector3(side * (trikeRearW * 0.52 + 0.03), trikeRearR, rZ),
+        new THREE.Vector3(side * 0.14, rearTlY - 0.01, rearTlZ + 0.02),
+        0.014,
+        0.014,
+        mats.alloy,
+        6,
+      );
       const blinkR = new THREE.Mesh(
         createRoundedBoxGeo(0.06, 0.035, 0.04, 0.01, 2, 6),
         side < 0 ? mats.signalLeft : mats.signalRight,
       );
-      blinkR.position.set(side * 0.17, g.groundClearance + 0.48, -length * 0.43);
-      group.add(blinkR);
+      blinkR.position.set(side * 0.17, rearTlY, rearTlZ);
+      group.add(tailArm, blinkR);
     });
 
-    const trikePlateY = g.groundClearance + 0.34;
-    const trikePlateZ = -length * 0.455;
+    const trikePlateY = Math.max(g.groundClearance + 0.34, rearTlY - 0.14);
+    const trikePlateZ = Math.min(-length * 0.455, rZ - trikeRearR - 0.055);
     const trikeBracket = makeStrutBetween(
-      new THREE.Vector3(0, g.groundClearance + 0.46, -length * 0.42),
+      new THREE.Vector3(0, rearTlY - 0.02, rearTlZ + 0.01),
       new THREE.Vector3(0, trikePlateY + 0.03, trikePlateZ + 0.012),
       0.016,
       0.016,
@@ -745,7 +765,30 @@ export function buildMotorcycleOrAtv(
     tagPart(trikePlate, 'Placa Traseira Triciclo', 0, -0.05, -0.42);
     group.add(trikeBracket, trikePlate);
 
-    addExhaustSystem(group, width * 0.5, length * 0.48, g.groundClearance + 0.05, mats, 'dual');
+    // Outboard dual sport mufflers flanking clear outside the wide center rear tire
+    const trikeExX = trikeRearW * 0.5 + 0.085;
+    [-1, 1].forEach((side) => {
+      const exPipe = makeStrutBetween(
+        new THREE.Vector3(side * 0.13, g.groundClearance + 0.14, 0.02),
+        new THREE.Vector3(side * trikeExX, g.groundClearance + 0.18, rZ + 0.16),
+        0.022,
+        0.022,
+        mats.alloy,
+        8,
+      );
+      const muffler = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.044, 0.038, 0.42, 10).rotateX(Math.PI / 2 - 0.12),
+        mats.chrome,
+      );
+      muffler.position.set(side * trikeExX, g.groundClearance + 0.21, rZ - 0.03);
+      const tip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.030, 0.030, 0.04, 10).rotateX(Math.PI / 2 - 0.12),
+        mats.exhaustBore,
+      );
+      tip.position.set(side * trikeExX, g.groundClearance + 0.235, rZ - 0.23);
+      tagPart(muffler, 'Escapamento Duplo Trike', side * 0.35, -0.05, -0.2);
+      group.add(exPipe, muffler, tip);
+    });
     enableShadows(group);
     return group;
   }
@@ -1162,8 +1205,8 @@ export function buildMotorcycleOrAtv(
         ? g.groundClearance + 0.62
         : g.groundClearance + 0.70;
   const rearWidth = g.wheelWidth * (isFairedSport || isCruiser ? 1.32 : 1.2);
-  const forkSpanX = Math.max(isScooter ? 0.095 : 0.114, g.wheelWidth * 0.5 + 0.030);
-  const rearSwingSpanX = Math.max(0.134, rearWidth * 0.5 + 0.032);
+  const forkSpanX = Math.max(isScooter ? 0.105 : 0.125, g.wheelWidth * 0.62 + 0.034);
+  const rearSwingSpanX = Math.max(0.145, rearWidth * 0.62 + 0.034);
   const forkMat = isFairedSport || isDirt ? mats.accent : mats.chrome;
   const sliderMat = isCruiser || isNaked ? mats.trim : mats.alloy;
 
@@ -1215,7 +1258,7 @@ export function buildMotorcycleOrAtv(
 
   const frontDiscSides = isFairedSport || v.id === 72 || v.id === 78 ? [-1, 1] : [1];
   const fDiscR = g.wheelRadius * (isScooter ? 0.46 : 0.56);
-  const fDiscXOffset = g.wheelWidth * 0.5 + 0.011;
+  const fDiscXOffset = g.wheelWidth * 0.60 + 0.012;
 
   [-1, 1].forEach((side) => {
     const fSpacer = new THREE.Mesh(
@@ -1270,7 +1313,7 @@ export function buildMotorcycleOrAtv(
     const calZ = frontAxleLocal.z - fDiscR * 0.72;
     const calBody = new THREE.Mesh(
       createRoundedBoxGeo(0.036, 0.088, 0.056, 0.012, 2, 6),
-      isFairedSport || v.id === 72 ? mats.caliper : mats.alloy,
+      mats.caliper,
     );
     calBody.position.set(side * (fDiscXOffset + 0.004), calY, calZ);
     calBody.rotation.x = 0.25;
@@ -1438,7 +1481,7 @@ export function buildMotorcycleOrAtv(
     beak.position.set(0, -0.15, 0.05);
     frontForkPivot.add(beak);
   } else if (isFairedSport) {
-    const fenderR = g.wheelRadius * 1.08;
+    const fenderR = g.wheelRadius * 1.11;
     const fFenderGeo = createSculptedPanelGeo(
       g.wheelWidth * 1.14,
       0.028,
@@ -1461,7 +1504,7 @@ export function buildMotorcycleOrAtv(
     );
     const fFender = new THREE.Mesh(fFenderGeo, mats.body);
     fFender.position.set(0, frontAxleLocal.y + fenderR, frontAxleLocal.z);
-    fFender.rotation.x = 0.20;
+    fFender.rotation.x = 0.02;
     frontForkPivot.add(fFender);
 
     // Side fender stay brackets connecting fender wings down to lower fork sliders
@@ -1478,8 +1521,10 @@ export function buildMotorcycleOrAtv(
     });
   } else {
     const fenderArc = isCruiser ? Math.PI * 0.68 : Math.PI * 0.55;
+    const fTubeR = isCruiser ? 0.034 : 0.030;
+    const fTorusR = g.wheelRadius + fTubeR + 0.024;
     const fFender = new THREE.Mesh(
-      new THREE.TorusGeometry(g.wheelRadius * 1.07, isCruiser ? 0.052 : 0.04, 8, 18, fenderArc),
+      new THREE.TorusGeometry(fTorusR, fTubeR, 8, 18, fenderArc),
       mats.body,
     );
     fFender.rotation.y = Math.PI / 2;
@@ -1490,7 +1535,11 @@ export function buildMotorcycleOrAtv(
     [-1, 1].forEach((side) => {
       const fStay = makeStrutBetween(
         new THREE.Vector3(side * forkSpanX, frontAxleLocal.y + g.wheelRadius * 0.50, frontAxleLocal.z - 0.04),
-        new THREE.Vector3(side * (g.wheelWidth * 0.52), frontAxleLocal.y + g.wheelRadius * 0.94, frontAxleLocal.z),
+        new THREE.Vector3(
+          side * Math.max(g.wheelWidth * 0.60, fTubeR * 0.95),
+          frontAxleLocal.y + fTorusR,
+          frontAxleLocal.z,
+        ),
         0.010,
         0.009,
         isCruiser ? mats.chrome : mats.trim,
@@ -1503,7 +1552,11 @@ export function buildMotorcycleOrAtv(
   // 3. Tubular Cradle / Trellis Frame, Cast Pivot Plates, Triangulated Subframe, Swingarm, Shocks & Kickstand
   const swingPivotY = g.groundClearance + (isDirt ? 0.22 : 0.16);
   const swingPivotZ = -0.22;
-  const subRearY = g.groundClearance + (isDirt ? 0.68 : isCruiser ? 0.44 : 0.68);
+  const subRearY = isDirt
+    ? g.groundClearance + 0.68
+    : isCruiser
+      ? Math.max(g.groundClearance + 0.44, g.wheelRadius * 1.90)
+      : g.groundClearance + 0.68;
   const subRearZ = rZ + 0.06;
 
   // Swingarm pivot through-bolt & swingarm front cross-bridge
@@ -1561,11 +1614,12 @@ export function buildMotorcycleOrAtv(
     pivotPlate.rotation.x = 0.12;
     group.add(pivotPlate);
 
-    // Triangulated Subframe (upper seat rail + lower diagonal compression strut) supporting seat & tail
+    // Triangulated Subframe (upper seat rail + lower diagonal compression strut) supporting seat & tail outboard of tire
+    const subRearX = side * Math.max(0.098, rearWidth * 0.5 + 0.018);
     group.add(
       makeStrutBetween(
         new THREE.Vector3(sx, g.groundClearance + 0.52, swingPivotZ - 0.02),
-        new THREE.Vector3(sx * 0.84, subRearY, subRearZ),
+        new THREE.Vector3(subRearX, subRearY, subRearZ),
         0.017,
         0.015,
         isNaked ? mats.accent : mats.trim,
@@ -1575,7 +1629,7 @@ export function buildMotorcycleOrAtv(
     group.add(
       makeStrutBetween(
         new THREE.Vector3(sx, swingPivotY + 0.16, swingPivotZ - 0.04),
-        new THREE.Vector3(sx * 0.84, subRearY - 0.04, subRearZ + 0.04),
+        new THREE.Vector3(subRearX, subRearY - 0.04, subRearZ + 0.04),
         0.015,
         0.014,
         isNaked ? mats.accent : mats.trim,
@@ -1648,9 +1702,10 @@ export function buildMotorcycleOrAtv(
 
   // Rear Tire Hugger Fender + Contoured Chain Guard mounted cleanly to swingarm
   if ((isFairedSport || isNaked) && !cityMode) {
-    const huggerR = g.wheelRadius * 1.09;
+    const huggerTubeR = Math.min(0.032, rearWidth * 0.24);
+    const huggerR = g.wheelRadius + huggerTubeR + 0.024;
     const hugger = new THREE.Mesh(
-      new THREE.TorusGeometry(huggerR, rearWidth * 0.34, 8, 16, Math.PI * 0.38),
+      new THREE.TorusGeometry(huggerR, huggerTubeR, 8, 16, Math.PI * 0.38),
       mats.trim,
     );
     hugger.rotation.y = Math.PI / 2;
@@ -1662,8 +1717,16 @@ export function buildMotorcycleOrAtv(
   // Rear Coil-Over Shock Springs (Twin exposed chrome coil-overs on naked/cruiser/scooter; central monoshock on sport/dirt)
   if (isNaked || isCruiser || isScooter) {
     [-1, 1].forEach((side) => {
-      const pBot = new THREE.Vector3(side * (rearSwingSpanX * 0.88), g.wheelRadius + 0.06, rZ + 0.08);
-      const pTop = new THREE.Vector3(side * 0.115, subRearY - 0.02, rZ + 0.24);
+      const pBot = new THREE.Vector3(
+        side * Math.max(rearSwingSpanX * 0.96, rearWidth * 0.5 + 0.052),
+        g.wheelRadius + 0.06,
+        rZ + 0.08,
+      );
+      const pTop = new THREE.Vector3(
+        side * Math.max(0.13, rearWidth * 0.5 + 0.028),
+        subRearY - 0.02,
+        rZ + 0.24,
+      );
       const shock = buildCoilShock(pBot, pTop, 0.032, 0.0085, 6.5, mats.chrome);
       tagPart(shock, 'Amortecedor Traseiro Coil-Over', side * 0.22, 0.15, -0.2);
       group.add(shock);
@@ -2371,7 +2434,11 @@ export function buildMotorcycleOrAtv(
     }
 
     // Sharply upswept sculpted Tail Cowl + Sealed Undertail Pan + Side Frame Infill Panels
-    const tailY = isDirt ? g.groundClearance + 0.72 : isCruiser ? g.groundClearance + 0.50 : g.groundClearance + 0.66;
+    const tailY = isDirt
+      ? g.groundClearance + 0.72
+      : isCruiser
+        ? Math.max(g.groundClearance + 0.50, g.wheelRadius * 2 + 0.095)
+        : g.groundClearance + 0.66;
     if (isFairedSport || isNaked) {
       const tailStations: MotoLoftStation[] = [
         { z: rZ - 0.16, cy: tailY + 0.075, rx: 0.042, ryTop: 0.025, ryBot: 0.022, topTaper: 0.25 },
@@ -2404,23 +2471,29 @@ export function buildMotorcycleOrAtv(
       });
     } else {
       const tailCowl = new THREE.Mesh(
-        createRoundedBoxGeo(isDirt ? 0.22 : 0.26, 0.11, 0.46, 0.03, 2, 8),
+        createRoundedBoxGeo(isDirt ? 0.22 : 0.26, 0.11, isCruiser ? 0.42 : 0.46, 0.03, 2, 8),
         mats.body,
       );
-      tailCowl.position.set(0, tailY, rZ + 0.02);
-      tailCowl.rotation.x = isCruiser ? -0.06 : 0.22;
+      tailCowl.position.set(0, tailY, isCruiser ? rZ + 0.08 : rZ + 0.02);
+      tailCowl.rotation.x = isCruiser ? 0 : 0.22;
       group.add(tailCowl);
     }
 
     if (!isCruiser && !isFairedSport && !isNaked) {
       const tailTidy = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.03), mats.trim);
-      tailTidy.position.set(0, tailY - 0.11, rZ - 0.19);
+      tailTidy.position.set(
+        0,
+        Math.max(tailY - 0.11, g.wheelRadius * 1.65),
+        Math.min(rZ - 0.19, rZ - g.wheelRadius - 0.03),
+      );
       tailTidy.rotation.x = 0.55;
       group.add(tailTidy);
     } else if (isCruiser) {
       // Deep valanced rear cruiser fender + bolted fender struts
+      const rTubeR = 0.036;
+      const rTorusR = g.wheelRadius + rTubeR + 0.024;
       const rFender = new THREE.Mesh(
-        new THREE.TorusGeometry(g.wheelRadius * 1.09, 0.055, 8, 18, Math.PI * 0.65),
+        new THREE.TorusGeometry(rTorusR, rTubeR, 8, 18, Math.PI * 0.65),
         mats.body,
       );
       rFender.rotation.y = Math.PI / 2;
@@ -2430,8 +2503,8 @@ export function buildMotorcycleOrAtv(
       [-1, 1].forEach((side) => {
         group.add(
           makeStrutBetween(
-            new THREE.Vector3(side * 0.11, subRearY + 0.02, rZ + 0.18),
-            new THREE.Vector3(side * (rearWidth * 0.44), g.wheelRadius + g.wheelRadius * 0.94, rZ - 0.10),
+            new THREE.Vector3(side * Math.max(0.11, rearWidth * 0.5 + 0.015), subRearY + 0.02, rZ + 0.18),
+            new THREE.Vector3(side * (rearWidth * 0.5 + 0.018), g.wheelRadius + rTorusR * 0.88, rZ - 0.10),
             0.012,
             0.010,
             mats.chrome,
@@ -2770,13 +2843,18 @@ export function buildMotorcycleOrAtv(
     createRoundedBoxGeo(isFairedSport || isNaked ? 0.115 : 0.14, 0.048, 0.055, 0.018, 2, 8),
     mats.taillight,
   );
-  tl.position.set(
-    0,
+  const tlY =
     isFairedSport || isNaked
       ? g.groundClearance + 0.728
-      : g.groundClearance + (isScooter ? 0.42 : isCruiser ? 0.48 : 0.62),
-    isFairedSport || isNaked ? rZ - 0.155 : isScooter ? rZ - 0.16 : rZ - 0.14,
-  );
+      : Math.max(
+          g.groundClearance + (isScooter ? 0.42 : isCruiser ? 0.48 : 0.62),
+          g.wheelRadius * (isCruiser ? 1.72 : 1.95),
+        );
+  const tlZ =
+    isFairedSport || isNaked
+      ? rZ - 0.155
+      : Math.min(isScooter ? rZ - 0.16 : rZ - 0.14, rZ - g.wheelRadius - 0.06);
+  tl.position.set(0, tlY, tlZ);
   if (isFairedSport || isNaked) {
     tl.rotation.x = -0.18;
   }
@@ -2806,8 +2884,8 @@ export function buildMotorcycleOrAtv(
   });
 
   // Rear motorcycle/scooter Mercosul license plate mounted on angled tail-tidy fender bracket clearing rear tire
-  const motoPlateY = Math.max(g.groundClearance + 0.24, tl.position.y - 0.16);
-  const motoPlateZ = Math.min(tl.position.z - 0.08, rZ - g.wheelRadius - 0.035);
+  const motoPlateY = Math.max(g.groundClearance + 0.24, tl.position.y - 0.14);
+  const motoPlateZ = Math.min(tl.position.z - 0.065, rZ - g.wheelRadius - 0.075);
   const tailTidyArm = makeStrutBetween(
     new THREE.Vector3(0, tl.position.y - 0.015, tl.position.z + 0.02),
     new THREE.Vector3(0, motoPlateY + 0.035, motoPlateZ + 0.016),
@@ -2855,6 +2933,7 @@ export function buildMotorcycleOrAtv(
     }
 
     const buildMotoExhaust = (sideSign: number) => {
+      const exX = Math.max(0.20, rearWidth * 0.5 + 0.068);
       const exCurve = new THREE.CatmullRomCurve3([
         new THREE.Vector3(
           isFourCylHeaders ? sideSign * 0.03 : sideSign * 0.08,
@@ -2862,9 +2941,9 @@ export function buildMotorcycleOrAtv(
           isFourCylHeaders ? -0.10 : 0.24,
         ),
         new THREE.Vector3(sideSign * 0.14, g.groundClearance + 0.095, 0.02),
-        new THREE.Vector3(sideSign * 0.18, g.groundClearance + 0.13, -0.26),
+        new THREE.Vector3(sideSign * (exX - 0.015), g.groundClearance + 0.13, -0.26),
         new THREE.Vector3(
-          sideSign * 0.20,
+          sideSign * exX,
           isDirt ? g.groundClearance + 0.50 : isCruiser ? g.groundClearance + 0.16 : g.groundClearance + 0.26,
           rZ - 0.02,
         ),
@@ -2886,10 +2965,10 @@ export function buildMotorcycleOrAtv(
         isCruiser ? mats.chrome : isNaked ? mats.alloy : mats.trim,
       );
       muffler.rotation.x = Math.PI / 2 - mufAngle;
-      muffler.position.set(sideSign * 0.20, mufY, rZ + 0.04);
+      muffler.position.set(sideSign * exX, mufY, rZ + 0.04);
       const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.04, 10), mats.exhaustBore);
       bore.rotation.x = muffler.rotation.x;
-      bore.position.set(sideSign * 0.20, mufY + Math.sin(mufAngle) * (mufLen * 0.5), rZ + 0.04 - mufLen * 0.48);
+      bore.position.set(sideSign * exX, mufY + Math.sin(mufAngle) * (mufLen * 0.5), rZ + 0.04 - mufLen * 0.48);
       exGrp.add(pipe, muffler, bore);
 
       // Muffler clamp collar + structural hanger stay bolted up to rear subframe / passenger peg mount
@@ -2898,7 +2977,7 @@ export function buildMotorcycleOrAtv(
         mats.alloy,
       );
       clampBand.rotation.x = muffler.rotation.x;
-      clampBand.position.set(sideSign * 0.20, mufY + Math.sin(mufAngle) * 0.04, rZ + 0.04);
+      clampBand.position.set(sideSign * exX, mufY + Math.sin(mufAngle) * 0.04, rZ + 0.04);
       const hangerAnchorX = isCruiser ? 0.15 : isDirt || v.id === 71 ? 0.105 : 0.185;
       const hangerAnchorY = isCruiser
         ? g.groundClearance + 0.32
@@ -2909,7 +2988,7 @@ export function buildMotorcycleOrAtv(
             : g.groundClearance + 0.44;
       const hangerAnchorZ = isDirt || v.id === 71 ? rZ + 0.16 : rZ + 0.22;
       const hangerStay = makeStrutBetween(
-        new THREE.Vector3(sideSign * 0.195, mufY + 0.03, rZ + 0.04),
+        new THREE.Vector3(sideSign * (exX - 0.005), mufY + 0.03, rZ + 0.04),
         new THREE.Vector3(sideSign * hangerAnchorX, hangerAnchorY, hangerAnchorZ),
         0.011,
         0.010,
@@ -2925,7 +3004,7 @@ export function buildMotorcycleOrAtv(
         );
         endCap.rotation.x = muffler.rotation.x;
         endCap.position.set(
-          sideSign * 0.20,
+          sideSign * exX,
           mufY + Math.sin(mufAngle) * (mufLen * 0.48),
           rZ + 0.04 - mufLen * 0.46,
         );

@@ -340,17 +340,20 @@ function addDualRearFendersAndMudflaps(
   group: THREE.Group,
   width: number,
   wheelRadius: number,
+  wheelWidth: number,
   axleZs: number[],
   mats: VehicleMaterialSet,
   cityMode: boolean,
 ) {
   const seg = cityMode ? 10 : 20;
+  const fenderSpanX = Math.max(0.58, wheelWidth * 2.15);
+  const fenderR = wheelRadius * 1.18;
   axleZs.forEach((az) => {
     [-1, 1].forEach((side) => {
       const fenderGeo = new THREE.CylinderGeometry(
-        wheelRadius * 1.16,
-        wheelRadius * 1.16,
-        0.58,
+        fenderR,
+        fenderR,
+        fenderSpanX,
         seg,
         1,
         true,
@@ -358,20 +361,19 @@ function addDualRearFendersAndMudflaps(
         Math.PI,
       );
       fenderGeo.rotateZ(Math.PI / 2);
-      fenderGeo.rotateX(-Math.PI / 2);
       const fender = new THREE.Mesh(fenderGeo, mats.trim);
-      fender.position.set(side * (width * 0.40), wheelRadius * 1.04, az);
+      fender.position.set(side * (width * 0.405), wheelRadius * 1.04, az);
       group.add(fender);
-
-      const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.04, 0.06), mats.alloy);
-      bracket.position.set(side * (width * 0.36), wheelRadius * 0.96, az - wheelRadius * 1.14);
-      group.add(bracket);
     });
   });
+
   const lastZ = axleZs[axleZs.length - 1];
   [-1, 1].forEach((side) => {
-    const flap = new THREE.Mesh(new THREE.BoxGeometry(0.54, wheelRadius * 0.65, 0.03), mats.rubber);
-    flap.position.set(side * (width * 0.40), wheelRadius * 0.46, lastZ - wheelRadius * 1.12);
+    const bracket = new THREE.Mesh(new THREE.BoxGeometry(fenderSpanX * 0.85, 0.04, 0.06), mats.alloy);
+    bracket.position.set(side * (width * 0.365), wheelRadius * 0.96, lastZ - fenderR * 0.98);
+    group.add(bracket);
+    const flap = new THREE.Mesh(new THREE.BoxGeometry(fenderSpanX * 0.92, wheelRadius * 0.62, 0.03), mats.rubber);
+    flap.position.set(side * (width * 0.405), wheelRadius * 0.46, lastZ - fenderR * 0.97);
     group.add(flap);
   });
 }
@@ -475,17 +477,19 @@ function buildTransitBusModule(
   const doorBayIndices = new Set<number>();
   if (options.hasBoardingDoors) {
     for (const dz of options.doorPositionsZ) {
-      let bestIdx = 0;
+      let bestIdx = -1;
       let bestDist = Infinity;
       for (let b = 0; b < bayCount; b++) {
         const bc = rearTopZ + 0.18 + (b + 0.5) * bayLen;
+        const hitsWheel = sortedWheels.some((wz) => Math.abs(bc - wz) < archR + bayLen * 0.44);
+        if (hitsWheel) continue;
         const d = Math.abs(dz - bc);
         if (d < bestDist) {
           bestDist = d;
           bestIdx = b;
         }
       }
-      if (bestDist < bayLen * 0.95) doorBayIndices.add(bestIdx);
+      if (bestIdx >= 0 && bestDist < bayLen * 1.55) doorBayIndices.add(bestIdx);
     }
   }
   const doorBayCenters = Array.from(doorBayIndices)
@@ -592,7 +596,6 @@ function buildTransitBusModule(
     Math.PI,
   );
   archLinerGeo.rotateZ(Math.PI / 2);
-  archLinerGeo.rotateX(-Math.PI / 2);
   sortedWheels.forEach((wz) => {
     [-1, 1].forEach((side) => {
       const liner = new THREE.Mesh(archLinerGeo, mats.grille);
@@ -601,9 +604,11 @@ function buildTransitBusModule(
     });
   });
 
+  const frontWheelHitsMask = sortedWheels.some((wz) => Math.abs((hl - 0.11) - wz) < archR + 0.16);
   if (options.hasFrontEnd) {
+    const frontMaskW = frontWheelHitsMask ? Math.min(width * 0.94, width * 0.60) : width * 0.94;
     const frontMask = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.94, beltY - groundClearance - 0.12, 0.18, 0.03, 2, 8),
+      createRoundedBoxGeo(frontMaskW, beltY - groundClearance - 0.12, 0.18, 0.03, 2, 8),
       mats.body,
     );
     frontMask.position.set(0, groundClearance + 0.12 + (beltY - groundClearance - 0.12) * 0.5, hl - 0.11);
@@ -677,7 +682,7 @@ function buildTransitBusModule(
     }
   };
 
-  if (options.hasFrontEnd) {
+  if (options.hasFrontEnd && !frontWheelHitsMask) {
     const frontBelt = new THREE.Mesh(
       new THREE.BoxGeometry(width * 0.96, 0.15, 0.03),
       mats.secondary,
@@ -1194,8 +1199,14 @@ function buildTransitBusModule(
 
     if (options.hasFrontEnd) {
       const cockpitDepth = Math.min(1.35, modLen * 0.28);
+      const cockpitZ = hl - cockpitDepth * 0.5 - 0.16;
+      const cockpitHitsWheel = sortedWheels.some(
+        (wz) => wz + archCutR > cockpitZ - cockpitDepth * 0.5 && wz - archCutR < cockpitZ + cockpitDepth * 0.5,
+      );
+      const cockpitFloorW = cockpitHitsWheel && floorY < wheelBoxTopY ? width * 0.52 : width * 0.80;
       const driverCockpit = buildHeavyCabinInterior({
         cabWidth: width * 0.84,
+        floorWidth: cockpitFloorW,
         cabDepth: cockpitDepth,
         cabHeight: busInnerH,
         dashTopY: Math.max(0.72, beltY - floorY + 0.04),
@@ -1206,30 +1217,33 @@ function buildTransitBusModule(
         cityMode: options.cityMode,
         animated,
       });
-      driverCockpit.position.set(0, floorY, hl - cockpitDepth * 0.5 - 0.16);
+      driverCockpit.position.set(0, floorY, cockpitZ);
       interior.add(driverCockpit);
 
       // Driver Partition Wall + Acrylic Screen + Red Extinguisher + Torino Turnstile (Catraca)
       if (!options.cityMode) {
         const partZ = hl - cockpitDepth - 0.14;
+        const partHitsWheel = sortedWheels.some((wz) => Math.abs(partZ - wz) < archCutR + 0.08);
+        const modW = partHitsWheel ? width * 0.22 : width * 0.32;
+        const modX = partHitsWheel ? -width * 0.16 : -width * 0.25;
         const modesty = new THREE.Mesh(
-          createRoundedBoxGeo(width * 0.32, 0.60, 0.04, 0.015, 2, 6),
+          createRoundedBoxGeo(modW, 0.60, 0.04, 0.015, 2, 6),
           mats.trim,
         );
-        modesty.position.set(-width * 0.25, floorY + 0.36, partZ);
+        modesty.position.set(modX, floorY + 0.36, partZ);
         const acrylic = new THREE.Mesh(
-          new THREE.PlaneGeometry(width * 0.30, 0.48),
+          new THREE.PlaneGeometry(Math.min(modW, width * 0.30), 0.48),
           mats.glass,
         );
-        acrylic.position.set(-width * 0.25, floorY + 0.94, partZ);
+        acrylic.position.set(modX, floorY + 0.94, partZ);
         acrylic.userData.noShadow = true;
         acrylic.renderOrder = 2;
         const partRail = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.017, 0.017, width * 0.34, 8),
+          new THREE.CylinderGeometry(0.017, 0.017, modW + 0.02, 8),
           mats.safetyYellow,
         );
         partRail.rotation.z = Math.PI / 2;
-        partRail.position.set(-width * 0.25, floorY + 0.68, partZ);
+        partRail.position.set(modX, floorY + 0.68, partZ);
         const modRail = new THREE.Mesh(
           new THREE.CylinderGeometry(0.018, 0.018, busInnerH - 0.06, 8),
           mats.safetyYellow,
@@ -1239,7 +1253,7 @@ function buildTransitBusModule(
           new THREE.CylinderGeometry(0.052, 0.052, 0.34, 10),
           mats.sirenRed,
         );
-        extinguisher.position.set(-width * 0.38, floorY + 0.48, partZ - 0.05);
+        extinguisher.position.set(partHitsWheel ? -width * 0.20 : -width * 0.38, floorY + 0.48, partZ - 0.05);
         interior.add(modesty, acrylic, partRail, modRail, extinguisher);
 
         if (options.hasBoardingDoors) {
@@ -1386,14 +1400,52 @@ function buildTransitBusModule(
       // Interior Side Dado Trim Panels + Continuous Window Sill Ledges + Pillar Emergency Hammers
       const dadoH = Math.max(0.24, beltY - floorY - 0.04);
       const dadoY = floorY + dadoH * 0.5 + 0.02;
+      const dadoHitsWheels = floorY + 0.02 < wheelBoxTopY;
       [-1, 1].forEach((s) => {
         const side = s as -1 | 1;
         const innerX = side * (width * 0.452);
         const sillX = side * (width * 0.448);
-        const gaps = side > 0 ? doorRanges : [];
+
+        // Sill spans along beltline above wheel arches, skipping boarding doors only
+        const sillGaps = side > 0 ? doorRanges : [];
+        let szCur = -hl + 0.14;
+        const szEnd = hl - 0.14;
+        for (const [d0, d1] of sillGaps) {
+          const segEnd = Math.min(szEnd, d0);
+          if (segEnd - szCur > 0.12) {
+            const sill = new THREE.Mesh(
+              new THREE.BoxGeometry(0.045, 0.028, segEnd - szCur),
+              mats.trim,
+            );
+            sill.position.set(sillX, beltY - 0.01, (szCur + segEnd) * 0.5);
+            interior.add(sill);
+          }
+          szCur = Math.max(szCur, d1);
+        }
+        if (szEnd - szCur > 0.12) {
+          const sill = new THREE.Mesh(
+            new THREE.BoxGeometry(0.045, 0.028, szEnd - szCur),
+            mats.trim,
+          );
+          sill.position.set(sillX, beltY - 0.01, (szCur + szEnd) * 0.5);
+          interior.add(sill);
+        }
+
+        // Dado lower side trim skips both boarding doors AND wheelhouse boxes when floor sits below wheel tops
+        const dadoGaps: Array<readonly [number, number]> = [];
+        if (side > 0) {
+          for (const dr of doorRanges) dadoGaps.push(dr);
+        }
+        if (dadoHitsWheels) {
+          for (const wz of sortedWheels) {
+            dadoGaps.push([wz - archCutR, wz + archCutR]);
+          }
+        }
+        dadoGaps.sort((a, b) => a[0] - b[0]);
+
         let zCur = -hl + 0.14;
         const zEnd = hl - 0.14;
-        for (const [d0, d1] of gaps) {
+        for (const [d0, d1] of dadoGaps) {
           const segEnd = Math.min(zEnd, d0);
           if (segEnd - zCur > 0.12) {
             const dado = new THREE.Mesh(
@@ -1401,12 +1453,7 @@ function buildTransitBusModule(
               mats.alloy,
             );
             dado.position.set(innerX, dadoY, (zCur + segEnd) * 0.5);
-            const sill = new THREE.Mesh(
-              new THREE.BoxGeometry(0.045, 0.028, segEnd - zCur),
-              mats.trim,
-            );
-            sill.position.set(sillX, beltY - 0.01, (zCur + segEnd) * 0.5);
-            interior.add(dado, sill);
+            interior.add(dado);
           }
           zCur = Math.max(zCur, d1);
         }
@@ -1416,12 +1463,7 @@ function buildTransitBusModule(
             mats.alloy,
           );
           dado.position.set(innerX, dadoY, (zCur + zEnd) * 0.5);
-          const sill = new THREE.Mesh(
-            new THREE.BoxGeometry(0.045, 0.028, zEnd - zCur),
-            mats.trim,
-          );
-          sill.position.set(sillX, beltY - 0.01, (zCur + zEnd) * 0.5);
-          interior.add(dado, sill);
+          interior.add(dado);
         }
 
         // Red emergency window hammers on alternating window mullions
@@ -1703,18 +1745,19 @@ function buildSchoolBusVehicle(
   const roofY = height - 0.14;
   const bodyLen = cowlZ - (-halfL + 0.08);
   const bodyCenterZ = (-halfL + 0.08 + cowlZ) * 0.5;
-  const archR = g.wheelRadius * 1.15;
+  const archR = g.wheelRadius * 1.18;
 
-  // 1. Nose-hooded School Bus Engine Bay + Openable Front Hood + Crossover Mirrors
+  // 1. Nose-hooded School Bus Engine Bay (tucked cleanly inboard of front tires) + Openable Front Hood + Crossover Mirrors
+  const noseW = Math.min(width * 0.62, Math.max(width * 0.46, (width * 0.46 - g.wheelWidth * 0.5 - 0.07) * 2));
   const noseSides = new THREE.Mesh(
-    createRoundedBoxGeo(width * 0.88, beltY - g.groundClearance - 0.08, hoodLen - 0.04, 0.045, 3, 10),
+    createRoundedBoxGeo(noseW, beltY - g.groundClearance - 0.08, hoodLen - 0.04, 0.045, 3, 10),
     mats.body,
   );
   noseSides.position.set(0, g.groundClearance + (beltY - g.groundClearance) * 0.42, cowlZ + (hoodLen - 0.04) * 0.5);
   group.add(noseSides);
 
   if (!cityMode) {
-    const bay = createEngineBayAssembly(width * 0.62, hoodLen * 0.82, mats, false);
+    const bay = createEngineBayAssembly(width * 0.60, hoodLen * 0.82, mats, false);
     bay.position.set(0, g.groundClearance + (beltY - g.groundClearance) * 0.64, cowlZ + hoodLen * 0.5);
     group.add(bay);
   }
@@ -1735,7 +1778,7 @@ function buildSchoolBusVehicle(
   // Convex crossover mirrors on front hood corners
   [-1, 1].forEach((side) => {
     const arm = makeStrutBetween(
-      new THREE.Vector3(side * (width * 0.42), beltY - 0.18, hoodFrontZ - 0.18),
+      new THREE.Vector3(side * (width * 0.38), beltY - 0.18, hoodFrontZ - 0.18),
       new THREE.Vector3(side * (width * 0.48), beltY + 0.06, hoodFrontZ - 0.05),
       0.012,
       0.012,
@@ -1747,13 +1790,17 @@ function buildSchoolBusVehicle(
     group.add(arm, dish);
   });
 
-  // 2. Main School Bus Body behind Cowl
+  // 2. Main School Bus Body behind Cowl (cuts both rear and front wheel wells cleanly when frontWheelZ is near/under cowl)
+  const schoolBodyWheelZs =
+    frontWheelZ - archR < cowlZ
+      ? [frontWheelZ - bodyCenterZ, rearWheelZ - bodyCenterZ]
+      : [rearWheelZ - bodyCenterZ];
   const busBody = buildTransitBusModule(
     bodyLen,
     width,
     height,
     g.groundClearance,
-    [rearWheelZ - bodyCenterZ],
+    schoolBodyWheelZs,
     g.wheelRadius,
     mats,
     animated,
@@ -1762,7 +1809,7 @@ function buildSchoolBusVehicle(
       hasRearEnd: true,
       hasDestinationSign: false,
       hasBoardingDoors: true,
-      doorPositionsZ: [bodyLen * 0.38],
+      doorPositionsZ: [bodyLen * 0.28],
       labelPrefix: 'Ônibus Escolar',
       cityMode,
       acCount: 0,
@@ -1771,12 +1818,38 @@ function buildSchoolBusVehicle(
   busBody.position.z = bodyCenterZ;
   group.add(busBody);
 
-  // Classic 3 horizontal black rub-rails on school bus sides
+  // Classic 3 horizontal black rub-rails on school bus sides (segmented around wheel arches!)
+  const rubZStart = bodyCenterZ - bodyLen * 0.46;
+  const rubZEnd = bodyCenterZ + bodyLen * 0.46;
+  const rubArchClear = archR * 1.06;
+  const rubWheelGaps = [rearWheelZ, frontWheelZ]
+    .sort((a, b) => a - b)
+    .map((wz) => [wz - rubArchClear, wz + rubArchClear] as const);
   [-1, 1].forEach((side) => {
     [0.24, 0.48, beltY - g.groundClearance - 0.08].forEach((ry) => {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.055, bodyLen * 0.92), mats.trim);
-      rail.position.set(side * (width * 0.504), g.groundClearance + ry, bodyCenterZ);
-      group.add(rail);
+      const railY = g.groundClearance + ry;
+      const skipsArch = railY < g.wheelRadius + rubArchClear;
+      if (!skipsArch) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.055, bodyLen * 0.92), mats.trim);
+        rail.position.set(side * (width * 0.504), railY, bodyCenterZ);
+        group.add(rail);
+      } else {
+        let zCur = rubZStart;
+        for (const [g0, g1] of rubWheelGaps) {
+          const segEnd = Math.min(rubZEnd, g0);
+          if (segEnd - zCur > 0.10) {
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.055, segEnd - zCur), mats.trim);
+            rail.position.set(side * (width * 0.504), railY, (zCur + segEnd) * 0.5);
+            group.add(rail);
+          }
+          zCur = Math.max(zCur, g1);
+        }
+        if (rubZEnd - zCur > 0.10) {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.055, rubZEnd - zCur), mats.trim);
+          rail.position.set(side * (width * 0.504), railY, (zCur + rubZEnd) * 0.5);
+          group.add(rail);
+        }
+      }
     });
   });
 
@@ -1815,11 +1888,11 @@ function buildSchoolBusVehicle(
 
   [-1, 1].forEach((side) => {
     const fArch = new THREE.Mesh(
-      new THREE.TorusGeometry(archR * 0.96, 0.055, 8, 18, Math.PI),
+      new THREE.TorusGeometry(archR * 1.03, 0.046, 8, 18, Math.PI),
       mats.body,
     );
     fArch.rotation.y = Math.PI / 2;
-    fArch.position.set(side * (width * 0.45), g.wheelRadius * 0.95, frontWheelZ);
+    fArch.position.set(side * (width * 0.485), g.wheelRadius * 0.98, frontWheelZ);
     group.add(fArch);
   });
 
@@ -2117,7 +2190,7 @@ export function buildHeavyTruckVehicle(
 
   const cabLen = length * g.cabinLengthRatio;
   const cabZ = halfL - cabLen * 0.5 - 0.08;
-  const frameY = g.groundClearance + 0.16;
+  const frameY = Math.max(g.groundClearance + 0.16, g.wheelRadius * 1.06);
   const cabBaseY = frameY + 0.10;
   const cabH = height - cabBaseY - (isSemi ? 0.24 : 0.12);
   const ch = cabLen * 0.5;
@@ -2153,10 +2226,34 @@ export function buildHeavyTruckVehicle(
   const cabFloorH = 0.14;
   const cabWallThick = 0.14;
 
-  // 2a. Hollowed lower cab chassis + sloped engine nose (drops to cabFloorH inside cab!)
+  const frontAxleZ = cabZ + 0.18;
+  const fArchR = g.wheelRadius * 1.18;
+  const fBotY = Math.max(g.groundClearance + 0.10, cabBaseY - 0.06);
+  const fArchCY = Math.max(g.wheelRadius * 0.98, fBotY + 0.04);
+
+  // 2a. Hollowed lower cab chassis + sloped engine nose with real front wheel-well cutout!
   const cabLowerShape = new THREE.Shape();
+  const fAxLocalZ = frontAxleZ - cabZ;
+  const fArchLocalY = fArchCY - cabBaseY;
+  const fCabArchR = fArchR + 0.025;
+  const faCab0 = fAxLocalZ - fCabArchR;
+  const faCab1 = fAxLocalZ + fCabArchR;
   cabLowerShape.moveTo(-ch, 0);
-  cabLowerShape.lineTo(noseLocalEnd, 0);
+  if (faCab1 > -ch + 0.06 && faCab0 < noseLocalEnd - 0.06 && fArchLocalY + fCabArchR > 0.04) {
+    if (faCab0 > -ch + 0.04) {
+      cabLowerShape.lineTo(faCab0, 0);
+      const endAng = faCab1 > noseLocalEnd - 0.02 ? Math.acos(THREE.MathUtils.clamp((noseLocalEnd - fAxLocalZ) / fCabArchR, -0.98, 0.98)) : 0;
+      cabLowerShape.absarc(fAxLocalZ, fArchLocalY, fCabArchR, Math.PI, endAng, true);
+      if (faCab1 <= noseLocalEnd - 0.02) cabLowerShape.lineTo(noseLocalEnd, 0);
+    } else {
+      const startAng = Math.acos(THREE.MathUtils.clamp((-ch - fAxLocalZ) / fCabArchR, -0.98, 0.98));
+      const endAng = faCab1 > noseLocalEnd - 0.02 ? Math.acos(THREE.MathUtils.clamp((noseLocalEnd - fAxLocalZ) / fCabArchR, -0.98, 0.98)) : 0;
+      cabLowerShape.absarc(fAxLocalZ, fArchLocalY, fCabArchR, startAng, endAng, true);
+      if (faCab1 <= noseLocalEnd - 0.02) cabLowerShape.lineTo(noseLocalEnd, 0);
+    }
+  } else {
+    cabLowerShape.lineTo(noseLocalEnd, 0);
+  }
   cabLowerShape.lineTo(noseLocalEnd, hoodTopH * 0.82);
   cabLowerShape.lineTo(noseStartZ, hoodTopH);
   cabLowerShape.lineTo(noseStartZ - 0.05, cabFloorH);
@@ -2165,9 +2262,11 @@ export function buildHeavyTruckVehicle(
   cabLowerShape.lineTo(-ch, hoodTopH);
   cabLowerShape.closePath();
 
+  const maxCabLowerW = Math.max(width * 0.64, (width * 0.46 - g.wheelWidth * 0.5 - 0.055) * 2);
+  const cabLowerW = cityMode ? Math.min(width * 0.90, maxCabLowerW) : Math.min(width * 0.82, maxCabLowerW);
   const cabLowerGeo = createExtrudedProfile(
     cabLowerShape,
-    cityMode ? width * 0.94 : width * 0.84,
+    cabLowerW,
     noseFrontBevel,
     noseFrontBevel,
     cityMode ? 2 : 4,
@@ -2255,7 +2354,6 @@ export function buildHeavyTruckVehicle(
   group.add(cabBrow);
 
   // Full-width sculpted front fenders & rear sleeper shell (width * 0.96, flush with cab doors!)
-  const frontAxleZ = cabZ + 0.18;
   const fDoorHingeZ = cabZ + noseStartZ - 0.12;
   const doorLen = isFire ? Math.min(0.92, cabLen * 0.34) : Math.min(1.02, cabLen * 0.42);
   const wsBotZ = cabZ + noseStartZ - 0.01;
@@ -2263,22 +2361,61 @@ export function buildHeavyTruckVehicle(
   const wsBotY = cabBaseY + hoodTopH + 0.02;
   const wsTopY = cabBaseY + cabH - 0.06;
 
+  const fenderSpan = noseLen + 0.08;
+  const fFenderFrontZ = cabZ + ch - 0.04;
+  const fFenderRearZ = fFenderFrontZ - fenderSpan;
+  const fTopFrontY = Math.max(cabBaseY + hoodTopH * 0.72, fArchCY + fArchR + 0.05);
+  const fTopBackY = Math.max(cabBaseY + hoodTopH * 0.88, fTopFrontY + 0.05);
+
+  const fFenderShape = new THREE.Shape();
+  const faStart = frontAxleZ - fArchR;
+  const faEnd = frontAxleZ + fArchR;
+  if (faStart < fFenderRearZ + 0.02) {
+    const cosT = THREE.MathUtils.clamp((fFenderRearZ - frontAxleZ) / fArchR, -0.98, 0.98);
+    const thetaStart = Math.acos(cosT);
+    fFenderShape.moveTo(fFenderRearZ, fArchCY + fArchR * Math.sin(thetaStart));
+    if (faEnd > fFenderFrontZ - 0.02) {
+      const thetaEnd = Math.acos(THREE.MathUtils.clamp((fFenderFrontZ - frontAxleZ) / fArchR, -0.98, 0.98));
+      fFenderShape.absarc(frontAxleZ, fArchCY, fArchR, thetaStart, thetaEnd, true);
+    } else {
+      fFenderShape.absarc(frontAxleZ, fArchCY, fArchR, thetaStart, 0, true);
+      fFenderShape.lineTo(fFenderFrontZ, fBotY);
+    }
+  } else {
+    fFenderShape.moveTo(fFenderRearZ, fBotY);
+    fFenderShape.lineTo(faStart, fBotY);
+    if (faEnd > fFenderFrontZ - 0.02) {
+      const thetaEnd = Math.acos(THREE.MathUtils.clamp((fFenderFrontZ - frontAxleZ) / fArchR, -0.98, 0.98));
+      fFenderShape.absarc(frontAxleZ, fArchCY, fArchR, Math.PI, thetaEnd, true);
+    } else {
+      fFenderShape.absarc(frontAxleZ, fArchCY, fArchR, Math.PI, 0, true);
+      fFenderShape.lineTo(fFenderFrontZ, fBotY);
+    }
+  }
+  fFenderShape.lineTo(fFenderFrontZ, fTopFrontY);
+  fFenderShape.quadraticCurveTo(frontAxleZ, Math.max(fTopBackY, fArchCY + fArchR + 0.08), fFenderRearZ, fTopBackY);
+  fFenderShape.closePath();
+  const truckFFenderGeo = createExtrudedProfile(
+    fFenderShape,
+    width * 0.22,
+    0.028,
+    0.028,
+    cityMode ? 2 : 3,
+    cityMode ? 12 : 18,
+  );
+
   [-1, 1].forEach((side) => {
-    // Sloped contoured front fenders flush with hood height & terminating cleanly at fDoorHingeZ
-    const fenderSpan = noseLen + 0.08;
-    const fFender = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.22, hoodTopH * 0.56, fenderSpan, 0.035, 3, 10),
-      mats.body,
-    );
-    fFender.position.set(side * (width * 0.38), cabBaseY + hoodTopH * 0.42, cabZ + ch - 0.04 - fenderSpan * 0.5);
+    // Sculpted contoured front fenders with real semicircular wheel-well cutouts clearing large tires
+    const fFender = new THREE.Mesh(truckFFenderGeo, mats.body);
+    fFender.position.x = side * (width * 0.38);
     group.add(fFender);
 
     const fFlare = new THREE.Mesh(
-      new THREE.TorusGeometry(g.wheelRadius * 1.16, 0.052, 8, 18, Math.PI),
+      new THREE.TorusGeometry(fArchR, 0.052, 8, 18, Math.PI),
       mats.trim,
     );
     fFlare.rotation.y = Math.PI / 2;
-    fFlare.position.set(side * (width * 0.47), g.wheelRadius * 0.98, frontAxleZ);
+    fFlare.position.set(side * (width * 0.475), fArchCY, frontAxleZ);
     group.add(fFlare);
 
     // Structural A-pillars framing the open windshield bay
@@ -2307,15 +2444,20 @@ export function buildHeavyTruckVehicle(
       group.add(hoodBadge);
     }
 
-    // Rear cab corner pillar / sleeper flank sealing behind cab doors
+    // Rear cab corner pillar / sleeper flank sealing behind cab doors (lifted over front arch on cabovers!)
     const sleeperRearZ = cabZ - ch;
     const doorEndZ = isFire ? fDoorHingeZ - doorLen * 1.96 - 0.06 : fDoorHingeZ - doorLen;
     const rearFlankSpan = Math.max(0.16, doorEndZ - sleeperRearZ);
+    const flankHitsFrontWheel = doorEndZ > frontAxleZ - fArchR - 0.04 && sleeperRearZ < frontAxleZ + fArchR;
+    const flankBotY = flankHitsFrontWheel
+      ? Math.max(cabBaseY, fArchCY + fArchR + 0.03)
+      : cabBaseY;
+    const flankH = Math.max(0.32, cabBaseY + cabH * 0.95 - flankBotY);
     const flank = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.14, cabH * 0.94, rearFlankSpan, 0.03, 2, 8),
+      createRoundedBoxGeo(width * 0.14, flankH, rearFlankSpan, 0.03, 2, 8),
       mats.body,
     );
-    flank.position.set(side * (width * 0.495 - width * 0.07), cabBaseY + cabH * 0.48, sleeperRearZ + rearFlankSpan * 0.5);
+    flank.position.set(side * (width * 0.495 - width * 0.07), flankBotY + flankH * 0.5, sleeperRearZ + rearFlankSpan * 0.5);
     group.add(flank);
   });
 
@@ -2387,6 +2529,7 @@ export function buildHeavyTruckVehicle(
   const cabCockpitDepth = Math.max(1.0, cabCockpitFrontZ - cabCockpitRearZ);
   const cabInt = buildHeavyCabinInterior({
     cabWidth: width * 0.82,
+    floorWidth: Math.max(0.95, cabLowerW - 0.06),
     cabDepth: cabCockpitDepth,
     cabHeight: cabH - cabFloorH - 0.11,
     dashTopY: hoodTopH - cabFloorH + 0.02,
@@ -2458,12 +2601,18 @@ export function buildHeavyTruckVehicle(
 
   // Flush Articulated Cab Doors + 3-Step Ladder + Grab Handles + Dual Truck Mirrors + Fuel Tanks + Stacks
   const doorHingeXAbs = width * 0.495 - 0.034;
+  const fDoorRearEdgeZ = fDoorHingeZ - doorLen;
+  const fDoorHitsWheel = fDoorHingeZ > frontAxleZ - fArchR && fDoorRearEdgeZ < frontAxleZ + fArchR;
+  const clearedCabDoorH = fDoorHitsWheel
+    ? Math.min(hoodTopH * 0.88, Math.max(0.40, cabBaseY + hoodTopH + 0.02 - (fArchCY + fArchR + 0.02)))
+    : hoodTopH * 0.88;
+  const stepZ = fDoorHitsWheel ? Math.min(fDoorHingeZ - doorLen * 0.45, frontAxleZ - fArchR - 0.34) : fDoorHingeZ - doorLen * 0.45;
   [-1, 1].forEach((s) => {
     const side = s as -1 | 1;
 
     [0.04, 0.22, 0.40].forEach((sy) => {
-      const step = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.038, 0.58), mats.alloy);
-      step.position.set(side * (width * 0.46), cabBaseY + sy - 0.22, fDoorHingeZ - doorLen * 0.45);
+      const step = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.038, 0.48), mats.alloy);
+      step.position.set(side * (width * 0.46), Math.max(g.groundClearance + 0.12, cabBaseY + sy - 0.16), stepZ);
       group.add(step);
     });
     const grab = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.62, 8), mats.chrome);
@@ -2479,7 +2628,7 @@ export function buildHeavyTruckVehicle(
           hingeY: cabBaseY + hoodTopH + 0.02,
           hingeZ: fDoorHingeZ,
           doorLen,
-          doorHeight: hoodTopH * 0.88,
+          doorHeight: clearedCabDoorH,
           glassHeight: Math.max(0.32, wsTopY - wsBotY - 0.02),
           glassTopZInsetFront: (wsBotZ - wsTopZ) * 0.65,
           glassTopZInsetRear: 0.04,
@@ -2499,14 +2648,20 @@ export function buildHeavyTruckVehicle(
       group.add(fDoor);
 
       if (isFire) {
+        const crewHingeZ = fDoorHingeZ - doorLen - 0.05;
+        const crewLen = doorLen * 0.90;
+        const crewHitsWheel = crewHingeZ > frontAxleZ - fArchR && crewHingeZ - crewLen < frontAxleZ + fArchR;
+        const crewDoorH = crewHitsWheel
+          ? Math.min(hoodTopH * 0.88, Math.max(0.40, cabBaseY + hoodTopH + 0.02 - (fArchCY + fArchR + 0.02)))
+          : hoodTopH * 0.88;
         const crewDoor = createSideDoorGroup(
           {
             side,
             hingeX: side * doorHingeXAbs,
             hingeY: cabBaseY + hoodTopH + 0.02,
-            hingeZ: fDoorHingeZ - doorLen - 0.05,
-            doorLen: doorLen * 0.90,
-            doorHeight: hoodTopH * 0.88,
+            hingeZ: crewHingeZ,
+            doorLen: crewLen,
+            doorHeight: crewDoorH,
             glassHeight: Math.max(0.32, wsTopY - wsBotY - 0.02),
             glassTopZInsetFront: 0.04,
             glassTopZInsetRear: 0.04,
@@ -2524,38 +2679,58 @@ export function buildHeavyTruckVehicle(
       }
     }
 
+    if (isSemi || !isFire) {
+      const stackH = isSemi ? cabH * 1.16 : cabH * 0.85;
+      const stack = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.055, stackH, 12),
+        mats.chrome,
+      );
+      stack.position.set(side * (width * 0.44), cabBaseY + hoodTopH + stackH * 0.42, cabZ - ch - 0.14);
+      const shield = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.078, 0.078, stackH * 0.56, 12, 1, true, 0, Math.PI),
+        mats.chrome,
+      );
+      shield.position.copy(stack.position);
+      shield.rotation.y = side * Math.PI * 0.5;
+      tagPart(stack, 'Chaminé de Escape com Protetor', side * 0.4, 0.4, -0.3);
+      group.add(stack, shield);
+    }
+  });
+
+  // 3. Specialized Heavy Superstructure Behind Cab (with tandem axle spacing guaranteed >= 2.24 * wheelRadius!)
+  const rearLen = length * g.rearDeckRatio;
+  const rearZ = -halfL + rearLen * 0.5 + 0.12;
+  const minTandemSpan = g.wheelRadius * 2.24;
+  const rearAxle2Z = Math.max(-halfL + g.wheelRadius + 0.14, rearZ - rearLen * 0.34);
+  const rearAxle1Z = Math.min(cabZ - ch - g.wheelRadius * 1.24, Math.max(rearZ - rearLen * 0.08, rearAxle2Z + minTandemSpan));
+  const rearAxleZs = isTow
+    ? [rearZ - rearLen * 0.12]
+    : [rearAxle1Z, rearAxle2Z];
+
+  const tankFrontLim = cabZ - ch - 0.04;
+  const tankRearLim = Math.max(...rearAxleZs) + g.wheelRadius * 1.22 + 0.08;
+  const tankSpan = Math.max(0.32, Math.min(length * 0.20, tankFrontLim - tankRearLim));
+  const tankCenterZ = tankFrontLim - tankSpan * 0.5;
+  const tankClearsOutside = tankFrontLim - tankRearLim >= 0.42;
+  const tankXAbs = tankClearsOutside ? width * 0.39 : width * 0.25;
+  [-1, 1].forEach((side) => {
     const tank = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.24, 0.24, length * 0.20, cityMode ? 12 : 22),
+      new THREE.CylinderGeometry(0.24, 0.24, tankSpan, cityMode ? 12 : 22),
       mats.chrome,
     );
     tank.rotation.x = Math.PI / 2;
-    tank.position.set(side * (width * 0.39), frameY + 0.08, cabZ - ch - 0.45);
+    tank.position.set(side * tankXAbs, frameY + 0.08, tankCenterZ);
     tagPart(tank, 'Tanque de Diesel com Cintas', side * 0.4, -0.1, 0);
     group.add(tank);
 
-    [-0.25, 0.25].forEach((tz) => {
-      const strap = new THREE.Mesh(new THREE.TorusGeometry(0.245, 0.015, 6, 18), mats.trim);
-      strap.position.set(side * (width * 0.39), frameY + 0.08, cabZ - ch - 0.45 + tz);
-      group.add(strap);
+    [-0.18, 0.18].forEach((tz) => {
+      if (Math.abs(tz) < tankSpan * 0.44) {
+        const strap = new THREE.Mesh(new THREE.TorusGeometry(0.245, 0.015, 6, 18), mats.trim);
+        strap.position.set(side * tankXAbs, frameY + 0.08, tankCenterZ + tz);
+        group.add(strap);
+      }
     });
-
-    const stack = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.068, 0.072, cabH * 0.96, cityMode ? 10 : 16),
-      mats.chrome,
-    );
-    stack.position.set(side * (width * 0.46), cabBaseY + cabH * 0.64, cabZ - ch + 0.04);
-    const shield = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.092, 0.092, cabH * 0.58, 14, 1, true, 0, Math.PI * 1.4),
-      mats.alloy,
-    );
-    shield.position.copy(stack.position);
-    tagPart(stack, 'Chaminé de Escape com Protetor', side * 0.45, 0.3, 0);
-    group.add(stack, shield);
   });
-
-  // 3. Specialized Heavy Superstructure Behind Cab
-  const rearLen = length * g.rearDeckRatio;
-  const rearZ = -halfL + rearLen * 0.5 + 0.12;
 
   if (isSemi) {
     // Aluminum Catwalk Deck Plate + Stanchion + Coiled Air Lines + 5th-Wheel Jaws
@@ -2591,9 +2766,10 @@ export function buildHeavyTruckVehicle(
     });
   } else if (isDump) {
     // Hollowed 5-Wall Ribbed Heavy Steel Dump Bed + Cab Canopy Visor + Telescopic Hoist + Hinged Tailgate
+    const dumpBaseY = Math.max(frameY + 0.26, g.wheelRadius * 2.08);
     const bedPivot = new THREE.Group();
-    bedPivot.position.set(0, frameY + 0.26, -halfL + 0.55);
-    const bedH = height * 0.42;
+    bedPivot.position.set(0, dumpBaseY, -halfL + 0.55);
+    const bedH = Math.min(height * 0.42, Math.max(1.05, height - dumpBaseY - 0.24));
     const bedW = width * 0.96;
     const bedLocalZ = rearLen * 0.5 - 0.42;
 
@@ -2651,24 +2827,25 @@ export function buildHeavyTruckVehicle(
   } else if (isMixer) {
     // High-Poly Mixer Drum with Twin Helical Fins + Hatch + Cradle + Water Tank + Ladder + Chute
     const drumGroup = new THREE.Group();
+    const drumBaseY = Math.max(frameY + 1.24, g.wheelRadius * 2.10 + width * 0.45);
     const drumPts = [
       new THREE.Vector2(0.06, -rearLen * 0.46),
-      new THREE.Vector2(width * 0.35, -rearLen * 0.34),
-      new THREE.Vector2(width * 0.47, -rearLen * 0.04),
-      new THREE.Vector2(width * 0.44, rearLen * 0.20),
-      new THREE.Vector2(width * 0.30, rearLen * 0.40),
+      new THREE.Vector2(width * 0.33, -rearLen * 0.34),
+      new THREE.Vector2(width * 0.43, -rearLen * 0.04),
+      new THREE.Vector2(width * 0.41, rearLen * 0.20),
+      new THREE.Vector2(width * 0.28, rearLen * 0.40),
       new THREE.Vector2(0.08, rearLen * 0.46),
     ];
     const drumGeo = new THREE.LatheGeometry(drumPts, cityMode ? 18 : 38);
     drumGeo.rotateX(Math.PI / 2);
     drumGroup.add(new THREE.Mesh(drumGeo, mats.secondary));
 
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.475, width * 0.475, 0.24, 28), mats.accent);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.435, width * 0.435, 0.24, 28), mats.accent);
     band.rotation.x = Math.PI / 2;
     drumGroup.add(band);
 
     const hatchPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.06, 0.32), mats.trim);
-    hatchPlate.position.set(0, width * 0.47, 0);
+    hatchPlate.position.set(0, width * 0.43, 0);
     drumGroup.add(hatchPlate);
 
     if (!cityMode) {
@@ -2679,46 +2856,52 @@ export function buildHeavyTruckVehicle(
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
           const z = -rearLen * 0.34 + t * (rearLen * 0.72);
-          const r = width * (0.34 + Math.sin(t * Math.PI) * 0.14);
+          const r = width * (0.31 + Math.sin(t * Math.PI) * 0.13);
           const a = phase + t * turns * Math.PI * 2;
           helixPts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z));
         }
         const helix = new THREE.Mesh(
-          new THREE.TubeGeometry(new THREE.CatmullRomCurve3(helixPts), 42, 0.04, 8, false),
+          new THREE.TubeGeometry(new THREE.CatmullRomCurve3(helixPts), 42, 0.036, 8, false),
           phase === 0 ? mats.liveryStripe : mats.accent,
         );
         drumGroup.add(helix);
       });
     }
 
-    drumGroup.position.set(0, frameY + 1.18, rearZ + 0.14);
-    drumGroup.rotation.x = 0.22;
+    drumGroup.position.set(0, drumBaseY, rearZ + 0.14);
+    drumGroup.rotation.x = 0.20;
     tagPart(drumGroup, 'Tambor Misturador Helicoidal', 0, 0.65, -0.35);
     group.add(drumGroup);
     animated.mixerDrum = drumGroup;
 
-    const frontPed = new THREE.Mesh(createRoundedBoxGeo(width * 0.46, 1.05, 0.36, 0.04, 2, 8), mats.trim);
-    frontPed.position.set(0, frameY + 0.56, rearZ + rearLen * 0.44);
+    const frontPed = new THREE.Mesh(createRoundedBoxGeo(width * 0.44, 1.15, 0.36, 0.04, 2, 8), mats.trim);
+    frontPed.position.set(0, frameY + 0.62, rearZ + rearLen * 0.44);
     const waterTank = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, width * 0.74, 16), mats.alloy);
     waterTank.rotation.z = Math.PI / 2;
-    waterTank.position.set(0, frameY + 1.28, rearZ + rearLen * 0.46);
-    const rearCradle = new THREE.Mesh(createRoundedBoxGeo(width * 0.74, 1.15, 0.28, 0.04, 2, 8), mats.trim);
-    rearCradle.position.set(0, frameY + 0.62, rearZ - rearLen * 0.38);
+    waterTank.position.set(0, frameY + 1.38, rearZ + rearLen * 0.46);
+    const cradleBotY = Math.max(frameY + 0.08, g.wheelRadius * 2.08);
+    const cradleTopY = Math.max(cradleBotY + 0.45, drumBaseY - 0.12);
+    const cradleH = cradleTopY - cradleBotY;
+    const rearCradle = new THREE.Mesh(createRoundedBoxGeo(width * 0.70, cradleH, 0.28, 0.04, 2, 8), mats.trim);
+    rearCradle.position.set(0, cradleBotY + cradleH * 0.5, rearZ - rearLen * 0.38);
     const hopper = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.22, 0.48, 16), mats.accent);
-    hopper.position.set(0, frameY + 1.66, -halfL + 0.28);
+    hopper.position.set(0, drumBaseY + 0.52, -halfL + 0.28);
     group.add(frontPed, waterTank, rearCradle, hopper);
 
-    // Rear climb ladder with rungs & brackets anchored cleanly onto rearCradle
-    const ladderZ = rearZ - rearLen * 0.38 - 0.16;
-    [-0.18, 0.18].forEach((lx) => {
-      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.55, 8), mats.chrome);
-      rail.position.set(lx + width * 0.26, frameY + 0.92, ladderZ);
+    // Rear climb ladder with rungs & brackets anchored cleanly onto rearCradle above rear tires
+    const ladderZ = Math.min(rearZ - rearLen * 0.38 - 0.16, Math.min(...rearAxleZs) - g.wheelRadius * 1.22 - 0.08);
+    const ladderBotY = Math.max(frameY + 0.24, g.wheelRadius * 1.98);
+    const ladderXCenter = width * 0.16;
+    [-0.16, 0.16].forEach((lx) => {
+      const railLen = Math.max(0.95, drumBaseY + 0.55 - ladderBotY);
+      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, railLen, 8), mats.chrome);
+      rail.position.set(lx + ladderXCenter, ladderBotY + railLen * 0.5, ladderZ);
       group.add(rail);
-      [0.35, 1.35].forEach((by) => {
+      [ladderBotY + 0.18, ladderBotY + railLen - 0.18].forEach((by) => {
         group.add(
           makeStrutBetween(
-            new THREE.Vector3(lx + width * 0.26, frameY + by, ladderZ),
-            new THREE.Vector3(lx + width * 0.26, frameY + by, rearZ - rearLen * 0.38),
+            new THREE.Vector3(lx + ladderXCenter, by, ladderZ),
+            new THREE.Vector3(lx + ladderXCenter, by, rearZ - rearLen * 0.38),
             0.016,
             0.016,
             mats.trim,
@@ -2728,14 +2911,14 @@ export function buildHeavyTruckVehicle(
       });
     });
     for (let r = 0; r < 5; r++) {
-      const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.36, 8), mats.chrome);
+      const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.32, 8), mats.chrome);
       rung.rotation.z = Math.PI / 2;
-      rung.position.set(width * 0.26, frameY + 0.32 + r * 0.30, ladderZ);
+      rung.position.set(ladderXCenter, ladderBotY + 0.14 + r * 0.26, ladderZ);
       group.add(rung);
     }
 
     const chutePivot = new THREE.Group();
-    chutePivot.position.set(0, frameY + 0.85, rearZ - rearLen * 0.38 - 0.10);
+    chutePivot.position.set(0, Math.max(frameY + 0.92, cradleBotY + 0.16), rearZ - rearLen * 0.38 - 0.10);
     const chuteCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.22, 12), mats.trim);
     chutePivot.add(chuteCollar);
     const chute = new THREE.Mesh(createRoundedBoxGeo(0.36, 0.14, 1.20, 0.02, 2, 6), mats.trim);
@@ -2746,13 +2929,38 @@ export function buildHeavyTruckVehicle(
     group.add(chutePivot);
     registerOpenable(animated, chutePivot, 'Calha Betoneira', { y: 0.95 });
   } else if (isFire) {
+    const fireBotY = frameY + 0.10;
+    const fireTopY = fireBotY + cabH * 0.74;
+    const fireRearZ = rearZ - rearLen * 0.5;
+    const fireFrontZ = rearZ + rearLen * 0.5;
+    const rArchR = g.wheelRadius * 1.18;
+    const rArchCY = g.wheelRadius * 1.02;
+    const sortedRearAxles = [...rearAxleZs].sort((a, b) => a - b);
+
+    const fireShape = new THREE.Shape();
+    fireShape.moveTo(fireRearZ, fireBotY);
+    for (const axZ of sortedRearAxles) {
+      const a0 = Math.max(fireRearZ + 0.08, axZ - rArchR);
+      const a1 = Math.min(fireFrontZ - 0.08, axZ + rArchR);
+      fireShape.lineTo(a0, fireBotY);
+      fireShape.absarc(axZ, rArchCY, rArchR, Math.PI, 0, true);
+      fireShape.lineTo(a1, fireBotY);
+    }
+    fireShape.lineTo(fireFrontZ, fireBotY);
+    fireShape.lineTo(fireFrontZ, fireTopY);
+    fireShape.lineTo(fireRearZ, fireTopY);
+    fireShape.closePath();
+
     const bodyBox = new THREE.Mesh(
-      createRoundedBoxGeo(width * 0.96, cabH * 0.74, rearLen, 0.06, 3, 10),
+      createExtrudedProfile(fireShape, width * 0.96, 0.04, 0.04, 3, 14),
       mats.body,
     );
-    bodyBox.position.set(0, frameY + 0.10 + cabH * 0.37, rearZ);
     tagPart(bodyBox, 'Módulo de Bombas e Mangueiras', 0, 0.25, -0.4);
     group.add(bodyBox);
+
+    const equipFloorY = Math.max(fireBotY + 0.06, g.wheelRadius * 2.06);
+    const shutterH = Math.max(0.75, fireTopY - equipFloorY - 0.12);
+    const shutterMidY = equipFloorY + shutterH * 0.5;
 
     // Firetruck front grille + rear upper warning strobes (red/blue alternating)
     [-1, 1].forEach((side) => {
@@ -2765,18 +2973,18 @@ export function buildHeavyTruckVehicle(
         new THREE.BoxGeometry(0.22, 0.095, 0.075),
         side < 0 ? mats.sirenRed : mats.sirenBlue,
       );
-      rStrobe.position.set(side * (width * 0.36), frameY + 0.10 + cabH * 0.76, rearZ - rearLen * 0.48);
+      rStrobe.position.set(side * (width * 0.36), fireTopY + 0.05, rearZ - rearLen * 0.48);
       group.add(fStrobe, rStrobe);
     });
 
     [-1, 1].forEach((side) => {
       const hose = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.075, 10, 20), mats.accent);
       hose.rotation.y = Math.PI / 2;
-      hose.position.set(side * (width * 0.44), frameY + 0.10 + cabH * 0.38, rearZ + 0.35);
+      hose.position.set(side * (width * 0.44), shutterMidY, rearZ + 0.35);
       group.add(hose);
 
-      const pumpPanel = new THREE.Mesh(new THREE.BoxGeometry(0.055, cabH * 0.38, 0.88), mats.grille);
-      pumpPanel.position.set(side * (width * 0.482), frameY + 0.10 + cabH * 0.36, rearZ - 0.65);
+      const pumpPanel = new THREE.Mesh(new THREE.BoxGeometry(0.055, shutterH * 0.78, 0.88), mats.grille);
+      pumpPanel.position.set(side * (width * 0.482), shutterMidY, rearZ - 0.65);
       group.add(pumpPanel);
 
       // Colored pressure dials & brass valve handles on pump panel
@@ -2784,22 +2992,23 @@ export function buildHeavyTruckVehicle(
         [-0.22, 0, 0.22].forEach((pz, pIdx) => {
           const gauge = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.065, 10), pIdx === 1 ? mats.sirenBlue : mats.liveryStripe);
           gauge.rotation.z = Math.PI / 2;
-          gauge.position.set(side * (width * 0.49), frameY + 0.10 + cabH * 0.44, rearZ - 0.65 + pz);
+          gauge.position.set(side * (width * 0.49), shutterMidY + 0.14, rearZ - 0.65 + pz);
           group.add(gauge);
         });
       }
 
       const shutter = new THREE.Mesh(
-        createRoundedBoxGeo(0.04, cabH * 0.48, rearLen * 0.78, 0.015, 2, 6),
+        createRoundedBoxGeo(0.04, shutterH, rearLen * 0.78, 0.015, 2, 6),
         mats.alloy,
       );
-      shutter.position.set(side * (width * 0.496), frameY + 0.10 + cabH * 0.38, rearZ);
+      shutter.position.set(side * (width * 0.496), shutterMidY, rearZ);
       tagPart(shutter, 'Persiana Lateral de Alumínio', side * 0.35, 0.25, -0.4);
       group.add(shutter);
-      registerOpenable(animated, shutter, 'Persianas Bombeiro', {}, new THREE.Vector3(0, cabH * 0.40, 0));
+      registerOpenable(animated, shutter, 'Persianas Bombeiro', {}, new THREE.Vector3(0, shutterH * 0.82, 0));
 
+      const jackZ = Math.min(rearZ - rearLen * 0.44, Math.min(...rearAxleZs) - g.wheelRadius * 1.24 - 0.16);
       const jack = new THREE.Mesh(createRoundedBoxGeo(0.22, 0.34, 0.22, 0.02, 2, 6), mats.accent);
-      jack.position.set(side * (width * 0.44), frameY - 0.08, rearZ - rearLen * 0.44);
+      jack.position.set(side * (width * 0.26), frameY - 0.04, jackZ);
       group.add(jack);
     });
 
@@ -2822,28 +3031,29 @@ export function buildHeavyTruckVehicle(
     cannon.rotation.x = Math.PI / 3;
     cannon.position.set(0, 0.60, length * 0.50);
     ladder.add(basket, cannon);
-    ladder.position.set(0, frameY + 0.16 + cabH * 0.74, rearZ);
+    ladder.position.set(0, fireTopY + 0.06, rearZ);
     ladder.rotation.x = -0.14;
     tagPart(ladder, 'Escada Magirus com Canhão', 0, 0.85, -0.2);
     group.add(ladder);
     registerOpenable(animated, ladder, 'Escada Magirus', { x: -0.38, y: 0.42 });
   } else if (isTow) {
+    const towDeckBaseY = Math.max(frameY + 0.20, g.wheelRadius * 2.06);
     const pylon = new THREE.Mesh(createRoundedBoxGeo(width * 0.88, 0.98, 0.24, 0.04, 2, 8), mats.accent);
-    pylon.position.set(0, frameY + 0.56, rearZ + rearLen * 0.45);
+    pylon.position.set(0, towDeckBaseY + 0.36, rearZ + rearLen * 0.45);
     const winchDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.56, 14), mats.chrome);
     winchDrum.rotation.z = Math.PI / 2;
-    winchDrum.position.set(0, frameY + 0.44, rearZ + rearLen * 0.34);
+    winchDrum.position.set(0, towDeckBaseY + 0.24, rearZ + rearLen * 0.34);
     tagPart(pylon, 'Torre do Guincho com Carretel', 0, 0.45, -0.2);
     group.add(pylon, winchDrum);
 
     [-0.28, 0.28].forEach((wx) => {
       const workLamp = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.06), mats.headlight);
-      workLamp.position.set(wx * width, frameY + 0.96, rearZ + rearLen * 0.45 - 0.11);
+      workLamp.position.set(wx * width, towDeckBaseY + 0.76, rearZ + rearLen * 0.45 - 0.11);
       group.add(workLamp);
     });
 
     const deckPivot = new THREE.Group();
-    deckPivot.position.set(0, frameY + 0.20, -halfL + 0.85);
+    deckPivot.position.set(0, towDeckBaseY, -halfL + 0.85);
     const deck = new THREE.Mesh(
       createRoundedBoxGeo(width * 0.96, 0.14, rearLen, 0.03, 2, 8),
       mats.secondary,
@@ -2869,9 +3079,6 @@ export function buildHeavyTruckVehicle(
   }
 
   // 4. Heavy Axles + Dual Rear Wheels + Rear Fenders & Mudflaps + Drivetrain
-  const rearAxleZs = isTow
-    ? [rearZ - rearLen * 0.12]
-    : [rearZ - rearLen * 0.08, rearZ - rearLen * 0.34];
   const axles = [{ z: frontAxleZ, dual: false }, ...rearAxleZs.map((z) => ({ z, dual: true }))];
 
   const truckSteerPivots: { left?: THREE.Group; right?: THREE.Group } = {};
@@ -2914,7 +3121,7 @@ export function buildHeavyTruckVehicle(
     cityMode,
   });
   addChassisDrivetrain(group, width, frameY, frontAxleZ, rearAxleZs[0], mats, cityMode);
-  addDualRearFendersAndMudflaps(group, width, g.wheelRadius, rearAxleZs, mats, cityMode);
+  addDualRearFendersAndMudflaps(group, width, g.wheelRadius, g.wheelWidth, rearAxleZs, mats, cityMode);
   // Front face of cab sits at cabZ + noseLocalEnd + noseFrontBevel = halfL - 0.08 - 0.015 = halfL - 0.095 -> place fascia clearly proud!
   addHeavyBumperAndLights(group, width, g.groundClearance, cabZ + ch - 0.01, -halfL + 0.04, mats, useChrome, false, false, cabBaseY + hoodTopH * 0.45, animated, cityMode, false);
 
@@ -2971,7 +3178,7 @@ export function buildVanOrArmoredVehicle(
     g.groundClearance + 0.05,
     g.wheelRadius + Math.max(0, g.groundClearance - 0.16) * 0.38,
   );
-  const hoodH = (height - g.groundClearance) * (isSweeper ? 0.30 : isArmored ? 0.52 : 0.40);
+  const hoodH = (height - g.groundClearance) * (isSweeper ? 0.38 : isArmored ? 0.52 : 0.40);
   const beltY = g.groundClearance + hoodH;
   const hoodZ = halfL - (isSweeper ? 0.26 : isArmored ? 0.95 : 0.52);
   const wsTopZ = hoodZ - (isSweeper ? 0.16 : isArmored ? 0.42 : 0.38);
@@ -2988,13 +3195,31 @@ export function buildVanOrArmoredVehicle(
 
   // 1a. Hollowed cab chassis floor pan + sloped engine nose (drops cleanly to cabFloorY inside cab!)
   const cabLowerShape = new THREE.Shape();
-  cabLowerShape.moveTo(cabRearZ, g.groundClearance);
-  const fStart = Math.max(cabRearZ + 0.06, frontWheelZ - archR);
-  const fEnd = Math.min(noseFrontPt - 0.10, frontWheelZ + archR);
-  if (fEnd > fStart + 0.1) {
-    cabLowerShape.lineTo(fStart, g.groundClearance);
-    cabLowerShape.absarc(frontWheelZ, archCenterY, archR, Math.PI, 0, true);
-    cabLowerShape.lineTo(fEnd, g.groundClearance);
+  const cabArchR = archR + 0.025;
+  const fStart = Math.max(cabRearZ, frontWheelZ - cabArchR);
+  const fEnd = Math.min(noseFrontPt - 0.10, frontWheelZ + cabArchR);
+  const cabArchClipsRear = fStart > frontWheelZ - cabArchR + 0.01;
+  if (fEnd > fStart + 0.08) {
+    const fStartAng = cabArchClipsRear
+      ? Math.acos(THREE.MathUtils.clamp((fStart - frontWheelZ) / cabArchR, -0.98, 0.98))
+      : Math.PI;
+    const fEndAng =
+      fEnd < frontWheelZ + cabArchR - 0.02
+        ? Math.acos(THREE.MathUtils.clamp((fEnd - frontWheelZ) / cabArchR, -0.98, 0.98))
+        : 0;
+    if (cabArchClipsRear) {
+      cabLowerShape.moveTo(
+        fStart,
+        Math.max(g.groundClearance, archCenterY + cabArchR * Math.sin(fStartAng)),
+      );
+    } else {
+      cabLowerShape.moveTo(cabRearZ, g.groundClearance);
+      cabLowerShape.lineTo(fStart, g.groundClearance);
+    }
+    cabLowerShape.absarc(frontWheelZ, archCenterY, cabArchR, fStartAng, fEndAng, true);
+    if (fEndAng === 0) cabLowerShape.lineTo(fEnd, g.groundClearance);
+  } else {
+    cabLowerShape.moveTo(cabRearZ, g.groundClearance);
   }
   cabLowerShape.lineTo(noseFrontPt - 0.03, g.groundClearance + 0.06);
   cabLowerShape.lineTo(noseFrontPt, noseStartY);
@@ -3003,9 +3228,10 @@ export function buildVanOrArmoredVehicle(
   cabLowerShape.lineTo(cabRearZ, cabFloorY);
   cabLowerShape.closePath();
 
+  const maxVanCabW = Math.max(width * 0.64, (width * 0.46 - g.wheelWidth * 0.5 - 0.05) * 2);
   const cabLowerGeo = createExtrudedProfile(
     cabLowerShape,
-    cityMode ? width : width * 0.84,
+    cityMode ? Math.min(width * 0.92, maxVanCabW) : Math.min(width * 0.82, maxVanCabW),
     noseFrontBevel,
     noseFrontBevel,
     cityMode ? 2 : 4,
@@ -3035,31 +3261,52 @@ export function buildVanOrArmoredVehicle(
   cabRoofCap.position.set(0, cabTopY - 0.055, (wsTopZ + cabRearZ) * 0.5);
   group.add(cabRoofCap);
 
-  // 1c. Contoured Front Wheel Fenders matching the exact sloped hood profile (NO protruding boxy corner ears!)
-  const fFenderStart = Math.max(cabRearZ + 0.04, frontWheelZ - archR);
+  // 1c. Contoured Front Wheel Fenders matching the exact sloped hood profile (NO self-intersecting triangle inside wheel well!)
+  const fFenderArchR = archR + 0.028;
+  const fFenderBackZ = cabRearZ + 0.04;
+  const fFenderStart = Math.max(fFenderBackZ, frontWheelZ - fFenderArchR);
+  const fFenderEnd = Math.min(noseFrontPt - 0.06, frontWheelZ + fFenderArchR);
+  const fArchClipsBack = fFenderStart > frontWheelZ - fFenderArchR + 0.01;
   const fFenderShape = new THREE.Shape();
-  fFenderShape.moveTo(hoodZ - 0.04, g.groundClearance + 0.10);
-  fFenderShape.lineTo(fFenderStart, g.groundClearance);
-  if (fEnd > fFenderStart + 0.1) {
-    fFenderShape.absarc(frontWheelZ, archCenterY, archR, Math.PI, 0, true);
-    fFenderShape.lineTo(fEnd, g.groundClearance);
+  if (fFenderEnd > fFenderStart + 0.08) {
+    const fStartAng = fArchClipsBack
+      ? Math.acos(THREE.MathUtils.clamp((fFenderStart - frontWheelZ) / fFenderArchR, -0.98, 0.98))
+      : Math.PI;
+    const fEndAng =
+      fFenderEnd < frontWheelZ + fFenderArchR - 0.02
+        ? Math.acos(THREE.MathUtils.clamp((fFenderEnd - frontWheelZ) / fFenderArchR, -0.98, 0.98))
+        : 0;
+    if (fArchClipsBack) {
+      fFenderShape.moveTo(
+        fFenderStart,
+        Math.max(g.groundClearance, archCenterY + fFenderArchR * Math.sin(fStartAng)),
+      );
+    } else {
+      fFenderShape.moveTo(fFenderBackZ, g.groundClearance);
+      fFenderShape.lineTo(fFenderStart, g.groundClearance);
+    }
+    fFenderShape.absarc(frontWheelZ, archCenterY, fFenderArchR, fStartAng, fEndAng, true);
+    if (fEndAng === 0) fFenderShape.lineTo(fFenderEnd, g.groundClearance);
+  } else {
+    fFenderShape.moveTo(fFenderBackZ, g.groundClearance);
   }
   fFenderShape.lineTo(noseFrontPt - 0.03, g.groundClearance + 0.06);
   fFenderShape.lineTo(noseFrontPt, noseStartY);
   fFenderShape.lineTo(hoodZ - 0.02, beltY - 0.03);
+  fFenderShape.lineTo(fFenderStart, beltY - 0.03);
   fFenderShape.closePath();
 
   const fFenderGeo = createExtrudedProfile(
     fFenderShape,
-    width * 0.135,
-    0.032,
-    0.032,
+    width * 0.125,
+    0.028,
+    0.028,
     cityMode ? 2 : 3,
     cityMode ? 8 : 14,
   );
   [-1, 1].forEach((side) => {
     const fFender = new THREE.Mesh(fFenderGeo, mats.body);
-    fFender.position.x = side * (width * 0.495 - width * 0.068 - 0.032);
+    fFender.position.x = side * (width * 0.495 - width * 0.0625 - 0.028);
     group.add(fFender);
 
     // Flared front & rear wheel arch moldings (TurboSquid 80s van / ambulance detail!)
@@ -3106,6 +3353,7 @@ export function buildVanOrArmoredVehicle(
   const vanCabDepth = Math.max(0.95, vanCabFrontZ - cabRearZ);
   const cabInt = buildHeavyCabinInterior({
     cabWidth: width * 0.82,
+    floorWidth: Math.max(0.88, Math.min(width * 0.80, maxVanCabW - 0.06)),
     cabDepth: vanCabDepth,
     cabHeight: cabTopY - cabFloorY - 0.08,
     dashTopY: Math.max(0.58, beltY - cabFloorY + 0.02),
@@ -3125,8 +3373,9 @@ export function buildVanOrArmoredVehicle(
   const cargoCenterZ = (-halfL + 0.04 + cabRearZ) * 0.5;
   const wallT = 0.095;
   const bayFloorY = g.groundClearance + 0.12;
+  const bayFloorW = bayFloorY < archCenterY + archR + 0.05 ? Math.min(width * 0.96, maxVanCabW - 0.04) : width * 0.96;
   const bayFloor = new THREE.Mesh(
-    createRoundedBoxGeo(width * 0.96, 0.12, cargoLen, 0.025, 2, 8),
+    createRoundedBoxGeo(bayFloorW, 0.12, cargoLen, 0.025, 2, 8),
     mats.trim,
   );
   bayFloor.position.set(0, bayFloorY - 0.04, cargoCenterZ);
@@ -3145,9 +3394,71 @@ export function buildVanOrArmoredVehicle(
   const fDoorHingeZ = hoodZ - 0.04;
   const doorRearEdgeZ = fDoorHingeZ - fDoorLen;
 
+  const cargoZStart = -halfL + 0.01;
+  const cargoZEnd = cabRearZ + 0.04;
+  const vanWallArchR = archR + 0.03;
+  const buildArchCutSideWall = (
+    z0: number,
+    z1: number,
+    botY: number,
+    topY: number,
+    thick: number,
+    xPos: number,
+    label?: string,
+    sideForTag = 0,
+  ) => {
+    const s = new THREE.Shape();
+    const sortedW = [rearWheelZ, frontWheelZ].sort((a, b) => a - b);
+    const dy = THREE.MathUtils.clamp(archCenterY - botY, 0, vanWallArchR * 0.92);
+    const halfSpan = Math.sqrt(Math.max(0.01, vanWallArchR * vanWallArchR - dy * dy));
+    const ang0 = Math.PI + Math.asin(dy / vanWallArchR);
+    const ang1 = -Math.asin(dy / vanWallArchR);
+    let startedOnArch = false;
+    for (const wz of sortedW) {
+      const a0 = wz - halfSpan;
+      const a1 = wz + halfSpan;
+      if (a0 < z0 && a1 > z0 + 0.02 && topY > archCenterY + vanWallArchR + 0.05) {
+        const dz0 = THREE.MathUtils.clamp(z0 - wz, -vanWallArchR * 0.96, vanWallArchR * 0.96);
+        const startY = Math.max(botY, archCenterY + Math.sqrt(Math.max(0.01, vanWallArchR * vanWallArchR - dz0 * dz0)));
+        s.moveTo(z0, startY);
+        startedOnArch = true;
+        break;
+      }
+    }
+    if (!startedOnArch) s.moveTo(z0, botY);
+
+    let endedOnArch = false;
+    for (const wz of sortedW) {
+      const a0 = wz - halfSpan;
+      const a1 = wz + halfSpan;
+      if (a1 <= z0 + 0.03 || a0 >= z1 - 0.03 || botY >= archCenterY + vanWallArchR) continue;
+      const startIn = a0 >= z0;
+      if (startIn) s.lineTo(a0, botY);
+      const cz0 = Math.max(z0, a0);
+      const cz1 = Math.min(z1, a1);
+      const y0 = startIn ? botY : archCenterY + Math.sqrt(Math.max(0.01, vanWallArchR * vanWallArchR - Math.pow(cz0 - wz, 2)));
+      const y1 = a1 <= z1 ? botY : archCenterY + Math.sqrt(Math.max(0.01, vanWallArchR * vanWallArchR - Math.pow(cz1 - wz, 2)));
+      const th0 = startIn ? ang0 : Math.atan2(y0 - archCenterY, cz0 - wz);
+      const th1 = a1 <= z1 ? ang1 : Math.atan2(y1 - archCenterY, cz1 - wz);
+      s.absarc(wz, archCenterY, vanWallArchR, th0, th1, true);
+      if (a1 <= z1) s.lineTo(a1, botY);
+      else endedOnArch = true;
+    }
+    if (!endedOnArch) s.lineTo(z1, botY);
+    s.lineTo(z1, topY);
+    s.lineTo(z0, topY);
+    s.closePath();
+
+    const wGeo = createExtrudedProfile(s, Math.max(0.04, thick - 0.04), 0.02, 0.02, 2, cityMode ? 10 : 16);
+    const mesh = new THREE.Mesh(wGeo, mats.body);
+    mesh.position.x = xPos;
+    if (label) tagPart(mesh, label, sideForTag * 0.35, 0.15, -0.2);
+    group.add(mesh);
+  };
+
   [-1, 1].forEach((side) => {
     if (side > 0 && isFoodTruck && !cityMode) {
-      // Food Truck curb-side wall with real serving window cutout matching hinged awning hatch
+      // Food Truck curb-side wall with real serving window cutout AND real wheel-arch cutout!
       const hatchHalfZ = length * 0.22;
       const hatchFrontZ = Math.min(cabRearZ + 0.02, -0.2 + hatchHalfZ);
       const hatchRearZ = Math.max(-halfL + 0.06, -0.2 - hatchHalfZ);
@@ -3155,13 +3466,7 @@ export function buildVanOrArmoredVehicle(
       const headerBotY = cabTopY - 0.22;
       const wallX = width * 0.5 - wallT * 0.5;
 
-      const lowerSkirtH = Math.max(0.24, sillTopY - bayFloorY + 0.02);
-      const lowerSkirt = new THREE.Mesh(
-        createRoundedBoxGeo(wallT, lowerSkirtH, cargoLen + 0.06, 0.03, 2, 8),
-        mats.body,
-      );
-      lowerSkirt.position.set(wallX, bayFloorY + lowerSkirtH * 0.5 - 0.02, cargoCenterZ);
-      group.add(lowerSkirt);
+      buildArchCutSideWall(cargoZStart, cargoZEnd, bayFloorY - 0.02, sillTopY, wallT, wallX);
 
       const upperHeaderH = Math.max(0.14, boxRoofY - headerBotY);
       const upperHeader = new THREE.Mesh(
@@ -3173,46 +3478,36 @@ export function buildVanOrArmoredVehicle(
 
       const frontColLen = cabRearZ + 0.03 - hatchFrontZ;
       if (frontColLen > 0.06) {
-        const fCol = new THREE.Mesh(
-          createRoundedBoxGeo(wallT, wallH, frontColLen, 0.03, 2, 8),
-          mats.body,
-        );
-        fCol.position.set(wallX, bayFloorY + wallH * 0.5 - 0.02, (cabRearZ + 0.03 + hatchFrontZ) * 0.5);
-        group.add(fCol);
+        buildArchCutSideWall(hatchFrontZ, cabRearZ + 0.03, bayFloorY - 0.02, boxRoofY, wallT, wallX);
       }
       const rearColLen = hatchRearZ - (-halfL + 0.01);
       if (rearColLen > 0.06) {
-        const rCol = new THREE.Mesh(
-          createRoundedBoxGeo(wallT, wallH, rearColLen, 0.03, 2, 8),
-          mats.body,
-        );
-        rCol.position.set(wallX, bayFloorY + wallH * 0.5 - 0.02, (hatchRearZ + (-halfL + 0.01)) * 0.5);
-        group.add(rCol);
+        buildArchCutSideWall(-halfL + 0.01, hatchRearZ, bayFloorY - 0.02, boxRoofY, wallT, wallX);
       }
     } else {
-      const wall = new THREE.Mesh(
-        createRoundedBoxGeo(wallT, wallH, cargoLen + 0.06, 0.03, 2, 8),
-        mats.body,
-      );
-      wall.position.set(side * (width * 0.5 - wallT * 0.5), bayFloorY + wallH * 0.5 - 0.02, cargoCenterZ);
-      tagPart(
-        wall,
+      buildArchCutSideWall(
+        cargoZStart,
+        cargoZEnd,
+        bayFloorY - 0.02,
+        boxRoofY,
+        wallT,
+        side * (width * 0.5 - wallT * 0.5),
         isArmored ? 'Blindagem Lateral Balística' : isAmbulance ? 'Parede Módulo Médico' : 'Lateral Baú Furgão',
-        side * 0.35,
-        0.15,
-        -0.2,
+        side,
       );
-      group.add(wall);
     }
 
-    // Side B-pillar cheek sealing space between cab door rear edge & cargo wall
+    // Side B-pillar cheek sealing space between cab door rear edge & cargo wall (clearing front wheel!)
     if (doorRearEdgeZ > cabRearZ + 0.02) {
       const span = doorRearEdgeZ - cabRearZ;
+      const bCheekHitsFront = doorRearEdgeZ > frontWheelZ - vanWallArchR && cabRearZ < frontWheelZ + vanWallArchR;
+      const bCheekBotY = bCheekHitsFront ? Math.max(bayFloorY - 0.02, archCenterY + archR + 0.03) : bayFloorY - 0.02;
+      const bCheekH = Math.max(0.24, boxRoofY - bCheekBotY);
       const bCheek = new THREE.Mesh(
-        createRoundedBoxGeo(width * 0.12, wallH, span + 0.04, 0.02, 2, 8),
+        createRoundedBoxGeo(width * 0.12, bCheekH, span + 0.04, 0.02, 2, 8),
         mats.body,
       );
-      bCheek.position.set(side * (width * 0.495 - width * 0.06), bayFloorY + wallH * 0.5 - 0.02, (doorRearEdgeZ + cabRearZ) * 0.5);
+      bCheek.position.set(side * (width * 0.495 - width * 0.06), bCheekBotY + bCheekH * 0.5, (doorRearEdgeZ + cabRearZ) * 0.5);
       group.add(bCheek);
     }
 
@@ -3222,11 +3517,13 @@ export function buildVanOrArmoredVehicle(
         port.position.set(side * (width * 0.502), beltY + 0.18, cargoCenterZ + gp * 0.65);
         group.add(port);
       }
-      // Bolted ballistic applique armor panel + side running board
+      // Bolted ballistic applique armor panel + side running board strictly between tires
       const plate = new THREE.Mesh(new THREE.BoxGeometry(0.026, wallH * 0.65, cargoLen * 0.82), mats.secondary);
       plate.position.set(side * (width * 0.502), bayFloorY + wallH * 0.48, cargoCenterZ);
-      const stepBar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.045, length * 0.48), mats.trim);
-      stepBar.position.set(side * (width * 0.48), g.groundClearance + 0.08, 0.1);
+      const stepF = frontWheelZ - archR - 0.06;
+      const stepR = rearWheelZ + archR + 0.06;
+      const stepBar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.045, Math.max(0.8, stepF - stepR)), mats.trim);
+      stepBar.position.set(side * (width * 0.48), g.groundClearance + 0.08, (stepF + stepR) * 0.5);
       group.add(plate, stepBar);
     }
   });
@@ -3428,6 +3725,10 @@ export function buildVanOrArmoredVehicle(
   if (!cityMode) {
     const doorHingeXAbs = width * 0.495 - 0.034;
     const topShift = Math.max(0.03, doorHingeXAbs - width * 0.445);
+    const vanDoorHitsWheel = fDoorHingeZ > frontWheelZ - archR && fDoorHingeZ - fDoorLen < frontWheelZ + archR;
+    const clearedVanDoorH = vanDoorHitsWheel
+      ? Math.min(hoodH * 0.74, Math.max(0.14, beltY - (archCenterY + archR + 0.03)))
+      : hoodH * 0.74;
     [-1, 1].forEach((s) => {
       const side = s as -1 | 1;
       const door = createSideDoorGroup(
@@ -3437,7 +3738,7 @@ export function buildVanOrArmoredVehicle(
           hingeY: beltY,
           hingeZ: fDoorHingeZ,
           doorLen: fDoorLen,
-          doorHeight: hoodH * 0.74,
+          doorHeight: clearedVanDoorH,
           glassHeight: isArmored ? windowH * 0.42 : windowH * 0.84,
           glassTopZInsetFront: (hoodZ - wsTopZ) * 0.78,
           glassTopZInsetRear: 0.03,
@@ -3506,9 +3807,10 @@ export function buildVanOrArmoredVehicle(
       crossH.position.copy(crossV.position);
       group.add(band, crossV, crossH);
 
-      // Side compartment locker door + chrome latch + roof scene strobe
-      const locker = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.42, 0.72), mats.trim);
-      locker.position.set(side * (width * 0.502), bayFloorY + 0.32, cargoCenterZ - cargoLen * 0.22);
+      // Side compartment locker door + chrome latch + roof scene strobe (lifted clearly above rear wheel arch!)
+      const lockerY = Math.max(bayFloorY + 0.32, archCenterY + archR + 0.23);
+      const locker = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.40, 0.72), mats.trim);
+      locker.position.set(side * (width * 0.502), lockerY, cargoCenterZ - cargoLen * 0.22);
       const sceneLight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.10, 0.22), mats.sirenRed);
       sceneLight.position.set(side * (width * 0.502), boxRoofY - 0.06, cargoCenterZ + cargoLen * 0.28);
       group.add(locker, sceneLight);

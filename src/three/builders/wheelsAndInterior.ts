@@ -488,19 +488,11 @@ export function buildWheelWellLiners(
   barrelGeo.rotateY(-Math.PI / 2);
   barrelGeo.computeVertexNormals();
 
-  // Inner wheelhouse backing wall sealing front/rear edges while leaving a domed central bay
-  // for wishbones, coilovers, tie-rods, and CV half-shafts (zero clipping, clear X-Ray view)
+  // Solid inner wheelhouse backing wall sealing wheel wells cleanly from interior/chassis light leak
+  // (tagged with xrayRole = 'liner' so X-Ray mode still reveals full wishbones, coilovers, and CV half-shafts)
   const outerWallR = archR + barrelThick * 0.9;
-  const botWallY = outerWallR * Math.sin(a0);
-  const cutHalfZ = Math.min(archR * 0.62, wheelRadius * 0.70);
-  const cutTopY = archR * 0.62;
   const wallShape = new THREE.Shape();
   wallShape.absarc(0, 0, outerWallR, a0, a1, false);
-  wallShape.lineTo(-cutHalfZ, botWallY);
-  wallShape.lineTo(-cutHalfZ, cutTopY * 0.52);
-  wallShape.quadraticCurveTo(-cutHalfZ * 0.72, cutTopY, 0, cutTopY);
-  wallShape.quadraticCurveTo(cutHalfZ * 0.72, cutTopY, cutHalfZ, cutTopY * 0.52);
-  wallShape.lineTo(cutHalfZ, botWallY);
   wallShape.closePath();
   const wallGeo = new THREE.ExtrudeGeometry(wallShape, {
     depth: 0.022,
@@ -557,7 +549,7 @@ export function buildVisibleInterior(
 ): THREE.Group {
   const interior = new THREE.Group();
   interior.userData.xrayRole = 'interior';
-  const innerW = Math.max(0.85, width * 0.8);
+  const innerW = Math.max(0.76, width * 0.68);
   const innerL = Math.max(1.0, cabLen * 0.88);
   const totalH = cabH + tubDepth;
   const styleVariant = (interiorStyle.styleId ?? 0) % 5;
@@ -1975,6 +1967,7 @@ export function buildSculptedCabin(
 
 export interface HeavyCabinInteriorOptions {
   cabWidth: number;
+  floorWidth?: number;
   cabDepth: number;
   cabHeight: number;
   dashTopY?: number;
@@ -1993,6 +1986,7 @@ export interface HeavyCabinInteriorOptions {
 export function buildHeavyCabinInterior(opts: HeavyCabinInteriorOptions): THREE.Group {
   const {
     cabWidth,
+    floorWidth,
     cabDepth,
     cabHeight,
     seatsCount = 2,
@@ -2010,6 +2004,7 @@ export function buildHeavyCabinInterior(opts: HeavyCabinInteriorOptions): THREE.
   const grp = new THREE.Group();
   grp.userData.xrayRole = 'interior';
   const w = Math.max(1.2, cabWidth);
+  const floorW = Math.max(0.85, Math.min(w * 0.96, floorWidth ?? w * 0.96));
   const d = Math.max(0.95, cabDepth);
   const h = Math.max(1.05, cabHeight);
   const dashTopY = THREE.MathUtils.clamp(opts.dashTopY ?? h * 0.50, 0.56, h * 0.72);
@@ -2019,7 +2014,7 @@ export function buildHeavyCabinInterior(opts: HeavyCabinInteriorOptions): THREE.
 
   // 1. Ribbed Rubber Cab Floor Mat + Pedestal Step Lip
   const floorMat = new THREE.Mesh(
-    createRoundedBoxGeo(w * 0.96, 0.03, d * 0.94, 0.012, 2, 8),
+    createRoundedBoxGeo(floorW, 0.03, d * 0.94, 0.012, 2, 8),
     mats.grille,
   );
   floorMat.position.set(0, 0.015, 0);

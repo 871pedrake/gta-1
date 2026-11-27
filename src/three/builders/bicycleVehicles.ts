@@ -173,7 +173,7 @@ export function buildBicycleVehicle(
 
   // CRITICAL: Every bike fork crown & head tube MUST sit CLEAR ABOVE the tire top (y = 2 * r)!
   const bbY = isBmx ? 0.275 : isSpeed || isAero ? 0.285 : hasSuspension ? 0.31 : 0.285;
-  const bbZ = isBmx ? -0.04 : -0.095;
+  const bbZ = isBmx ? -0.04 : -0.065;
 
   // Seat-tube cluster height (tall horizontal diamond on Road/Aero, sloped on MTB/Trail, compact ONLY on BMX)
   const seatTopY = isBmx
@@ -237,12 +237,13 @@ export function buildBicycleVehicle(
   frameGroup.add(makeStrutBetween(headBotJoin, bbPos, tubeMainR * 1.1, tubeMainR * 1.15, mats.body, seg));
 
   if (isAero) {
-    // Sculpted aero seat-tube rear wheel cutout + gusset
+    // Sculpted aero seat-tube rear wheel cutout + gusset clearing rear tire cleanly
     const aeroFairing = new THREE.Mesh(
-      createRoundedBoxGeo(0.032, 0.30, 0.072, 0.012, 2, 8),
+      createRoundedBoxGeo(0.032, 0.30, 0.056, 0.012, 2, 8),
       mats.body,
     );
-    aeroFairing.position.set(0, bbY + 0.24, bbZ - 0.048);
+    const aeroZ = Math.max(bbZ - 0.018, rZ + r + 0.045);
+    aeroFairing.position.set(0, bbY + 0.24, aeroZ);
     aeroFairing.rotation.x = 0.28;
     frameGroup.add(aeroFairing);
   }
